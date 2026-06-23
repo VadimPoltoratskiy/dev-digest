@@ -1,3 +1,4 @@
+import '@anthropic-ai/sdk/shims/web'; // force SDK to use native fetch (node-fetch v2 breaks on Node 22)
 import Anthropic from '@anthropic-ai/sdk';
 import type {
   LLMProvider,
