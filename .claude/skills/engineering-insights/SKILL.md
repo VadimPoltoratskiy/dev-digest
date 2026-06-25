@@ -80,7 +80,10 @@ Check for duplicates. If an existing entry covers the same point, add a dated co
 
 ### Step 5 — Append entries
 
-If `INSIGHTS.md` does not exist, create it with this template:
+**NEVER use the Write tool on an existing INSIGHTS.md — that overwrites the entire file and destroys accumulated history.**
+
+- **File already exists** → use `Edit` to insert the new entry text under the correct section heading (`## Patterns`, `## Mistakes`, etc.). Find the heading, place the new entry immediately below it.
+- **File does not exist** → use `Write` (only this case) to create it with this template:
 
 ```markdown
 # INSIGHTS.md — <Module Name>
@@ -92,16 +95,16 @@ Read before working in this module. Update at session end via /engineering-insig
 
 ## Patterns
 
-## Mistakes
-
 ## Decisions
+
+## Mistakes
 
 ## Context
 
 ## Open Questions
 ```
 
-Append new entries under the correct section heading. Each entry format:
+Each entry format:
 
 ```
 ### YYYY-MM-DD — <one-line summary>
