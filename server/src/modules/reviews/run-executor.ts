@@ -250,6 +250,7 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         blockers,
         error: null,
+        costUsd: outcome.costUsd ?? this.container.priceBook.estimate(agent.model, tokensIn, tokensOut) ?? null,
       });
 
       const trace: RunTrace = {
@@ -267,6 +268,7 @@ export class ReviewRunExecutor {
           tokens_out: tokensOut,
           findings: findingRows.length,
           grounding,
+          cost_usd: outcome.costUsd ?? this.container.priceBook.estimate(agent.model, tokensIn, tokensOut) ?? null,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({

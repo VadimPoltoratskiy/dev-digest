@@ -10,6 +10,8 @@
 ## What Works
 
 <!-- Approaches/solutions that worked, with enough context to reuse. -->
+- `2026-06-25 · Pattern · New shared components live in client/src/components/<Name>/<Name>.tsx + index.ts re-export. Follows the same folder+barrel convention as app-shell, diff-viewer, etc. Evidence: client/src/components/RunCostBadge/.`
+- `2026-06-25 · Pattern · PR list grid is controlled by two constants that must change together: GRID (CSS grid-template-columns string) and COLUMN_KEYS (i18n key array). Adding a column requires updating both plus the i18n messages file and the PRRow cell order. Evidence: client/src/app/repos/[repoId]/pulls/constants.ts.`
 
 ## What Doesn't Work
 
@@ -19,6 +21,8 @@
 ## Codebase Patterns
 
 <!-- Discovered conventions/architecture decisions NOT already stated in CLAUDE.md. -->
+- `2026-06-25 · Pattern · The Stat tile style (label + value block) is defined in RunTraceDrawer/styles.ts (s.stat / s.statLabel / s.statVal) and rendered by the Stat atom in atoms.tsx. Components outside that folder should replicate the 3 style objects inline rather than importing from the deep path. Evidence: client/src/components/RunCostBadge/RunCostBadge.tsx (stat variant).`
+- `2026-06-25 · Pattern · client/src/vendor/shared/ is a manual mirror of server/src/vendor/shared/ — always update both when changing a Zod contract. No tooling enforces the sync; it's checked only by tsc. Evidence: contracts/trace.ts and contracts/platform.ts exist in both locations.`
 
 ## Tool & Library Notes
 
@@ -28,6 +32,7 @@
 ## Recurring Errors & Fixes
 
 <!-- Repeated mistake → fix. -->
+- `2026-06-25 · Recurring Error · Test fixtures for RunSummary must include all required fields — after adding cost_usd to the contract, the RunHistory.test.tsx base factory was missing it, producing TS2719 "Two different types with this name exist". Fix: add cost_usd: null to the run() factory in RunHistory.test.tsx:17. Always update test fixtures when extending a shared contract type.`
 
 ## Session Notes
 

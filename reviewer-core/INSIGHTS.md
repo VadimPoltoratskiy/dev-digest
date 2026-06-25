@@ -10,6 +10,7 @@
 ## What Works
 
 <!-- Approaches/solutions that worked, with enough context to reuse. -->
+- `2026-06-25 · Pattern · OpenRouter drops TCP connections with "Premature close" under load — all parallel agents can fail simultaneously with no HTTP status code. Wrap each SDK call in completeWithConnectionRetry() (2 retries, 500ms/1000ms backoff) separate from the schema-parse retry loop. Evidence: reviewer-core/src/llm/openrouter.ts:completeWithConnectionRetry.`
 
 ## What Doesn't Work
 
@@ -23,6 +24,7 @@
 ## Tool & Library Notes
 
 <!-- Dependency quirks — model/provider behaviors, JSON-repair edge cases, etc. -->
+- `2026-06-25 · Tool Note · OpenAI SDK throws APIConnectionError (not a fetch Response) for TCP-level drops — it has no .status field, so HTTP-status-based retryable checks silently miss it. Always check (err as {name?:string})?.name === 'APIConnectionError' explicitly alongside ECONNRESET and "Premature close" message checks. Evidence: reviewer-core/src/llm/openrouter.ts:completeWithConnectionRetry.`
 
 ## Recurring Errors & Fixes
 

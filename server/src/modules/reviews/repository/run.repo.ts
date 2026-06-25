@@ -64,6 +64,8 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    // numeric columns come back as strings from Postgres — parse to number.
+    cost_usd: run.costUsd != null ? Number(run.costUsd) : null,
   }));
 }
 
@@ -154,6 +156,8 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
+    /** Actual cost in USD; null on failed/cancelled runs. */
+    costUsd?: number | null;
   },
 ): Promise<void> {
   await db
@@ -168,6 +172,8 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       error: values.error ?? null,
+      // numeric column requires string on write.
+      costUsd: values.costUsd != null ? String(values.costUsd) : null,
     })
     .where(eq(t.agentRuns.id, runId));
 }
