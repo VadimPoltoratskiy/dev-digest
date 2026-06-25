@@ -52,7 +52,9 @@ export class OpenRouterProvider implements LLMProvider {
       apiKey,
       baseURL: this.baseURL,
       timeout: opts.timeoutMs ?? 90_000,
-      maxRetries: opts.maxRetries ?? 2,
+      // Disable SDK-level retries — completeWithConnectionRetry owns all
+      // connection-error retries with proper backoff (3s, 9s).
+      maxRetries: opts.maxRetries ?? 0,
     });
   }
 
@@ -65,36 +67,68 @@ export class OpenRouterProvider implements LLMProvider {
     let costFromApi: number | null = null;
     let lastRaw = '';
 
+    // For json_object mode the model needs the schema in the prompt.
+    if (this.id !== 'openai') {
+      const schemaHint = `\n\nRespond with ONLY a JSON object matching this JSON Schema (no prose, no fences):\n${JSON.stringify(jsonSchema.schema, null, 2)}`;
+      const last = messages[messages.length - 1];
+      if (last?.role === 'user') {
+        messages[messages.length - 1] = { ...last, content: last.content + schemaHint };
+      }
+    }
+
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-        },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+      // Stream the response so tokens flow continuously — without streaming, OpenRouter
+      // buffers the full response and a connection-level timeout fires before long
+      // generations finish, producing "Premature close" errors.
+      const completion = await this.completeWithConnectionRetry(async () => {
+        const stream = await this.client.chat.completions.create({
+          model: req.model,
+          messages,
+          temperature: req.temperature ?? 0,
+          ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+          // json_schema strict mode is only supported by OpenAI's own models;
+          // OpenRouter routes to many providers, most of which don't implement it
+          // and drop the connection after sending HTTP 200. Use json_object for
+          // OpenRouter — all major models support it, and parseWithRepair validates
+          // against the Zod schema with a repair loop.
+          response_format: this.id === 'openai'
+            ? ({ type: 'json_schema', json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true } } as const)
+            : ({ type: 'json_object' } as const),
+          // OpenRouter session grouping — extra body field (spread is exempt from
+          // excess-property checks). Only sent when talking to OpenRouter.
+          ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+          // OpenRouter usage accounting — ask it to return the REAL generation
+          // cost (USD) in `usage.cost`, instead of estimating from a price book.
+          ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+
+        let content = '';
+        let usage: OpenAI.CompletionUsage | null = null;
+        let errorBody: { message?: string } | null = null;
+
+        for await (const chunk of stream) {
+          content += chunk.choices[0]?.delta?.content ?? '';
+          if (chunk.usage) usage = chunk.usage;
+          // OpenRouter can embed an error object in a 200 streaming response
+          const err = (chunk as unknown as { error?: { message?: string } }).error;
+          if (err) errorBody = err;
+        }
+
+        return { content, usage, errorBody };
       });
 
-      // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
-      // error / moderation / free-tier limit in the body) — surface it.
-      const choice = res.choices?.[0];
-      if (!choice) {
-        const errMsg = (res as unknown as { error?: { message?: string } }).error?.message;
-        throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
+      // OpenRouter can return HTTP 200 with no content (upstream provider error)
+      if (completion.errorBody || !completion.content) {
+        const msg = completion.errorBody?.message ?? 'empty response';
+        throw new Error(`OpenRouter returned no content for ${req.schemaName}: ${msg}`);
       }
-      lastRaw = choice.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
+      lastRaw = completion.content;
+      tokensIn += completion.usage?.prompt_tokens ?? 0;
+      tokensOut += completion.usage?.completion_tokens ?? 0;
       // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
-      const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
+      const apiCost = (completion.usage as { cost?: number } | null | undefined)?.cost;
       if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
 
       const parsed = parseWithRepair(req.schema, lastRaw);
@@ -155,6 +189,28 @@ export class OpenRouterProvider implements LLMProvider {
       (a, b) => (a.pricing?.completionPerM ?? Infinity) - (b.pricing?.completionPerM ?? Infinity),
     );
   }
+  /** Retry the LLM call on TCP-level connection drops (Premature close / ECONNRESET).
+   *  Schema-parse retries are handled by the outer loop in completeStructured. */
+  private async completeWithConnectionRetry<T>(fn: () => Promise<T>): Promise<T> {
+    // 3 attempts: waits 3s then 9s between retries — long enough for OpenRouter to
+    // recover from brief service hiccups (deepseek-v4-flash drops connections under load).
+    const DELAYS = [3_000, 9_000];
+    for (let i = 0; i <= DELAYS.length; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const isConn =
+          (err as { name?: string })?.name === 'APIConnectionError' ||
+          (err as { code?: string })?.code === 'ECONNRESET' ||
+          String((err as { message?: string })?.message).includes('Premature close') ||
+          String((err as { message?: string })?.message).includes('fetch failed');
+        if (!isConn || i === DELAYS.length) throw err;
+        await new Promise((r) => setTimeout(r, DELAYS[i]));
+      }
+    }
+    throw new Error('unreachable');
+  }
+
   async complete(_req: CompletionRequest): Promise<CompletionResult> {
     throw new Error(NOT_SUPPORTED);
   }

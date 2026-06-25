@@ -38,9 +38,15 @@ function defaultIsRetryable(err: unknown): boolean {
     (err as { statusCode?: number })?.statusCode ??
     (err as { response?: { status?: number } })?.response?.status;
   if (typeof status === 'number') return status === 429 || status >= 500;
-  // network-ish errors
+  // Node.js network error codes
   const code = (err as { code?: string })?.code;
-  return code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ENOTFOUND';
+  if (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ENOTFOUND') return true;
+  // OpenAI SDK connection errors (APIConnectionError) — thrown on "Premature close",
+  // dropped connections, and similar TCP-level failures from OpenRouter.
+  const name = (err as { name?: string })?.name;
+  if (name === 'APIConnectionError') return true;
+  const msg = (err as { message?: string })?.message ?? '';
+  return msg.includes('Premature close') || msg.includes('ECONNRESET') || msg.includes('fetch failed');
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {

@@ -71,6 +71,20 @@
       "when": 1781464392464,
       "tag": "0009_complex_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782410461426,
+      "tag": "0010_breezy_xorn",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782412893228,
+      "tag": "0011_dry_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }
