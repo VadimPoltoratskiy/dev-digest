@@ -173,6 +173,11 @@ export const PrMeta = z.object({
   // All-time accumulated cost of completed agent runs for this PR (USD).
   // Present on the list endpoint only; absent on the single-PR detail endpoint.
   total_cost_usd: z.number().nullish(),
+  // Per-severity finding counts from the latest completed run batch.
+  // Present on the list endpoint only; null until at least one run completes.
+  findings_summary: z
+    .object({ CRITICAL: z.number().int(), WARNING: z.number().int(), SUGGESTION: z.number().int() })
+    .nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

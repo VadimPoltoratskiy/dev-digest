@@ -1,0 +1,1 @@
+export { FindingsCounter } from "./FindingsCounter";

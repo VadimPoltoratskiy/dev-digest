@@ -12,6 +12,7 @@
 <!-- Approaches/solutions that worked, with enough context to reuse. -->
 - `2026-06-25 · Pattern · Cost computed at read time from existing agent_runs columns — no migration needed. service.ts:listRuns post-maps cost_usd via container.priceBook.estimate(model, tokensIn, tokensOut); the repo mapper sets cost_usd: null as a placeholder the service overwrites. Evidence: server/src/modules/reviews/service.ts, server/src/modules/reviews/repository/run.repo.ts.`
 - `2026-06-25 · Pattern · Aggregating a derived metric per PR in the list route: one IN-query over agent_runs (filtered by prIds + status='done'), then JS grouping into a Map<prId, sum>. Keeps it a single round-trip without a schema change. Evidence: server/src/modules/pulls/routes.ts (costByPr block).`
+- `2026-06-26 · Pattern · Per-severity findings counts for the PR list required a two-pass query: (1) collect agent_run ids within a 5-min window of each PR's latest ranAt (the "batch"), (2) join reviews → findings grouped by prId + severity. Same IN-query + JS Map pattern as the cost aggregation. Evidence: server/src/modules/pulls/routes.ts (findingsSummaryByPr block).`
 
 ## What Doesn't Work
 
@@ -24,6 +25,8 @@
 - `2026-06-25 · Pattern · repo layer cannot access PriceBook (only receives Db). Any computation that needs container goes in the service layer, which post-maps the repo results. Evidence: run.repo.ts returns cost_usd: null; ReviewService.listRuns overwrites it.`
 - `2026-06-25 · Decision · RunStats.cost_usd uses .nullish() (not .nullable()) — persisted run_traces.trace documents written before cost tracking don't have the field. .nullish() lets Zod parse them without validation errors. RunSummary.cost_usd is .nullable() (required) because the service always populates it. Evidence: server/src/vendor/shared/contracts/trace.ts.`
 - `2026-06-25 · Decision · PrMeta.total_cost_usd is .nullish() (optional) because the GitHub adapter's listPullRequests, the mock adapter, and the offline fallback in GET /pulls/:id all return PrMeta-shaped objects without cost data — only the list route populates it. Evidence: server/src/adapters/github/octokit.ts, server/src/adapters/mocks.ts.`
+- `2026-06-26 · Decision · PrMeta.findings_summary is .nullish() for the same reason as total_cost_usd — all PrMeta producers (GitHub adapter, mock, offline fallback in GET /pulls/:id) omit it; only the list route computes it. Always use .nullish() for list-only derived fields. Evidence: server/src/vendor/shared/contracts/platform.ts.`
+- `2026-06-26 · Context · reviews.runId links to agent_runs.id (individual per-agent runs), NOT to multi_agent_runs.id. There is no direct FK from multi_agent_runs to reviews. To aggregate findings across a multi-agent batch, collect all agent_runs.id where ranAt is within the batch window, then join reviews on runId. Evidence: server/src/db/schema/reviews.ts, server/src/db/schema/runs.ts.`
 
 ## Tool & Library Notes
 

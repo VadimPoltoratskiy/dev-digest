@@ -12,6 +12,9 @@
 <!-- Approaches/solutions that worked, with enough context to reuse. -->
 - `2026-06-25 · Pattern · New shared components live in client/src/components/<Name>/<Name>.tsx + index.ts re-export. Follows the same folder+barrel convention as app-shell, diff-viewer, etc. Evidence: client/src/components/RunCostBadge/.`
 - `2026-06-25 · Pattern · PR list grid is controlled by two constants that must change together: GRID (CSS grid-template-columns string) and COLUMN_KEYS (i18n key array). Adding a column requires updating both plus the i18n messages file and the PRRow cell order. Evidence: client/src/app/repos/[repoId]/pulls/constants.ts.`
+- `2026-06-26 · Pattern · Lazy-fetch-on-open popover: pass prId to a TanStack Query hook conditionally — usePrReviews(open ? prId : null). The hook's enabled: !!prId guard fires no request until the popover opens. Free lazy loading with no extra state. Evidence: client/src/components/FindingsCounter/FindingsCounter.tsx.`
+- `2026-06-26 · Pattern · Click-outside popover: useRef on the container div + document.addEventListener("mousedown", handler) inside a useEffect that depends on open. The effect only attaches while open=true and cleans up on close or unmount. Same pattern as vendor/ui/kit/Dropdown.tsx. Evidence: client/src/components/FindingsCounter/FindingsCounter.tsx.`
+- `2026-06-26 · Pattern · SeverityBadge accepts count and compact props: <SeverityBadge severity="CRITICAL" count={2} compact /> renders the icon + tabular number without the full label. Ideal for the PR list findings counter. Evidence: client/src/vendor/ui/primitives/Badge.tsx:SeverityBadge.`
 
 ## What Doesn't Work
 
@@ -33,6 +36,8 @@
 
 <!-- Repeated mistake → fix. -->
 - `2026-06-25 · Recurring Error · Test fixtures for RunSummary must include all required fields — after adding cost_usd to the contract, the RunHistory.test.tsx base factory was missing it, producing TS2719 "Two different types with this name exist". Fix: add cost_usd: null to the run() factory in RunHistory.test.tsx:17. Always update test fixtures when extending a shared contract type.`
+- `2026-06-26 · Recurring Error · Indexing FindingsSummary with a Severity key (which includes INFO) causes TS7053 — FindingsSummary only has CRITICAL | WARNING | SUGGESTION. Fix: type the iteration array as (keyof FindingsSummary)[] and cast to Severity only at the SeverityBadge call site. Evidence: client/src/components/FindingsCounter/FindingsCounter.tsx:SEV_ORDER.`
+- `2026-06-26 · Recurring Error · getByRole("button") in RTL fails with "multiple elements found" when both a role="button" div trigger AND a <button> close button are in the tree. Fix: open with getByRole("button") (only trigger exists), then getAllByRole("button") after open and index the last element for the close button. Evidence: client/src/components/FindingsCounter/FindingsCounter.test.tsx.`
 
 ## Session Notes
 
