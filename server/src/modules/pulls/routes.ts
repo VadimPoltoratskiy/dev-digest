@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -113,8 +113,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
@@ -131,15 +130,75 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Total cost per PR: sum of all completed runs (each stores its own cost_usd).
     const costByPr = new Map<string, number>();
+    // Latest completed run time per PR: needed to identify the latest batch.
+    const latestRunAtByPr = new Map<string, Date>();
     if (prIds.length > 0) {
       const runRows = await container.db
-        .select({ prId: t.agentRuns.prId, costUsd: t.agentRuns.costUsd })
+        .select({ prId: t.agentRuns.prId, costUsd: t.agentRuns.costUsd, ranAt: t.agentRuns.ranAt })
         .from(t.agentRuns)
         .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
       for (const r of runRows) {
-        if (!r.prId || r.costUsd == null) continue;
-        // numeric columns come back as strings from Postgres.
-        costByPr.set(r.prId, (costByPr.get(r.prId) ?? 0) + Number(r.costUsd));
+        if (!r.prId) continue;
+        if (r.costUsd != null) {
+          // numeric columns come back as strings from Postgres.
+          costByPr.set(r.prId, (costByPr.get(r.prId) ?? 0) + Number(r.costUsd));
+        }
+        if (r.ranAt) {
+          const prev = latestRunAtByPr.get(r.prId);
+          if (!prev || r.ranAt > prev) latestRunAtByPr.set(r.prId, r.ranAt);
+        }
+      }
+    }
+
+    // Per-severity findings counts from the latest run batch per PR.
+    // "Batch" = all runs whose ranAt is within 5 minutes of the latest run for
+    // that PR (parallel multi-agent runs complete within seconds of each other).
+    // Dismissed findings are excluded.
+    type FindingsSummary = { CRITICAL: number; WARNING: number; SUGGESTION: number };
+    const findingsSummaryByPr = new Map<string, FindingsSummary>();
+    if (prIds.length > 0 && latestRunAtByPr.size > 0) {
+      // Collect run IDs that belong to each PR's latest batch.
+      const batchRunIds: string[] = [];
+      const runIdToPrId = new Map<string, string>();
+      const BATCH_WINDOW_MS = 5 * 60 * 1000;
+      if (prIds.length > 0) {
+        const batchRunRows = await container.db
+          .select({ id: t.agentRuns.id, prId: t.agentRuns.prId, ranAt: t.agentRuns.ranAt })
+          .from(t.agentRuns)
+          .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
+        for (const r of batchRunRows) {
+          if (!r.prId || !r.ranAt) continue;
+          const latestAt = latestRunAtByPr.get(r.prId);
+          if (!latestAt) continue;
+          if (latestAt.getTime() - r.ranAt.getTime() <= BATCH_WINDOW_MS) {
+            batchRunIds.push(r.id);
+            runIdToPrId.set(r.id, r.prId);
+          }
+        }
+      }
+      if (batchRunIds.length > 0) {
+        const findingRows = await container.db
+          .select({
+            prId: t.reviews.prId,
+            severity: t.findings.severity,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(t.findings)
+          .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+          .where(
+            and(
+              inArray(t.reviews.runId, batchRunIds),
+              sql`${t.findings.dismissedAt} is null`,
+            ),
+          )
+          .groupBy(t.reviews.prId, t.findings.severity);
+        for (const row of findingRows) {
+          const summary = findingsSummaryByPr.get(row.prId) ?? { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+          if (row.severity === 'CRITICAL') summary.CRITICAL += row.count;
+          else if (row.severity === 'WARNING') summary.WARNING += row.count;
+          else if (row.severity === 'SUGGESTION') summary.SUGGESTION += row.count;
+          findingsSummaryByPr.set(row.prId, summary);
+        }
       }
     }
 
@@ -168,6 +227,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         total_cost_usd: costByPr.get(r.id) ?? null,
+        findings_summary: findingsSummaryByPr.get(r.id) ?? null,
       };
     });
   });
