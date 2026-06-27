@@ -37,32 +37,35 @@ describe("FindingsCounter", () => {
     );
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
-    // WARNING=0 → no WARNING badge rendered
-    const badges = screen.queryAllByText("0");
-    expect(badges).toHaveLength(0);
+    // WARNING=0 → no badge with count "0"
+    expect(screen.queryAllByText("0")).toHaveLength(0);
   });
 
-  it("opens popover on click and closes with X button", () => {
+  it("opens popover into document.body on click and closes with X button", () => {
     renderWithIntl(
       <FindingsCounter summary={{ CRITICAL: 1, WARNING: 0, SUGGESTION: 0 }} prId="pr-1" />,
     );
-    // Only the trigger exists before open
+    // Before open: only the trigger role="button" div is present
     const trigger = screen.getByRole("button");
     fireEvent.click(trigger);
-    // Popover is open: "No findings" is shown (mock returns no data)
+
+    // Popover is rendered into document.body via portal — "No findings" is visible
     expect(screen.getByText("No findings")).toBeInTheDocument();
-    // Click the X button — the last <button> in the tree
+
+    // The X close button appears in the portal content
     const allBtns = screen.getAllByRole("button");
+    // [0] = trigger div, [1] = X button inside portal
     fireEvent.click(allBtns[allBtns.length - 1]!);
-    // Popover collapsed
+
+    // After closing, portal is gone
     expect(screen.queryByText("No findings")).not.toBeInTheDocument();
   });
 
   it("does not open when summary is null", () => {
     renderWithIntl(<FindingsCounter summary={null} prId="pr-1" />);
-    const dash = screen.getByText("—");
-    fireEvent.click(dash);
-    // No popover rendered
+    // No role="button" → clicking the dash does nothing
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("—"));
+    expect(screen.queryByText("No findings")).not.toBeInTheDocument();
   });
 });
