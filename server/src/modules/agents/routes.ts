@@ -164,6 +164,21 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     },
   );
 
+  app.delete(
+    '/agents/:id/skills/:skillId',
+    {
+      schema: {
+        params: z.object({ id: z.string().uuid(), skillId: z.string().uuid() }),
+      },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.unlinkSkill(workspaceId, req.params.id, req.params.skillId);
+      if (!links) throw new NotFoundError('Agent not found');
+      return links;
+    },
+  );
+
   app.get('/agents/:id/models', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     const agent = await service.get(workspaceId, req.params.id);
