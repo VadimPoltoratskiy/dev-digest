@@ -17,10 +17,10 @@ const RawCandidateSchema = z.object({
   category: z.string(),
   rule: z.string(),
   evidence_file: z.string(),
-  evidence_line_start: z.number().int().min(1),
-  evidence_line_end: z.number().int().min(1).optional(),
+  evidence_line_start: z.coerce.number(),
+  evidence_line_end: z.coerce.number().nullish(),
   evidence_snippet: z.string(),
-  confidence: z.number().min(0).max(1),
+  confidence: z.coerce.number(),
 });
 
 const ExtractionResponseSchema = z.object({
@@ -100,7 +100,7 @@ export class ConventionsService {
         },
         { role: 'user', content: prompt },
       ],
-      maxTokens: 2048,
+      maxTokens: 8192,
       temperature: 0,
     });
     const rawCandidates = result.data.candidates;

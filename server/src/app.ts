@@ -151,6 +151,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       return;
     }
     if (err instanceof AppError) {
+      if (err.statusCode >= 500) app.log.error({ err }, err.message);
       reply.status(err.statusCode).send({
         error: { code: err.code, message: err.message, details: err.details },
       });
