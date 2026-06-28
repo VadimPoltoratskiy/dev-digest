@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Icon, SeverityBadge, CategoryTag, ConfidenceNum } from "@devdigest/ui";
 import type { Severity } from "@devdigest/ui";
@@ -83,15 +84,21 @@ export function FindingsCounter({
 }) {
   const t = useTranslations("prReview");
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  // triggerRef: used to compute portal position from getBoundingClientRect.
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const popoverRef = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const { data: reviews, isLoading } = usePrReviews(open ? prId : null);
 
-  // Close on click outside.
+  // Close on click outside (checks both trigger and portal content).
   React.useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const inTrigger = triggerRef.current?.contains(target);
+      const inPopover = popoverRef.current?.contains(target);
+      if (!inTrigger && !inPopover) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -102,6 +109,10 @@ export function FindingsCounter({
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!hasAny || !prId) return;
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 8, left: rect.left });
+    }
     setOpen((o) => !o);
   };
 
@@ -109,9 +120,74 @@ export function FindingsCounter({
   const totalCount = summary ? summary.CRITICAL + summary.WARNING + summary.SUGGESTION : 0;
   const MAX_SHOWN = 6;
 
-  return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+  const popover = open && hasAny ? (
+    <div
+      ref={popoverRef}
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        width: 360,
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 10,
+        boxShadow: "var(--shadow-modal)",
+        zIndex: 9999,
+        overflow: "hidden",
+      }}
+    >
       <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 14px 8px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>
+          {isLoading
+            ? t("list.findings.loading")
+            : t("list.findings.popoverTitle", { count: totalCount })}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, display: "flex" }}
+        >
+          <Icon.X size={14} />
+        </button>
+      </div>
+
+      <div style={{ padding: "0 14px", maxHeight: 360, overflowY: "auto" }}>
+        {isLoading ? (
+          <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>
+            {t("list.findings.loading")}
+          </div>
+        ) : findings.length === 0 ? (
+          <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>
+            {t("list.findings.none")}
+          </div>
+        ) : (
+          <>
+            {findings.slice(0, MAX_SHOWN).map((f) => (
+              <FindingRow key={f.id} f={f} />
+            ))}
+            {findings.length > MAX_SHOWN && (
+              <div style={{ padding: "8px 0", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                {t("list.findings.andMore", { count: findings.length - MAX_SHOWN })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
         role={hasAny && prId ? "button" : undefined}
         tabIndex={hasAny && prId ? 0 : undefined}
         onClick={handleClick}
@@ -134,69 +210,7 @@ export function FindingsCounter({
           <span style={{ color: "var(--text-muted)", fontSize: 13 }}>—</span>
         )}
       </div>
-
-      {open && hasAny && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 8px)",
-            left: 0,
-            width: 360,
-            background: "var(--bg-elevated)",
-            border: "1px solid var(--border-strong)",
-            borderRadius: 10,
-            boxShadow: "var(--shadow-modal)",
-            zIndex: 50,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 14px 8px",
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" }}>
-              {isLoading
-                ? t("list.findings.loading")
-                : t("list.findings.popoverTitle", { count: totalCount })}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 2, display: "flex" }}
-            >
-              <Icon.X size={14} />
-            </button>
-          </div>
-
-          <div style={{ padding: "0 14px", maxHeight: 360, overflowY: "auto" }}>
-            {isLoading ? (
-              <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>
-                {t("list.findings.loading")}
-              </div>
-            ) : findings.length === 0 ? (
-              <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 13, textAlign: "center" }}>
-                {t("list.findings.none")}
-              </div>
-            ) : (
-              <>
-                {findings.slice(0, MAX_SHOWN).map((f) => (
-                  <FindingRow key={f.id} f={f} />
-                ))}
-                {findings.length > MAX_SHOWN && (
-                  <div style={{ padding: "8px 0", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-                    {t("list.findings.andMore", { count: findings.length - MAX_SHOWN })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      {typeof document !== "undefined" && popover ? createPortal(popover, document.body) : null}
+    </>
   );
 }

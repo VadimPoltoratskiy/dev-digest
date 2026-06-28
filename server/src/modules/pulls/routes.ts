@@ -128,15 +128,23 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Total cost per PR: sum of all completed runs (each stores its own cost_usd).
+    // Single query for all completed runs: covers cost aggregation AND batch
+    // identification for findings. One round-trip, one snapshot — no race window.
     const costByPr = new Map<string, number>();
-    // Latest completed run time per PR: needed to identify the latest batch.
     const latestRunAtByPr = new Map<string, Date>();
+    // runRows is reused in the findings block below; declare outside the if-guard.
+    let runRows: { id: string; prId: string | null; costUsd: string | null; ranAt: Date | null }[] = [];
     if (prIds.length > 0) {
-      const runRows = await container.db
-        .select({ prId: t.agentRuns.prId, costUsd: t.agentRuns.costUsd, ranAt: t.agentRuns.ranAt })
+      runRows = await container.db
+        .select({
+          id: t.agentRuns.id,
+          prId: t.agentRuns.prId,
+          costUsd: t.agentRuns.costUsd,
+          ranAt: t.agentRuns.ranAt,
+        })
         .from(t.agentRuns)
         .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
+      // Pass 1: cost totals + latest ranAt per PR.
       for (const r of runRows) {
         if (!r.prId) continue;
         if (r.costUsd != null) {
@@ -157,24 +165,18 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     type FindingsSummary = { CRITICAL: number; WARNING: number; SUGGESTION: number };
     const findingsSummaryByPr = new Map<string, FindingsSummary>();
     if (prIds.length > 0 && latestRunAtByPr.size > 0) {
-      // Collect run IDs that belong to each PR's latest batch.
-      const batchRunIds: string[] = [];
-      const runIdToPrId = new Map<string, string>();
+      // Pass 2: identify batch run IDs from the same in-memory snapshot.
+      // diff >= 0 guard is always true within one snapshot (r.ranAt ≤ latestAt by
+      // definition of max), but makes the invariant explicit and prevents
+      // future-run inclusion if the snapshot were ever reused across queries.
       const BATCH_WINDOW_MS = 5 * 60 * 1000;
-      if (prIds.length > 0) {
-        const batchRunRows = await container.db
-          .select({ id: t.agentRuns.id, prId: t.agentRuns.prId, ranAt: t.agentRuns.ranAt })
-          .from(t.agentRuns)
-          .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
-        for (const r of batchRunRows) {
-          if (!r.prId || !r.ranAt) continue;
-          const latestAt = latestRunAtByPr.get(r.prId);
-          if (!latestAt) continue;
-          if (latestAt.getTime() - r.ranAt.getTime() <= BATCH_WINDOW_MS) {
-            batchRunIds.push(r.id);
-            runIdToPrId.set(r.id, r.prId);
-          }
-        }
+      const batchRunIds: string[] = [];
+      for (const r of runRows) {
+        if (!r.prId || !r.ranAt) continue;
+        const latestAt = latestRunAtByPr.get(r.prId);
+        if (!latestAt) continue;
+        const diff = latestAt.getTime() - r.ranAt.getTime();
+        if (diff >= 0 && diff <= BATCH_WINDOW_MS) batchRunIds.push(r.id);
       }
       if (batchRunIds.length > 0) {
         const findingRows = await container.db
