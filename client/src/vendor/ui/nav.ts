@@ -23,6 +23,8 @@ export const NAV: NavGroup[] = [
     section: "WORKSPACE",
     items: [
       { key: "pulls", label: "Pull Requests", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
+      { key: "onboarding", label: "Onboarding Tour", icon: "ListChecks", href: "/onboarding" },
+      { key: "context", label: "Project Context", icon: "FileText", href: "/context" },
     ],
   },
   {
@@ -30,6 +32,17 @@ export const NAV: NavGroup[] = [
     items: [
       { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
+      { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/conventions" },
+      { key: "evals", label: "Eval Dashboard", icon: "FlaskConical", href: "/evals" },
+    ],
+  },
+  {
+    section: "GLOBAL",
+    items: [
+      { key: "memory", label: "Memory", icon: "Database", href: "/memory" },
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Workflow", href: "/multi-agent" },
+      { key: "agent-performance", label: "Agent Performance", icon: "BarChart", href: "/agent-performance" },
+      { key: "ci-runs", label: "CI Runs", icon: "Zap", href: "/ci-runs" },
     ],
   },
 ];

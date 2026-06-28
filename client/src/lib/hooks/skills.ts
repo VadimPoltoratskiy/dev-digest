@@ -3,7 +3,17 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Skill, AgentSkillLink, SkillType, SkillSource } from "@devdigest/shared";
+import type {
+  Skill,
+  AgentSkillLink,
+  SkillType,
+  SkillSource,
+  SkillVersionEntry,
+  SkillEvalCase,
+  SkillEvalRunResult,
+  SkillStats,
+  CommunitySkillEntry,
+} from "@devdigest/shared";
 
 // ---- Skills CRUD ----
 
@@ -156,5 +166,129 @@ export function useUnlinkSkill() {
     onSuccess: (_d, { agentId }) => {
       qc.invalidateQueries({ queryKey: ["agent-skills", agentId] });
     },
+  });
+}
+
+// ---- Version history ----
+
+export function useSkillVersions(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["skill-versions", skillId],
+    queryFn: () => api.get<SkillVersionEntry[]>(`/skills/${skillId}/versions`),
+    enabled: !!skillId,
+  });
+}
+
+export function useRestoreSkillVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ skillId, version }: { skillId: string; version: number }) =>
+      api.post<Skill>(`/skills/${skillId}/versions/${version}/restore`),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["skills"] });
+      qc.invalidateQueries({ queryKey: ["skill-versions", data.id] });
+      qc.setQueryData(["skill", data.id], data);
+    },
+  });
+}
+
+// ---- Stats ----
+
+export function useSkillStats(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["skill-stats", skillId],
+    queryFn: () => api.get<SkillStats>(`/skills/${skillId}/stats`),
+    enabled: !!skillId,
+  });
+}
+
+// ---- Eval cases ----
+
+export function useSkillEvalCases(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["skill-eval-cases", skillId],
+    queryFn: () => api.get<SkillEvalCase[]>(`/skills/${skillId}/eval-cases`),
+    enabled: !!skillId,
+  });
+}
+
+export interface CreateEvalCaseInput {
+  name: string;
+  notes?: string;
+  input_diff: string;
+  expected_finding_count?: number;
+  category?: string;
+  severity?: string;
+}
+
+export function useCreateEvalCase(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEvalCaseInput) =>
+      api.post<SkillEvalCase>(`/skills/${skillId}/eval-cases`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
+    },
+  });
+}
+
+export function useUpdateEvalCase(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caseId, patch }: { caseId: string; patch: Partial<CreateEvalCaseInput> }) =>
+      api.put<SkillEvalCase>(`/skills/${skillId}/eval-cases/${caseId}`, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
+    },
+  });
+}
+
+export function useDeleteEvalCase(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (caseId: string) => api.del<void>(`/skills/${skillId}/eval-cases/${caseId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
+    },
+  });
+}
+
+export function useRunEvalCase(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (caseId: string) =>
+      api.post<SkillEvalRunResult>(`/skills/${skillId}/eval-cases/${caseId}/run`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
+    },
+  });
+}
+
+export function useRunAllEvalCases(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ total: number; passed: number }>(`/skills/${skillId}/eval-cases/run-all`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
+    },
+  });
+}
+
+// ---- Community catalog ----
+
+export function useSearchCommunitySkills(
+  q?: string,
+  opts?: { lang?: string; tag?: string },
+) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (opts?.lang) params.set("lang", opts.lang);
+  if (opts?.tag) params.set("tag", opts.tag);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ["community-skills", q, opts?.lang, opts?.tag],
+    queryFn: () => api.get<CommunitySkillEntry[]>(`/skills/community${qs ? `?${qs}` : ""}`),
   });
 }

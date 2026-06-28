@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Drawer, Tabs, FormField, TextInput, Textarea, SelectInput, Button } from "@devdigest/ui";
 import type { SkillType } from "@devdigest/shared";
-import { useImportSkillPreview, useImportSkillSave } from "../../../../lib/hooks/skills";
+import { useImportSkillPreview, useImportSkillSave, useSearchCommunitySkills } from "../../../../lib/hooks/skills";
 
 const SKILL_TYPE_OPTIONS = [
   { value: "rubric", label: "Rubric" },
@@ -30,6 +30,14 @@ export function ImportDrawer({
 }) {
   const t = useTranslations("skills");
   const [tab, setTab] = React.useState("file");
+  const [prefillName, setPrefillName] = React.useState("");
+  const [prefillBody, setPrefillBody] = React.useState("");
+
+  const handleCommunityImport = (name: string, body: string) => {
+    setPrefillName(name);
+    setPrefillBody(body);
+    setTab("file");
+  };
 
   if (!open) return null;
 
@@ -38,20 +46,43 @@ export function ImportDrawer({
       <div style={{ padding: "0 24px 24px" }}>
         <Tabs tabs={DRAWER_TABS} value={tab} onChange={setTab} />
         <div style={{ marginTop: 20 }}>
-          {tab === "file" && <FileTab onClose={onClose} onImported={onImported} />}
+          {tab === "file" && (
+            <FileTab
+              onClose={onClose}
+              onImported={onImported}
+              initialName={prefillName}
+              initialBody={prefillBody}
+            />
+          )}
           {tab === "url" && <UrlTab onClose={onClose} onImported={onImported} />}
-          {tab === "community" && <CommunityTab onClose={onClose} onImported={onImported} />}
+          {tab === "community" && (
+            <CommunityTab onImportSkill={handleCommunityImport} />
+          )}
         </div>
       </div>
     </Drawer>
   );
 }
 
-function FileTab({ onClose, onImported }: { onClose: () => void; onImported?: () => void }) {
+function FileTab({
+  onClose,
+  onImported,
+  initialName = "",
+  initialBody = "",
+}: {
+  onClose: () => void;
+  onImported?: () => void;
+  initialName?: string;
+  initialBody?: string;
+}) {
   const t = useTranslations("skills");
-  const [name, setName] = React.useState("");
-  const [body, setBody] = React.useState("");
+  const [name, setName] = React.useState(initialName);
+  const [body, setBody] = React.useState(initialBody);
   const [type, setType] = React.useState<SkillType>("custom");
+
+  // Sync if parent re-fills from community tab.
+  React.useEffect(() => { setName(initialName); }, [initialName]);
+  React.useEffect(() => { setBody(initialBody); }, [initialBody]);
   const [description, setDescription] = React.useState("");
   const [preview, setPreview] = React.useState<{ name: string; body_preview: string; token_count: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -197,12 +228,131 @@ function UrlTab({ onClose, onImported }: { onClose: () => void; onImported?: () 
   );
 }
 
-function CommunityTab({ onClose: _onClose, onImported: _onImported }: { onClose: () => void; onImported?: () => void }) {
+const LANG_FILTERS = ["All", "TypeScript", "Python", "Go", "Rust"] as const;
+const TAG_FILTERS = ["All", "security", "performance", "style", "test"] as const;
+
+function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: string) => void }) {
   const t = useTranslations("skills");
+  const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
+  const [lang, setLang] = React.useState<string>("All");
+  const [tag, setTag] = React.useState<string>("All");
+
+  React.useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const { data: results, isLoading } = useSearchCommunitySkills(debouncedQuery || undefined, {
+    lang: lang === "All" ? undefined : lang,
+    tag: tag === "All" ? undefined : tag,
+  });
+
   return (
-    <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 14, textAlign: "center" }}>
-      <p>{t("community.searchPlaceholder")}</p>
-      <p style={{ marginTop: 8, fontSize: 12 }}>Community catalog coming soon.</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={t("community.searchPlaceholder")}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          fontSize: 13,
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          background: "var(--bg-surface)",
+          color: "var(--text-primary)",
+          boxSizing: "border-box",
+        }}
+      />
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {LANG_FILTERS.map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            style={{
+              fontSize: 11,
+              padding: "3px 10px",
+              borderRadius: 20,
+              border: "1px solid var(--border)",
+              background: lang === l ? "var(--accent)" : "var(--bg-surface)",
+              color: lang === l ? "#fff" : "var(--text-secondary)",
+              cursor: "pointer",
+              fontWeight: lang === l ? 600 : 400,
+            }}
+          >
+            {l}
+          </button>
+        ))}
+        <div style={{ width: 1, background: "var(--border)", margin: "0 2px" }} />
+        {TAG_FILTERS.map((tg) => (
+          <button
+            key={tg}
+            onClick={() => setTag(tg)}
+            style={{
+              fontSize: 11,
+              padding: "3px 10px",
+              borderRadius: 20,
+              border: "1px solid var(--border)",
+              background: tag === tg ? "var(--accent)" : "var(--bg-surface)",
+              color: tag === tg ? "#fff" : "var(--text-secondary)",
+              cursor: "pointer",
+              fontWeight: tag === tg ? 600 : 400,
+            }}
+          >
+            {tg}
+          </button>
+        ))}
+      </div>
+
+      {isLoading && (
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Searching…</p>
+      )}
+
+      {!isLoading && results?.length === 0 && (
+        <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "12px 0" }}>
+          {t("community.noResults")}
+        </p>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 360, overflowY: "auto" }}>
+        {results?.map((entry) => (
+          <div
+            key={entry.repo + entry.name}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 7,
+              padding: "12px 14px",
+              background: "var(--bg-elevated)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.name}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+                ★ {entry.stars.toLocaleString()}
+              </span>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 8px" }}>{entry.description}</p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              <span style={{ fontSize: 11, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 4 }}>
+                {entry.lang}
+              </span>
+              {entry.tags.map((tg) => (
+                <span
+                  key={tg}
+                  style={{ fontSize: 11, background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "2px 7px", borderRadius: 4 }}
+                >
+                  {tg}
+                </span>
+              ))}
+            </div>
+            <Button kind="primary" size="sm" onClick={() => onImportSkill(entry.name, entry.body)}>
+              Import
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

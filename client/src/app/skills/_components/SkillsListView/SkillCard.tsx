@@ -4,7 +4,22 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, Icon } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
+import { useSkillStats } from "../../../../lib/hooks/skills";
 import { TYPE_COLORS } from "./constants";
+
+function StatLine({ skillId }: { skillId: string }) {
+  const { data: stats } = useSkillStats(skillId);
+  if (!stats) {
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>— agents · —% pull · —% accept</span>
+    );
+  }
+  return (
+    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+      {stats.agents_count} agents · {stats.pull_frequency.toFixed(0)}% pull · {stats.accept_rate.toFixed(0)}% accept
+    </span>
+  );
+}
 
 export function SkillCard({
   skill,
@@ -107,6 +122,9 @@ export function SkillCard({
             {t("listItem.needsVetting")}
           </span>
         )}
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <StatLine skillId={skill.id} />
       </div>
     </div>
   );

@@ -1,0 +1,1 @@
+export { SkillDetailPanel } from "./SkillDetailPanel";

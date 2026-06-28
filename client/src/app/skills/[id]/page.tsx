@@ -1,6 +1,6 @@
-import { SkillEditor } from "./_components/SkillEditor";
+import { redirect } from "next/navigation";
 
-/* Route: /skills/:id (Skill detail + editor). Thin route — logic in _components. */
+/* /skills/:id — editing moved into the list page's Config tab. Redirect there. */
 export default function SkillPage({ params }: { params: { id: string } }) {
-  return <SkillEditor id={params.id} />;
+  redirect(`/skills?selected=${params.id}`);
 }
