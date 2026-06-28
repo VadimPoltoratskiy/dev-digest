@@ -522,6 +522,182 @@ For each finding, note the before and after signature so the reviewer can judge 
     }
   }
 
+  // ---- API Contract Reviewer agent + 4 skills ----
+  const apiContractSkills = [
+    {
+      name: 'breaking-change',
+      description: 'Detects removal or rename of a public HTTP route, method, or required parameter.',
+      type: 'convention' as const,
+      source: 'extracted' as const,
+      enabled: true,
+      body: `# Breaking Change Detection
+
+**When to flag:** Any modification that removes or renames a public HTTP route, changes its method, or removes/renames a required request parameter.
+
+### ✅ Good — additive change, no breakage
+\`\`\`diff
+- app.get('/users/:id', handler)
++ app.get('/users/:id', handler)
++ app.get('/users/:id/profile', profileHandler)  // NEW endpoint added
+\`\`\`
+
+### ❌ Bad — route renamed, all callers break
+\`\`\`diff
+- app.delete('/users/:id', handler)
++ app.delete('/users/:userId', handler)
+\`\`\`
+
+Flag as **CRITICAL** with the old and new signature so the reviewer can assess impact on existing callers.`,
+    },
+    {
+      name: 'response-schema',
+      description: 'Flags changes in response shape: removed fields, type changes, or new required fields.',
+      type: 'convention' as const,
+      source: 'extracted' as const,
+      enabled: true,
+      body: `# Response Schema Guard
+
+**When to flag:** Any change that removes a field from a response, changes a field's type in a non-backward-compatible way, or wraps an existing response in a new envelope.
+
+### ✅ Good — new optional field, backwards compatible
+\`\`\`diff
+ return {
+   id: user.id,
+   name: user.name,
++  avatar_url: user.avatarUrl ?? null,  // optional, existing callers unaffected
+ };
+\`\`\`
+
+### ❌ Bad — field removed, callers reading it break
+\`\`\`diff
+ return {
+   id: user.id,
+-  name: user.name,
+   email: user.email,
+ };
+\`\`\`
+
+### ❌ Bad — response wrapped in envelope, breaking existing clients
+\`\`\`diff
+-return users;
++return { data: users, total: users.length };
+\`\`\`
+
+Flag as **CRITICAL** and show the before/after shape.`,
+    },
+    {
+      name: 'semver-discipline',
+      description: 'Flags when a change requires a major or minor version bump but the version was not updated.',
+      type: 'convention' as const,
+      source: 'extracted' as const,
+      enabled: true,
+      body: `# SemVer Discipline
+
+**When to flag:** When the diff introduces a breaking API change (removal, rename, type narrowing) without a corresponding major version bump in package.json; or adds significant new public surface without a minor bump.
+
+### ✅ Good — breaking change accompanied by major bump
+\`\`\`diff
+-  "version": "2.4.1"
++  "version": "3.0.0"
+\`\`\`
+plus a CHANGELOG entry explaining the migration path.
+
+### ❌ Bad — breaking route change with no version update
+\`\`\`diff
+-app.get('/orders/:id', handler)
++app.get('/orders/:orderId', handler)
+\`\`\`
+\`package.json\` version unchanged at \`2.4.1\`.
+
+Flag as **HIGH** and reference the specific route/field change that qualifies as a breaking modification.`,
+    },
+    {
+      name: 'deprecation-policy',
+      description: 'Flags silent removal of public API surface without a prior deprecation notice or migration path.',
+      type: 'convention' as const,
+      source: 'extracted' as const,
+      enabled: true,
+      body: `# Deprecation Policy
+
+**When to flag:** Any removal of a public endpoint, field, or parameter that was not previously marked as deprecated (via a header, annotation, or CHANGELOG note), or that lacks a migration comment explaining what callers should use instead.
+
+### ✅ Good — deprecation notice added before removal
+\`\`\`diff
++// @deprecated — use GET /v2/users instead. Removal planned for v4.0.
+ app.get('/users', legacyHandler);
+\`\`\`
+
+### ❌ Bad — endpoint silently deleted, no notice
+\`\`\`diff
+-app.get('/reports/summary', summaryHandler);
+\`\`\`
+No deprecation warning was added in a prior release, no CHANGELOG entry, no migration path provided.
+
+Flag as **HIGH**. The fix is either to restore and deprecate first, or to add a migration note to the PR description and CHANGELOG.`,
+    },
+  ];
+
+  const apiContractSkillIds: string[] = [];
+  for (const s of apiContractSkills) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (existing) {
+      apiContractSkillIds.push(existing.id);
+    } else {
+      const [inserted] = await db
+        .insert(t.skills)
+        .values({ workspaceId, ...s, version: 1 })
+        .returning();
+      apiContractSkillIds.push(inserted!.id);
+    }
+  }
+
+  const apiContractAgentData = {
+    workspaceId,
+    name: 'API Contract Reviewer',
+    description: 'Catches breaking changes in HTTP API contracts: removed routes, renamed fields, type changes, and missing deprecation notices.',
+    provider: 'anthropic' as const,
+    model: 'claude-haiku-4-5-20251001',
+    systemPrompt: `You are an API contract reviewer specializing in backward compatibility. Your role is to catch breaking changes in HTTP APIs before they reach production.
+
+For every changed file in the diff, apply the linked skills in order:
+1. breaking-change — flag removed or renamed routes/params
+2. response-schema — flag removed/changed response fields
+3. semver-discipline — flag missing version bumps for breaking changes
+4. deprecation-policy — flag silent removals without prior deprecation
+
+Report each finding with:
+- Severity: CRITICAL or HIGH
+- Category: api-contract
+- The before/after signatures so the reviewer can judge impact
+- A concrete suggestion (restore + deprecate, or bump major version)
+
+Focus exclusively on API contract integrity. Do not comment on code style, performance, or business logic unless it directly affects the public contract.`,
+    repoIntel: false,
+    enabled: true,
+    version: 1,
+    createdBy: userId,
+  };
+
+  let [apiAgent] = await db
+    .select()
+    .from(t.agents)
+    .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'API Contract Reviewer')));
+  if (!apiAgent) {
+    [apiAgent] = await db.insert(t.agents).values(apiContractAgentData).returning();
+  }
+
+  if (apiAgent) {
+    for (let i = 0; i < apiContractSkillIds.length; i++) {
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId: apiAgent.id, skillId: apiContractSkillIds[i]!, order: i })
+        .onConflictDoNothing();
+    }
+  }
+
   // ---- demo eval cases for the control experiment ----
   // Skill 0: test-coverage-nudge — happy-path-only test (no error branch)
   const tcnSkillId = skillIds[0];
