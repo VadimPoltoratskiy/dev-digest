@@ -64,6 +64,57 @@ export function ImportDrawer({
   );
 }
 
+function readFileText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve((ev.target?.result as string) ?? "");
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function readEntryFile(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+function readDirEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
+  return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+}
+
+async function resolveDroppedSkill(
+  items: DataTransferItemList,
+): Promise<{ name: string; body: string } | null> {
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i]?.webkitGetAsEntry?.();
+    if (!entry) continue;
+
+    if (entry.isFile) {
+      const file = await readEntryFile(entry as FileSystemFileEntry);
+      return {
+        name: file.name.replace(/\.(md|txt|markdown)$/i, ""),
+        body: await readFileText(file),
+      };
+    }
+
+    if (entry.isDirectory) {
+      const dirEntry = entry as FileSystemDirectoryEntry;
+      const entries = await readDirEntries(dirEntry.createReader());
+      // Prefer SKILL.md, then any .md file
+      const candidates = (entries.filter((e) => e.isFile) as FileSystemFileEntry[]).sort(
+        (a, b) =>
+          (a.name.toUpperCase() === "SKILL.MD" ? -1 : 0) -
+          (b.name.toUpperCase() === "SKILL.MD" ? -1 : 0),
+      );
+      const mdFile = candidates.find((e) => /\.(md|txt|markdown)$/i.test(e.name));
+      if (mdFile) {
+        const file = await readEntryFile(mdFile);
+        return { name: entry.name, body: await readFileText(file) };
+      }
+    }
+  }
+  return null;
+}
+
 function FileTab({
   onClose,
   onImported,
@@ -79,6 +130,7 @@ function FileTab({
   const [name, setName] = React.useState(initialName);
   const [body, setBody] = React.useState(initialBody);
   const [type, setType] = React.useState<SkillType>("custom");
+  const [isDragging, setIsDragging] = React.useState(false);
 
   // Sync if parent re-fills from community tab.
   React.useEffect(() => { setName(initialName); }, [initialName]);
@@ -86,6 +138,17 @@ function FileTab({
   const [description, setDescription] = React.useState("");
   const [preview, setPreview] = React.useState<{ name: string; body_preview: string; token_count: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const result = await resolveDroppedSkill(e.dataTransfer.items).catch(() => null);
+    if (result) {
+      setBody(result.body);
+      if (!name) setName(result.name);
+    }
+  };
 
   const previewMut = useImportSkillPreview();
   const saveMut = useImportSkillSave();
@@ -169,7 +232,27 @@ function FileTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        borderRadius: 8,
+        border: isDragging ? "2px dashed var(--accent)" : "2px dashed transparent",
+        background: isDragging ? "var(--accent)0d" : "transparent",
+        padding: isDragging ? 12 : 0,
+        transition: "border-color 0.15s, background 0.15s",
+      }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+      onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div style={{ textAlign: "center", fontSize: 13, color: "var(--accent)", fontWeight: 500, padding: "8px 0" }}>
+          Drop skill file or folder here
+        </div>
+      )}
       <FormField label={t("file.nameLabel")} hint={t("file.nameHint")}>
         <TextInput value={name} onChange={setName} placeholder={t("file.namePlaceholder")} />
       </FormField>
