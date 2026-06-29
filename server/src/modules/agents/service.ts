@@ -171,6 +171,18 @@ export class AgentsService {
     return this.skillLinks(agentId);
   }
 
+  /** Unlink a single skill from an agent. Returns undefined when agent not found. */
+  async unlinkSkill(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    await this.repo.unlinkSkill(agentId, skillId);
+    return this.skillLinks(agentId);
+  }
+
   /**
    * Dynamic model list from the provider adapter's /models. Degrades gracefully
    * to [] if the provider key is not configured (the editor still renders).
