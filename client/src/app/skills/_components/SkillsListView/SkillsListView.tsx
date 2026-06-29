@@ -75,7 +75,7 @@ export function SkillsListView() {
 
         <div style={{ display: "flex", gap: 20 }}>
           {/* Left: card grid */}
-          <div style={{ flex: selected ? "0 0 340px" : "1" }}>
+          <div style={{ flex: selected ? "0 0 340px" : "1", minWidth: 0, overflow: selected ? "hidden" : undefined }}>
             {isLoading && (
               <div style={s.grid}>
                 <Skeleton height={100} />
