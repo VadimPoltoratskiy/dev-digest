@@ -14,6 +14,7 @@ interface ConventionCardProps {
 
 export function ConventionCard({ candidate, onAccept, onDelete, isPending }: ConventionCardProps) {
   const t = useTranslations("conventions");
+  const [isHovered, setIsHovered] = React.useState(false);
 
   const confidence = candidate.confidence ?? 0;
   const confidenceColor =
@@ -25,17 +26,33 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
 
   const evidenceLabel = formatEvidenceLabel(candidate.evidence_path ?? "");
 
+  function handleCardClick() {
+    if (candidate.evidence_path) {
+      window.open(candidate.evidence_path, "_blank", "noopener,noreferrer");
+    }
+  }
+
   return (
     <div
+      onClick={handleCardClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         background: "var(--bg-elevated)",
-        border: `1px solid ${candidate.accepted ? "var(--success)" : "var(--border)"}`,
+        border: `1px solid ${
+          candidate.accepted
+            ? "var(--success)"
+            : isHovered && candidate.evidence_path
+              ? "var(--border-hover, var(--accent))"
+              : "var(--border)"
+        }`,
         borderRadius: 10,
         padding: "16px 20px",
         display: "flex",
         flexDirection: "column",
         gap: 12,
         transition: "border-color 0.15s",
+        cursor: candidate.evidence_path ? "pointer" : "default",
       }}
     >
       {/* Rule text */}
@@ -50,6 +67,7 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
             href={candidate.evidence_path}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             style={{
               fontSize: 12,
               color: "var(--text-muted)",
@@ -126,7 +144,7 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
       {/* Actions */}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button
-          onClick={() => onDelete(candidate.id)}
+          onClick={(e) => { e.stopPropagation(); onDelete(candidate.id); }}
           disabled={isPending}
           aria-label="Remove candidate"
           style={{
@@ -147,7 +165,7 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
           kind={candidate.accepted ? "primary" : "secondary"}
           size="sm"
           loading={isPending}
-          onClick={() => onAccept(candidate.id, !candidate.accepted)}
+          onClick={(e) => { e.stopPropagation(); onAccept(candidate.id, !candidate.accepted); }}
         >
           {candidate.accepted ? t("card.accepted") : t("card.acceptAsSkill")}
         </Button>

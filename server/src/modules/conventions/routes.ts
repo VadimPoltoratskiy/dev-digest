@@ -5,6 +5,18 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ConventionsService } from './service.js';
+import type { ConventionRow } from './repository.js';
+
+function toDto(row: ConventionRow) {
+  return {
+    id: row.id,
+    rule: row.rule,
+    evidence_path: row.evidencePath ?? '',
+    evidence_snippet: row.evidenceSnippet ?? '',
+    confidence: row.confidence ?? 0,
+    accepted: row.accepted,
+  };
+}
 
 /**
  * Conventions module — extracts and manages code-style convention candidates.
@@ -28,12 +40,12 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
 
   app.get('/repos/:id/conventions', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
-    return service.list(workspaceId, req.params.id);
+    return (await service.list(workspaceId, req.params.id)).map(toDto);
   });
 
   app.post('/repos/:id/conventions/extract', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
-    return service.extract(workspaceId, req.params.id);
+    return (await service.extract(workspaceId, req.params.id)).map(toDto);
   });
 
   app.post(
@@ -54,7 +66,7 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
       const { workspaceId } = await getContext(app.container, req);
       const updated = await service.update(workspaceId, req.params.convId, req.body);
       if (!updated) throw new NotFoundError('Convention candidate not found');
-      return updated;
+      return toDto(updated);
     },
   );
 
