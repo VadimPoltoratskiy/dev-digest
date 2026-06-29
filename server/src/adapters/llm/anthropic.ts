@@ -17,6 +17,33 @@ import { ExternalServiceError } from '../../platform/errors.js';
 const DEFAULT_TIMEOUT = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
+/**
+ * zodResponseFormat (OpenAI SDK) generates schemas with $defs + $ref.
+ * Anthropic does not resolve $ref in tool input_schema, so the model sees
+ * an empty schema and returns {}. This function inlines all $refs before
+ * the schema is sent to Anthropic.
+ */
+function resolveRefs(schema: Record<string, unknown>): Record<string, unknown> {
+  const defs = schema.$defs as Record<string, unknown> | undefined;
+
+  function resolve(node: unknown): unknown {
+    if (typeof node !== 'object' || node === null) return node;
+    if (Array.isArray(node)) return node.map(resolve);
+    const obj = node as Record<string, unknown>;
+    if ('$ref' in obj && typeof obj.$ref === 'string' && obj.$ref.startsWith('#/$defs/')) {
+      const defName = obj.$ref.slice('#/$defs/'.length);
+      return resolve((defs?.[defName] ?? {}) as Record<string, unknown>);
+    }
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([k]) => k !== '$defs' && k !== '$schema')
+        .map(([k, v]) => [k, resolve(v)]),
+    );
+  }
+
+  return resolve(schema) as Record<string, unknown>;
+}
+
 /** Anthropic has no embeddings API; embeddings come from the OpenAI Embedder. */
 function splitSystem(messages: ChatMessage[]): {
   system: string;
@@ -63,15 +90,29 @@ export class AnthropicProvider implements LLMProvider {
     return withRetry(() => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT));
   }
 
+  private toServiceError(err: unknown): never {
+    if (err instanceof Anthropic.APIError) {
+      const body = err.error as { error?: { message?: string } } | undefined;
+      const msg = body?.error?.message ?? err.message;
+      throw new ExternalServiceError(msg, { status: err.status });
+    }
+    throw err;
+  }
+
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
     const { system, rest } = splitSystem(req.messages);
-    const res = await this.client.messages.create({
-      model: req.model,
-      system: system || undefined,
-      messages: rest,
-      max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-      temperature: req.temperature ?? 0.2,
-    });
+    let res: Awaited<ReturnType<typeof this.client.messages.create>>;
+    try {
+      res = await this.client.messages.create({
+        model: req.model,
+        system: system || undefined,
+        messages: rest,
+        max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+        temperature: req.temperature ?? 0.2,
+      });
+    } catch (err) {
+      this.toServiceError(err);
+    }
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -89,6 +130,7 @@ export class AnthropicProvider implements LLMProvider {
 
   async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
     const jsonSchema = toJsonSchema(req.schema, req.schemaName);
+    const resolvedSchema = resolveRefs(jsonSchema.schema);
     const toolName = req.schemaName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const maxRetries = req.maxRetries ?? 2;
     const { system, rest } = splitSystem(req.messages);
@@ -96,34 +138,43 @@ export class AnthropicProvider implements LLMProvider {
     let tokensIn = 0;
     let tokensOut = 0;
     let lastRaw = '';
+    let lastParseError = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
-        withTimeout(
-          this.client.messages.create({
-            model: req.model,
-            system: system || undefined,
-            messages,
-            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
-            tools: [
-              {
-                name: toolName,
-                description: `Return the result as ${req.schemaName}.`,
-                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: toolName },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-      );
+      let res: Awaited<ReturnType<typeof this.client.messages.create>>;
+      try {
+        res = await withRetry(() =>
+          withTimeout(
+            this.client.messages.create({
+              model: req.model,
+              system: system || undefined,
+              messages,
+              max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+              temperature: req.temperature ?? 0,
+              tools: [
+                {
+                  name: toolName,
+                  description: `Return the result as ${req.schemaName}.`,
+                  input_schema: resolvedSchema as Anthropic.Tool.InputSchema,
+                },
+              ],
+              tool_choice: { type: 'tool', name: toolName },
+            }),
+            req.timeoutMs ?? DEFAULT_TIMEOUT,
+          ),
+        );
+      } catch (err) {
+        this.toServiceError(err);
+      }
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;
 
       const toolUse = res.content.find(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
+      if (!toolUse) {
+        console.error('[completeStructured] attempt', attempt, '— no tool_use block. stop_reason:', (res as { stop_reason?: string }).stop_reason);
+      }
       lastRaw = toolUse ? JSON.stringify(toolUse.input) : '';
 
       const parsed = parseWithRepair(req.schema, lastRaw);
@@ -138,15 +189,19 @@ export class AnthropicProvider implements LLMProvider {
           attempts: attempt,
         };
       }
+      lastParseError = parsed.error;
       messages.push({ role: 'assistant', content: res.content });
       messages.push({
         role: 'user',
-        content: parsed.repromptMessage,
+        content: toolUse
+          ? [{ type: 'tool_result' as const, tool_use_id: toolUse.id, content: parsed.repromptMessage, is_error: true }]
+          : parsed.repromptMessage,
       });
     }
 
     throw new ExternalServiceError('Anthropic structured output failed schema validation', {
       raw: lastRaw,
+      validationError: lastParseError,
     });
   }
 
