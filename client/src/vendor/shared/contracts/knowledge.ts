@@ -131,6 +131,68 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
+export const SkillVersionEntry = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersionEntry = z.infer<typeof SkillVersionEntry>;
+
+export const SkillEvalExpected = z.object({
+  expected_finding_count: z.number().int(),
+  category: z.string().nullish(),
+  severity: z.string().nullish(),
+});
+export type SkillEvalExpected = z.infer<typeof SkillEvalExpected>;
+
+export const SkillEvalLatestRun = z.object({
+  passed: z.boolean(),
+  actual_finding_count: z.number().int(),
+  run_at: z.string(),
+});
+export type SkillEvalLatestRun = z.infer<typeof SkillEvalLatestRun>;
+
+export const SkillEvalCase = z.object({
+  id: z.string(),
+  skill_id: z.string(),
+  name: z.string(),
+  notes: z.string().nullish(),
+  input_diff: z.string(),
+  expected: SkillEvalExpected,
+  latest_run: SkillEvalLatestRun.nullish(),
+});
+export type SkillEvalCase = z.infer<typeof SkillEvalCase>;
+
+export const SkillEvalRunResult = z.object({
+  passed: z.boolean(),
+  actual_finding_count: z.number().int(),
+  findings: z.array(z.unknown()),
+});
+export type SkillEvalRunResult = z.infer<typeof SkillEvalRunResult>;
+
+export const SkillStatAgent = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+export type SkillStatAgent = z.infer<typeof SkillStatAgent>;
+
+export const SkillStatCategory = z.object({
+  category: z.string(),
+  count: z.number().int(),
+});
+export type SkillStatCategory = z.infer<typeof SkillStatCategory>;
+
+export const SkillStats = z.object({
+  agents_count: z.number().int(),
+  pull_frequency: z.number(),
+  accept_rate: z.number(),
+  findings_30d: z.number().int(),
+  findings_by_category: z.array(SkillStatCategory),
+  agents: z.array(SkillStatAgent),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
 export const CommunitySkill = z.object({
   name: z.string(),
   repo: z.string(),
@@ -139,6 +201,17 @@ export const CommunitySkill = z.object({
   desc: z.string(),
 });
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
+
+export const CommunitySkillEntry = z.object({
+  name: z.string(),
+  repo: z.string(),
+  stars: z.number().int(),
+  lang: z.string(),
+  description: z.string(),
+  tags: z.array(z.string()),
+  body: z.string(),
+});
+export type CommunitySkillEntry = z.infer<typeof CommunitySkillEntry>;
 
 // ---- Conventions ----
 export const ConventionCandidate = z.object({

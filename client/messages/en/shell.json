@@ -16,11 +16,13 @@
   },
   "nav": {
     "pulls": "Pull Requests",
+    "onboarding": "Onboarding Tour",
     "onboarding-tour": "Onboarding Tour",
     "context": "Project Context",
     "skills": "Skills",
     "agents": "Agents",
     "conventions": "Conventions",
+    "evals": "Eval Dashboard",
     "eval": "Eval Dashboard",
     "memory": "Memory",
     "multi-agent": "Multi-Agent Review",
