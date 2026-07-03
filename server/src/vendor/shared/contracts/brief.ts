@@ -10,6 +10,7 @@ export const Intent = z.object({
   intent: z.string(),
   in_scope: z.array(z.string()),
   out_of_scope: z.array(z.string()),
+  risk_areas: z.array(z.string()),
 });
 export type Intent = z.infer<typeof Intent>;
 

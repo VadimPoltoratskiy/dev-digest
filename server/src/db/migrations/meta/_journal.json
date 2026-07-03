@@ -85,6 +85,13 @@
       "when": 1782412893228,
       "tag": "0011_dry_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783092383415,
+      "tag": "0012_living_scorpion",
+      "breakpoints": true
     }
   ]
 }

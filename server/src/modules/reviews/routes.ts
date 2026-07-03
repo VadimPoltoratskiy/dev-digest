@@ -125,6 +125,22 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     return trace;
   });
 
+  // ---- Intent: read -------------------------------------------------------
+  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return service.getIntent(workspaceId, req.params.id);
+  });
+
+  // ---- Intent: (re)classify -----------------------------------------------
+  // Manual recalculate button: always force a fresh classification.
+  app.post(
+    '/pulls/:id/intent',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return service.classifyIntent(workspaceId, req.params.id, { force: true, logger: req.log });
+  });
+
   // ---- Reads --------------------------------------------------------------
   app.get('/pulls/:id/reviews', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);

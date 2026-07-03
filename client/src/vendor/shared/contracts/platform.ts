@@ -51,9 +51,9 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
   {
     id: 'review_intent',
     label: 'PR Review · Intent',
-    description: 'Derives a PR’s intent and scope before review.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    description: "Derives a PR's intent, scope, and risk areas before review. Uses a fast flash-class model.",
+    defaultProvider: 'anthropic',
+    defaultModel: 'claude-haiku-4-5-20251001',
   },
   {
     id: 'risk_brief',
