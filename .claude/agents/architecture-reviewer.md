@@ -1,5 +1,5 @@
 ---
-name: arch-reviewer
+name: architecture-reviewer
 description: >
   Read-only architectural reviewer for DevDigest. Use when a code change needs
   to be checked against the project's architectural rules: onion-architecture
