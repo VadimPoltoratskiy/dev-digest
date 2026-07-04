@@ -1,0 +1,10 @@
+{
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
+  },
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true",
+    "GITHUB_TOOLSETS": "pull-request,repo",
+    "GITHUB_READONLY": "true",
+  }
+}
