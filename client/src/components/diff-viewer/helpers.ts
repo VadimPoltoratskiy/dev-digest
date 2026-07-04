@@ -8,6 +8,11 @@ export interface Line {
   newNo?: number;
 }
 
+/** Stable DOM id for a rendered line, used to scroll a finding badge into view. */
+export function lineAnchorId(path: string, line: number | null | undefined): string {
+  return `diff-line-${encodeURIComponent(path)}-${line ?? ""}`;
+}
+
 /** Parse unified-diff patch text into renderable lines with old/new line numbers. */
 export function parsePatch(patch: string | null | undefined): Line[] {
   if (!patch) return [];

@@ -17,6 +17,7 @@ import type {
   PrDetail,
   SpecFile,
   IndexStatus,
+  SmartDiff,
 } from "../types";
 
 // ---- Settings (F1: GET/PUT /settings, POST /settings/test-connection) ----
@@ -115,6 +116,15 @@ export function usePullDetail(prId: string | number | null | undefined) {
   return useQuery({
     queryKey: ["pull", prId],
     queryFn: () => api.get<PrDetail>(`/pulls/${prId}`),
+    enabled: prId != null,
+  });
+}
+
+/** Files grouped by risk (core/wiring/boilerplate) + latest review's finding lines. */
+export function useSmartDiff(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId],
+    queryFn: () => api.get<SmartDiff>(`/pulls/${prId}/smart-diff`),
     enabled: prId != null,
   });
 }

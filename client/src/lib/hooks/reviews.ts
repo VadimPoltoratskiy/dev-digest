@@ -8,12 +8,45 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  Intent,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
   RunEvent,
   RunSummary,
 } from "@devdigest/shared";
+
+// ---- Intent ----------------------------------------------------------------
+
+/** Full intent record returned by GET /pulls/:id/intent (includes classifier metadata). */
+export interface IntentRecord extends Intent {
+  classifierModel: string | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  savedTokensEstimate: number | null;
+  classifiedAt: string | null;
+}
+
+/** Current intent for a PR, or null when not yet classified. */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery<IntentRecord | null>({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.get<IntentRecord | null>(`/pulls/${prId}/intent`),
+    enabled: !!prId,
+  });
+}
+
+/** POST /pulls/:id/intent — force re-classification. */
+export function useReclassifyIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation<IntentRecord, Error>({
+    mutationFn: () => api.post<IntentRecord>(`/pulls/${prId}/intent`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["pr-intent", prId] });
+    },
+    onError: (err) => notify.error(`Intent classification failed: ${err.message}`),
+  });
+}
 
 // ---- Active (in-flight) runs — server-side source of truth ----
 export interface ActiveRun {

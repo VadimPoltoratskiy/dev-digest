@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Provider, Review, RunTrace, UnifiedDiff, PromptAssembly } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { PlanExtractor } from './plan-extractor.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -104,6 +105,13 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Extract plan/spec once per PR — shared across all agent runs. Best-effort;
+    // null means no plan was found and the prompt section is omitted.
+    const planContent = await new PlanExtractor(this.container).extract(workspaceId, pull, logger);
+    if (planContent) {
+      runLog.info(`Plan/spec extracted: ${planContent.length} chars — will inject into all agent prompts`);
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +119,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, planContent, agent, runId, runLog);
         logger?.info(
           {
             runId,
@@ -140,6 +148,7 @@ export class ReviewRunExecutor {
     pull: PullRow,
     repo: typeof schema.repos.$inferSelect,
     diff: UnifiedDiff,
+    planContent: string | null,
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
@@ -195,6 +204,12 @@ export class ReviewRunExecutor {
         runLog.info(`Skills: ${skillBodies.length} enabled skill(s) attached to prompt`);
       }
 
+      // ---- Intent — fetch from DB (classified before agents started) -------
+      const intent = await this.repo.getIntent(pull.id);
+      if (intent) {
+        runLog.info(`Intent available: "${intent.intent.slice(0, 80)}…"`);
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -218,6 +233,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Extracted plan/spec — untrusted; assemblePrompt wraps + caps it.
+        ...(planContent ? { planContent } : {}),
+        // Intent block — trusted structured output from the classifier.
+        ...(intent ? { intent } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -225,6 +244,7 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
+      this.logPromptAssembly(outcome.assembly, runLog);
       const { tokensIn, tokensOut, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
@@ -415,6 +435,27 @@ export class ReviewRunExecutor {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Emit a single INFO line showing which prompt slots were populated and their
+   * character counts. Makes it easy to verify what ended up in the prompt by
+   * reading the live log or the persisted run trace.
+   */
+  private logPromptAssembly(assembly: PromptAssembly, runLog: RunLogger): void {
+    const slots: [string, string | null | undefined][] = [
+      ['system', assembly.system],
+      ['skills', assembly.skills],
+      ['memory', assembly.memory],
+      ['specs', assembly.specs],
+      ['repo_map', assembly.repo_map],
+      ['callers', assembly.callers],
+      ['pr_description', assembly.pr_description],
+      ['plan_content', assembly.plan_content],
+    ];
+    const present = slots.filter(([, v]) => v != null && v !== undefined);
+    const summary = present.map(([k, v]) => `${k}=${v!.length}ch`).join(' | ');
+    runLog.info(`Prompt assembly — ${summary} | user_total=${assembly.user.length}ch`);
   }
 
   /**

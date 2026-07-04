@@ -4,10 +4,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon } from "@devdigest/ui";
+import { Icon, Badge } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
-import { parsePatch, type Line } from "../helpers";
+import { parsePatch, lineAnchorId, type Line } from "../helpers";
 import {
   buildThreads,
   keysForLine,
@@ -30,10 +30,32 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  findingLines,
+  open: openProp,
+  onToggle,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  /** Line numbers the latest review flagged in this file (Smart Diff badge). */
+  findingLines?: number[];
+  /** Controlled open state — falls back to internal state when omitted. */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+}) {
   const t = useTranslations("shell");
-  const [open, setOpen] = React.useState(
+  const [openState, setOpenState] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
+  );
+  const open = openProp ?? openState;
+  const setOpen = React.useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === "function" ? next(open) : next;
+      onToggle ? onToggle(resolved) : setOpenState(resolved);
+    },
+    [open, onToggle]
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
 
@@ -71,6 +93,28 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
             <Icon.MessageSquare size={12} />
             {commentCount}
           </span>
+        )}
+        {!!findingLines?.length && (
+          <button
+            type="button"
+            title="Jump to the first flagged line"
+            aria-label={`${findingLines.length} finding${findingLines.length === 1 ? "" : "s"}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const firstLine = findingLines[0]!;
+              if (!open) setOpen(true);
+              requestAnimationFrame(() => {
+                document
+                  .getElementById(lineAnchorId(file.path, firstLine))
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              });
+            }}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            <Badge icon="AlertTriangle" color="var(--warn)" bg="var(--warn-bg)">
+              {findingLines.length} finding{findingLines.length === 1 ? "" : "s"}
+            </Badge>
+          </button>
         )}
       </div>
       {open && (

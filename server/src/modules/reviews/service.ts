@@ -3,10 +3,12 @@ import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/share
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
+import type { IntentRecord } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
+import { IntentClassifier } from './intent-classifier.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -29,11 +31,13 @@ export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
   private executor: ReviewRunExecutor;
+  private classifier: IntentClassifier;
 
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
     this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
+    this.classifier = new IntentClassifier(container);
   }
 
   // ===========================================================================
@@ -128,6 +132,15 @@ export class ReviewService {
       jobs.push({ agent, runId });
     }
 
+    // Classify intent synchronously (fast flash model) before agents start, so
+    // intent is available in the prompt for every agent run launched below.
+    // Best-effort: a classifier failure must NOT block the review.
+    try {
+      await this.classifyIntent(workspaceId, prId, { force: false, logger });
+    } catch (err) {
+      logger?.warn({ prId, err: (err as Error).message }, 'review: intent classification failed — continuing without intent');
+    }
+
     // Fire-and-forget: the HTTP response returns now with the runIds; reviews
     // are persisted as each agent finishes and the client refetches on SSE done.
     void this.executor.executeRuns(workspaceId, pull, repo, jobs, logger).catch((err) => {
@@ -175,5 +188,32 @@ export class ReviewService {
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(runId);
+  }
+
+  // ===========================================================================
+  // Intent
+  // ===========================================================================
+
+  async getIntent(workspaceId: string, prId: string): Promise<IntentRecord | null> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    return (await this.repo.getIntent(prId)) ?? null;
+  }
+
+  /**
+   * Classify (or re-classify) intent for a PR and persist the result.
+   * Called automatically at review start if no intent exists; also exposed as
+   * POST /pulls/:id/intent for the manual "Recalculate" button.
+   */
+  async classifyIntent(
+    workspaceId: string,
+    prId: string,
+    opts: { force?: boolean; logger?: Logger } = {},
+  ): Promise<IntentRecord> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const params = await this.classifier.classify(workspaceId, pull, opts);
+    await this.repo.upsertIntent(prId, params);
+    return (await this.repo.getIntent(prId))!;
   }
 }

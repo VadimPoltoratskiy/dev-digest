@@ -52,6 +52,12 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  riskAreas: jsonb('risk_areas').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  classifierModel: text('classifier_model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  savedTokensEstimate: integer('saved_tokens_estimate'),
+  classifiedAt: timestamp('classified_at', { withTimezone: true }),
 });
 
 export const prBrief = pgTable('pr_brief', {

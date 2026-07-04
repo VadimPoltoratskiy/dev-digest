@@ -1,5 +1,6 @@
 import type {
   Finding,
+  Intent,
   LLMProvider,
   PromptAssembly,
   Review,
@@ -73,6 +74,11 @@ export interface ReviewInput {
   prDescription?: string;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
+  /**
+   * Machine-extracted PR intent (from IntentClassifier). When present, injected
+   * as a trusted block in the system prompt with a scope rule.
+   */
+  intent?: Intent;
   /** Override the structured-output retry budget. */
   maxRetries?: number;
   /** Override the map-reduce line threshold. */
@@ -136,6 +142,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     repoMap: input.repoMap,
     prDescription: input.prDescription,
     task: input.task,
+    intent: input.intent,
   };
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
