@@ -176,6 +176,62 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     ]);
   }
 
+  // ---- repo-intel demo index for the Blast Radius feature ----
+  // The demo repo isn't cloned (clonePath is null), so nothing indexes it at
+  // runtime. We seed a small, hand-authored slice of the repo-intel index for
+  // PR #482 so `GET /pulls/:id/blast` serves the persistent (non-degraded) path
+  // out of the box: `rateLimit`/`bucketKey` in the changed shared middleware,
+  // their cross-file callers, per-file rank, and the endpoints/crons each caller
+  // file exposes. Idempotent: seeded once, keyed on repo_index_state.
+  const [existingIndex] = await db
+    .select()
+    .from(t.repoIndexState)
+    .where(eq(t.repoIndexState.repoId, repoId));
+  if (!existingIndex) {
+    const DECL = 'src/middleware/ratelimit.ts';
+    await db.insert(t.repoIndexState).values({
+      repoId,
+      lastIndexedSha: 'a1b2c3d4e5f6',
+      indexerVersion: 2,
+      status: 'full',
+      filesIndexed: 42,
+      filesSkipped: 3,
+    });
+    // Symbols declared in the changed shared helper (the blast origin) + the
+    // enclosing symbols of each caller file (so caller rows show a real name).
+    await db.insert(t.symbols).values([
+      { repoId, path: DECL, name: 'rateLimit', kind: 'function', line: 12, endLine: 40, exported: true, signature: 'export function rateLimit(opts: RateLimitOptions): Middleware' },
+      { repoId, path: DECL, name: 'bucketKey', kind: 'function', line: 44, endLine: 52, exported: true, signature: 'function bucketKey(req: Request): string' },
+      { repoId, path: 'src/api/public/index.ts', name: 'publicRouter', kind: 'function', line: 18, endLine: 34, exported: true, signature: 'export function publicRouter(): Router' },
+      { repoId, path: 'src/api/public/webhooks.ts', name: 'webhookHandler', kind: 'function', line: 40, endLine: 60, exported: true, signature: 'export function webhookHandler(): Handler' },
+      { repoId, path: 'src/api/public/health.ts', name: 'healthCheck', kind: 'function', line: 6, endLine: 16, exported: true, signature: 'export function healthCheck(): Handler' },
+      { repoId, path: 'src/server.ts', name: 'bootstrap', kind: 'function', line: 80, endLine: 96, exported: true, signature: 'async function bootstrap(): Promise<void>' },
+    ]);
+    // Resolved cross-file references — decl_file pins each to the changed helper.
+    await db.insert(t.references).values([
+      { repoId, fromPath: 'src/api/public/index.ts', toSymbol: 'rateLimit', line: 23, declFile: DECL },
+      { repoId, fromPath: 'src/api/public/webhooks.ts', toSymbol: 'rateLimit', line: 45, declFile: DECL },
+      { repoId, fromPath: 'src/api/public/health.ts', toSymbol: 'rateLimit', line: 11, declFile: DECL },
+      { repoId, fromPath: 'src/server.ts', toSymbol: 'rateLimit', line: 88, declFile: DECL },
+      { repoId, fromPath: 'src/api/public/index.ts', toSymbol: 'bucketKey', line: 27, declFile: DECL },
+      { repoId, fromPath: 'src/api/public/webhooks.ts', toSymbol: 'bucketKey', line: 49, declFile: DECL },
+    ]);
+    // Per-file rank (required by the caller join) — server.ts ranks highest.
+    await db.insert(t.fileRank).values([
+      { repoId, filePath: 'src/server.ts', pagerank: 0.95, hotness: 0, rank: 0.95, percentile: 98 },
+      { repoId, filePath: 'src/api/public/index.ts', pagerank: 0.9, hotness: 0, rank: 0.9, percentile: 95 },
+      { repoId, filePath: 'src/api/public/webhooks.ts', pagerank: 0.7, hotness: 0, rank: 0.7, percentile: 80 },
+      { repoId, filePath: 'src/api/public/health.ts', pagerank: 0.5, hotness: 0, rank: 0.5, percentile: 60 },
+    ]);
+    // Endpoints / crons each caller file exposes → attributed downstream.
+    await db.insert(t.fileFacts).values([
+      { repoId, filePath: 'src/api/public/index.ts', endpoints: ['GET /api/public/items'], crons: [] },
+      { repoId, filePath: 'src/api/public/webhooks.ts', endpoints: ['POST /api/public/webhooks'], crons: ['reset-rate-buckets (hourly)'] },
+      { repoId, filePath: 'src/api/public/health.ts', endpoints: ['GET /api/public/health'], crons: [] },
+      { repoId, filePath: 'src/server.ts', endpoints: [], crons: [] },
+    ]);
+  }
+
   // ---- built-in agents (the three starter presets) ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [

@@ -41,6 +41,11 @@ export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  // Optional index-health signals. Absent/false on the persistent (full) path;
+  // `degraded: true` + `reason` when served from the best-effort fallback or an
+  // unindexed repo, so the UI can show a badge instead of a blank screen.
+  degraded: z.boolean().optional(),
+  reason: z.string().optional(),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 

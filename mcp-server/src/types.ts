@@ -83,6 +83,27 @@ export const ConventionItem = z.object({
 });
 export type ConventionItem = z.infer<typeof ConventionItem>;
 
+/** Blast radius — mirror of server/src/vendor/shared/contracts/brief.ts BlastRadius. */
+export const BlastRadius = z.object({
+  changed_symbols: z.array(
+    z.object({ name: z.string(), file: z.string(), kind: z.string() }),
+  ),
+  downstream: z.array(
+    z.object({
+      symbol: z.string(),
+      callers: z.array(
+        z.object({ name: z.string(), file: z.string(), line: z.number().int() }),
+      ),
+      endpoints_affected: z.array(z.string()),
+      crons_affected: z.array(z.string()),
+    }),
+  ),
+  summary: z.string(),
+  degraded: z.boolean().optional(),
+  reason: z.string().optional(),
+});
+export type BlastRadius = z.infer<typeof BlastRadius>;
+
 /** Error envelope the server returns on non-2xx responses (ApiErrorBody). */
 export const ApiErrorBody = z.object({
   error: z.object({

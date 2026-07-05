@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DevDigestClient } from '../client.js';
+import { resolveRepo } from '../resolve.js';
+import { BlastRadius } from '../types.js';
 
 const InputShape = {
   owner: z.string(),
@@ -9,32 +11,27 @@ const InputShape = {
 };
 
 /**
- * Stub — RepoIntelService.getBlastRadius already exists server-side
- * (server/src/modules/repo-intel/service.ts) but has no HTTP route yet.
- * When wiring this up for real: resolveRepo(owner, repo) -> repoId, then call
- * the new blast-radius route once it's added to repo-intel/routes.ts.
+ * Impact analysis for changed files. Reads DevDigest's ready-made repo-intel
+ * index via the server route (POST /repos/:id/blast) — no analysis, no model
+ * call. resolveRepo(owner, repo) -> repoId, then POST the changed file list.
  */
-export function registerGetBlastRadius(server: McpServer, _client: DevDigestClient) {
+export function registerGetBlastRadius(server: McpServer, client: DevDigestClient) {
   server.registerTool(
     'get_blast_radius',
     {
-      description: '[Stub] Impact analysis for changed files. Not yet implemented.',
+      description:
+        'Impact analysis for changed files: which symbols they declare, who calls those ' +
+        'symbols, and which HTTP endpoints/crons are reachable. Reads the repo-intel index.',
       inputSchema: InputShape,
     },
-    async () => {
+    async ({ owner, repo, files }) => {
+      const repoId = await resolveRepo(client, owner, repo);
+      const blast = BlastRadius.parse(await client.post<unknown>(`/repos/${repoId}/blast`, { files }));
       return {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify(
-              {
-                implemented: false,
-                message:
-                  'Get Blast Radius is not implemented in this phase. The underlying service exists in DevDigest (RepoIntelService.getBlastRadius) but is not yet wired to the MCP tool. Check back in a future release.',
-              },
-              null,
-              2,
-            ),
+            text: JSON.stringify({ repo: `${owner}/${repo}`, ...blast }, null, 2),
           },
         ],
       };

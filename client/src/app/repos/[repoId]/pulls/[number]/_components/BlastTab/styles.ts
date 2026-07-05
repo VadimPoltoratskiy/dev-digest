@@ -1,0 +1,90 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  wrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  } satisfies CSSProperties as CSSProperties,
+  summaryRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties as CSSProperties,
+  summaryText: {
+    color: "var(--text-secondary)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  } satisfies CSSProperties,
+  degradedBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 6,
+    background: "var(--warn-bg)",
+    color: "var(--warn)",
+    fontSize: 13,
+    lineHeight: 1.4,
+  } satisfies CSSProperties,
+  group: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--bg-elevated)",
+    padding: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  } satisfies CSSProperties as CSSProperties,
+  groupHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties,
+  symbolName: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  callerList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    paddingLeft: 4,
+  } satisfies CSSProperties as CSSProperties,
+  callerRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: "var(--text-secondary)",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  callerName: {
+    color: "var(--text-primary)",
+    fontWeight: 500,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  callerSep: {
+    color: "var(--text-tertiary)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  badgeRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    alignItems: "center",
+  } satisfies CSSProperties as CSSProperties,
+  levelLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase" as const,
+    color: "var(--text-tertiary)",
+  } satisfies CSSProperties,
+  empty: {
+    color: "var(--text-tertiary)",
+    fontSize: 13,
+    fontStyle: "italic",
+  } satisfies CSSProperties,
+} as const;
