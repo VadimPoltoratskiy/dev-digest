@@ -7,6 +7,58 @@ It is a thin HTTP client against the already-running Fastify API (`server/`, `:3
 no DB, no GitHub adapter, and no DI container of its own — every tool ultimately calls an
 existing DevDigest REST route. See `../server/src/modules/*/routes.ts` for the routes it wraps.
 
+This package also ships a **pre-push CLI** (`devdigest review`) — see below. Unlike the MCP
+tools, the CLI does **not** need the server: it reuses the review engine and prompts as source.
+
+## Pre-push CLI: `devdigest review --mode working`
+
+Get the Structured Reviewer's findings on your **local working copy — before `git push`**,
+while nothing is on GitHub yet and no PR exists. It captures the working-tree `git diff`,
+feeds it to the **same** engine the PR page uses (`reviewPullRequest` from
+`@devdigest/reviewer-core`) with the **same seeded reviewer prompt**, prints the findings, and
+exits non-zero on blockers so it can gate a git `pre-push` hook.
+
+```sh
+# from inside the repo you want to review (needs a global link once):
+cd mcp-server && pnpm link --global
+devdigest review --mode working
+
+# …or without linking, from this package:
+cd mcp-server && pnpm review -- --mode working   # reviews mcp-server's own repo working tree
+```
+
+Options:
+
+| Flag | Values | Default | Notes |
+|---|---|---|---|
+| `--mode` | `working` \| `staged` \| `branch` | `working` | Only `working` (`git diff HEAD`, staged + unstaged) is implemented; the others are reserved and error clearly. |
+| `--agent` | `general` \| `security` \| `performance` \| `test` | `general` | Which seeded reviewer prompt to use (from `../server/src/db/seed-prompts.ts`). |
+| `--fail-on` | `never` \| `critical` \| `warning` \| `any` | `critical` | Severity that makes the command exit `1`. |
+| `--model` | any OpenRouter model id | seeded default | |
+
+**Requires** an OpenRouter key, resolved in this order: `~/.devdigest/secrets.json`
+(`{"OPENROUTER_API_KEY": "sk-or-..."}`) → `OPENROUTER_API_KEY` env var (both via the same
+`LocalSecretsProvider` chokepoint the server uses) → the project's `.env`, then `server/.env`.
+Exit codes: `0` clean / gate not
+tripped, `1` gate tripped (blockers), `2` bad usage / not a git repo / missing key, `3` review
+error (e.g. LLM call failed).
+
+Use it as a git `pre-push` hook (`.git/hooks/pre-push`):
+```sh
+#!/bin/sh
+devdigest review --mode working || exit 1
+```
+
+**How it runs standalone:** the CLI consumes `reviewer-core` + shared contracts + a few server
+modules as **TypeScript source via tsconfig path aliases** (the same pattern `server/` and CI
+use), so it runs through **tsx** — the `devdigest` bin (`bin/devdigest.mjs`) launches
+`src/cli/index.ts` under tsx with this package's tsconfig pinned, while keeping your shell's cwd
+so `git diff` targets your repo. The built `dist/` is only for the MCP stdio server.
+
+**Known gap vs. the PR page:** the product's General Reviewer also injects DB-resident *skills*
+(onion-architecture, etc.). Standalone has no DB, so those are omitted — same engine and base
+prompt, no skill enrichment.
+
 ## Setup
 
 ```sh
@@ -87,6 +139,15 @@ src/
   resolve.ts      # owner/repo/prNumber -> {repoId, pullId}
   tools/          # one file per tool, each exports register<Name>(server, client)
   index.ts        # stdio bootstrap — registers all 5 tools
+  cli/            # pre-push CLI (devdigest review) — the standalone entrypoint
+    index.ts      #   arg parsing + orchestration (git diff -> engine -> render -> exit code)
+    git.ts        #   working-tree diff capture (mode -> git args)
+    agent.ts      #   seeded reviewer prompt selection
+    secrets.ts    #   OPENROUTER_API_KEY via LocalSecretsProvider
+    review-runner.ts # parse diff + OpenRouterProvider + reviewPullRequest
+    render.ts     #   terminal report + exit-code gate
+bin/
+  devdigest.mjs   # `devdigest` launcher — runs cli/index.ts under tsx with tsconfig pinned
 ```
 
 Layering mirrors (but doesn't literally follow) the server's onion architecture: `tools/*`

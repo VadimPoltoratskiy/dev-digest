@@ -17,7 +17,14 @@
     "composite": false,
     "outDir": "dist",
     "types": ["node"],
-    "lib": ["ES2022"]
+    "lib": ["ES2022"],
+    "paths": {
+      "@devdigest/reviewer-core": ["../reviewer-core/src/index.ts"],
+      "@devdigest/reviewer-core/*": ["../reviewer-core/src/*"],
+      "@devdigest/shared": ["../server/src/vendor/shared/index.ts"],
+      "@devdigest/shared/*": ["../server/src/vendor/shared/*"],
+      "@devdigest/server/*": ["../server/src/*"]
+    }
   },
   "include": ["src/**/*.ts"]
 }
