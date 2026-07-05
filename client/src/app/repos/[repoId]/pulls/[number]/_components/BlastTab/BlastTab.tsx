@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Icon, Badge, MonoLink, SectionLabel, EmptyState, Skeleton } from "@devdigest/ui";
-import { useBlastRadius } from "@/lib/hooks";
+import { useBlastRadius, useBlastExplanation, useExplainBlast } from "@/lib/hooks";
 import { githubBlobUrl } from "@/lib/github-urls";
 import { s } from "./styles";
 
@@ -16,6 +16,8 @@ interface BlastTabProps {
 
 export function BlastTab({ prId, repoFullName, headSha }: BlastTabProps) {
   const { data, isLoading, isError } = useBlastRadius(prId);
+  const explanation = useBlastExplanation(prId);
+  const explain = useExplainBlast(prId);
 
   if (isLoading) {
     return (
@@ -47,9 +49,24 @@ export function BlastTab({ prId, repoFullName, headSha }: BlastTabProps) {
 
   const canLink = !!repoFullName && !!headSha;
 
+  const ex = explanation.data;
+  const explainButton = (
+    <button
+      style={s.explainBtn}
+      onClick={() => explain.mutate()}
+      disabled={explain.isPending}
+      title="One cheap model call — explains this map in a paragraph"
+    >
+      <Icon.Zap size={13} />
+      {explain.isPending ? "Explaining…" : ex ? "Regenerate" : "Explain with AI"}
+    </button>
+  );
+
   return (
     <section>
-      <SectionLabel icon="Zap">Blast radius</SectionLabel>
+      <SectionLabel icon="Zap" right={explainButton}>
+        Blast radius
+      </SectionLabel>
       <div style={s.wrap}>
         <div style={s.summaryRow}>
           <Badge icon="Boxes" color="var(--accent-text)" bg="var(--accent-bg)">
@@ -69,6 +86,17 @@ export function BlastTab({ prId, repoFullName, headSha }: BlastTabProps) {
         </div>
 
         <p style={s.summaryText}>{summary}</p>
+
+        {ex && (
+          <div style={s.explainCard}>
+            <p style={s.explainText}>{ex.explanation}</p>
+            <div style={s.explainFooter}>
+              <Icon.Zap size={11} />
+              <span className="mono">{ex.model}</span>
+              {ex.cost_usd != null && <span>· ${ex.cost_usd.toFixed(4)}</span>}
+            </div>
+          </div>
+        )}
 
         {degraded && (
           <div style={s.degradedBanner}>

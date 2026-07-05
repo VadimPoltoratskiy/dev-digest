@@ -49,6 +49,19 @@ export const BlastRadius = z.object({
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
+// ---- Blast radius: optional AI explanation ----
+// On-demand, one cheap LLM call turning the deterministic map into a paragraph.
+// Persisted per PR; the base map itself never calls a model.
+export const BlastExplanation = z.object({
+  explanation: z.string(),
+  model: z.string(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  generated_at: z.string(),
+});
+export type BlastExplanation = z.infer<typeof BlastExplanation>;
+
 // ---- Risks ----
 export const RiskSeverity = z.enum(['high', 'medium', 'low']);
 export type RiskSeverity = z.infer<typeof RiskSeverity>;
