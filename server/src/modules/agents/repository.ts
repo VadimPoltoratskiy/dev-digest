@@ -233,4 +233,24 @@ export class AgentsRepository {
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
   }
+
+  // ---- Project Context (agent-level attach) ------------------------------
+
+  /**
+   * Replace the agent's attached Project Context document paths, in order
+   * (order = injection order into "## Project context"). Full-array replace,
+   * same pattern as `setSkills`.
+   */
+  async setContextDocs(
+    workspaceId: string,
+    agentId: string,
+    paths: string[],
+  ): Promise<AgentRow | undefined> {
+    const [row] = await this.db
+      .update(t.agents)
+      .set({ contextDocs: paths })
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+      .returning();
+    return row;
+  }
 }

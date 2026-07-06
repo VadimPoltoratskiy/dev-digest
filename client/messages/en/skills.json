@@ -88,6 +88,10 @@
       "imported_url": "Imported"
     }
   },
+  "context": {
+    "title": "Project context to use",
+    "hint": "Attach specs/docs/insights documents to this skill's body. Order matters — earlier documents appear earlier when this skill is linked to an agent."
+  },
   "preview": {
     "untrustedBadge": "untrusted source",
     "enabled": "Enabled",

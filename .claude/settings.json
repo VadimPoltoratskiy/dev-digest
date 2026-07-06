@@ -1,10 +1,16 @@
 {
-  "enabledPlugins": {
-    "github@claude-plugins-official": true
-  },
   "env": {
     "ENABLE_TOOL_SEARCH": "true",
     "GITHUB_TOOLSETS": "pull-request,repo",
     "GITHUB_READONLY": "true"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm db:generate)",
+      "Bash(pnpm typecheck *)"
+    ]
+  },
+  "enabledPlugins": {
+    "github@claude-plugins-official": true
   }
 }

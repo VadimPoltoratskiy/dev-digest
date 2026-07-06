@@ -70,6 +70,11 @@ export class SkillsService {
     return this.repo.delete(workspaceId, id);
   }
 
+  async setContextDocs(workspaceId: string, id: string, paths: string[]): Promise<Skill | undefined> {
+    const row = await this.repo.setContextDocs(workspaceId, id, paths);
+    return row ? toSkillDto(row) : undefined;
+  }
+
   async listVersions(workspaceId: string, id: string): Promise<SkillVersionEntry[] | undefined> {
     const rows = await this.repo.listVersions(workspaceId, id);
     if (!rows) return undefined;

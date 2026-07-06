@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff, PromptAssembly } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
@@ -9,6 +11,12 @@ import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import { PlanExtractor } from './plan-extractor.js';
+
+// Project Context — caps on how much attached spec/docs/insights content gets
+// injected into the prompt per run. Mirrors conventions/service.ts's
+// MAX_FILE_CHARS pattern; the total cap keeps a heavy attach list bounded.
+const MAX_SPEC_CHARS_PER_FILE = 4000;
+const MAX_SPEC_TOTAL_CHARS = 16000;
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -204,6 +212,18 @@ export class ReviewRunExecutor {
         runLog.info(`Skills: ${skillBodies.length} enabled skill(s) attached to prompt`);
       }
 
+      // Project Context — manually attached specs/docs/insights documents (agent-
+      // level, then each enabled linked skill's own attach list), read live off
+      // the repo clone and injected under "## Project context". Best-effort: an
+      // unreadable/missing file is skipped, never fails the run.
+      const enabledLinkedSkills = linkedSkills.filter((ls) => ls.skill.enabled);
+      const { specContents, attachedPaths } = await this.buildProjectContext(
+        repo.clonePath,
+        agent.contextDocs,
+        enabledLinkedSkills.map((ls) => ls.skill.contextDocs),
+        runLog,
+      );
+
       // ---- Intent — fetch from DB (classified before agents started) -------
       const intent = await this.repo.getIntent(pull.id);
       if (intent) {
@@ -225,6 +245,10 @@ export class ReviewRunExecutor {
         // Enabled skill bodies in link order — assemblePrompt joins them under
         // "## Skills / rules". Omitted when the agent has no linked skills.
         ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
+        // Project Context — attached specs/docs/insights, one string per
+        // document; assemblePrompt wraps each with the injection guard under
+        // "## Project context" (untrusted, quoted not executed).
+        ...(specContents.length > 0 ? { specs: specContents } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -314,7 +338,7 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: attachedPaths,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -411,6 +435,60 @@ export class ReviewRunExecutor {
       runLog.info(`repo map: repoIntel failed — ${(err as Error).message}`);
       return undefined;
     }
+  }
+
+  /**
+   * Project Context — read the manually attached specs/docs/insights documents
+   * (agent-level paths first, then each enabled linked skill's own attach
+   * list, deduped by path — first occurrence wins) live off the repo clone.
+   *
+   * Best-effort: a missing/unreadable file is skipped with a Live Log note,
+   * never fails the run (same degrade philosophy as callers/repoMap). Each
+   * file is capped individually and the whole set is capped in total so a
+   * heavy attach list can't blow out the prompt.
+   */
+  private async buildProjectContext(
+    clonePath: string | null,
+    agentPaths: string[],
+    skillPathLists: string[][],
+    runLog: RunLogger,
+  ): Promise<{ specContents: string[]; attachedPaths: string[] }> {
+    const seen = new Set<string>();
+    const orderedPaths: string[] = [];
+    for (const path of [...agentPaths, ...skillPathLists.flat()]) {
+      if (!seen.has(path)) {
+        seen.add(path);
+        orderedPaths.push(path);
+      }
+    }
+    if (orderedPaths.length === 0 || !clonePath) return { specContents: [], attachedPaths: [] };
+
+    const specContents: string[] = [];
+    const attachedPaths: string[] = [];
+    let totalChars = 0;
+
+    for (const path of orderedPaths) {
+      if (totalChars >= MAX_SPEC_TOTAL_CHARS) break;
+      let content: string;
+      try {
+        content = await readFile(join(clonePath, path), 'utf8');
+      } catch (err) {
+        runLog.info(`project context: could not read "${path}" — ${(err as Error).message}`);
+        continue;
+      }
+      const truncated =
+        content.length > MAX_SPEC_CHARS_PER_FILE
+          ? content.slice(0, MAX_SPEC_CHARS_PER_FILE) + '\n... (truncated)'
+          : content;
+      specContents.push(`### ${path}\n${truncated}`);
+      attachedPaths.push(path);
+      totalChars += truncated.length;
+    }
+
+    if (attachedPaths.length > 0) {
+      runLog.info(`Project context: ${attachedPaths.length} document(s) attached (${totalChars} chars)`);
+    }
+    return { specContents, attachedPaths };
   }
 
   /**

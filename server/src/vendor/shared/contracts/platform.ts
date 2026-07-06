@@ -260,6 +260,10 @@ export const SpecFile = z.object({
   content: z.string().nullish(),
   size: z.number().int().nullish(),
   updated_at: z.string().nullish(),
+  // Top-level root this document was found under (specs/docs/insights/…).
+  root: z.string().nullish(),
+  // Number of agents + skills in the workspace with this path attached.
+  used_by_count: z.number().int().nullish(),
 });
 export type SpecFile = z.infer<typeof SpecFile>;
 

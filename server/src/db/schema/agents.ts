@@ -29,6 +29,10 @@ export const agents = pgTable('agents', {
   // + file-rank note) injected into the prompt. Default on; the global
   // REPO_INTEL_ENABLED flag is the second gate (facade degrades when off).
   repoIntel: boolean('repo_intel').notNull().default(true),
+  // Ordered relative paths of Project Context documents (specs/docs/insights
+  // markdown, read live off the repo clone) attached to this agent's prompt.
+  // Order = injection order. See modules/project-context.
+  contextDocs: jsonb('context_docs').$type<string[]>().notNull().default([]),
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
   createdBy: uuid('created_by').references(() => users.id),

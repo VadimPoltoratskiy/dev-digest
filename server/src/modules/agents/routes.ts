@@ -67,6 +67,11 @@ const SetSkillsBody = z
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
   });
 
+/** Set/reorder the agent's attached Project Context document paths (full replace). */
+const SetContextDocsBody = z.object({
+  paths: z.array(z.string()),
+});
+
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new AgentsService(app.container);
@@ -176,6 +181,17 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
       const links = await service.unlinkSkill(workspaceId, req.params.id, req.params.skillId);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
+    },
+  );
+
+  app.patch(
+    '/agents/:id/context',
+    { schema: { params: IdParams, body: SetContextDocsBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const agent = await service.setContextDocs(workspaceId, req.params.id, req.body.paths);
+      if (!agent) throw new NotFoundError('Agent not found');
+      return agent;
     },
   );
 
