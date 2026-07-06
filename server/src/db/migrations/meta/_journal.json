@@ -92,6 +92,13 @@
       "when": 1783092383415,
       "tag": "0012_living_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783276152150,
+      "tag": "0013_round_magneto",
+      "breakpoints": true
     }
   ]
 }

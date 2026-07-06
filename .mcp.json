@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "command": "npx",
+      "args": ["tsx", "/Users/vpolto/Public/Neoversity_AI_Agentic_Engineering/dev-digest/mcp-server/src/index.ts"],
+      "env": {
+        "DEVDIGEST_API_URL": "http://localhost:3001"
+      }
+    }
+  }
+}

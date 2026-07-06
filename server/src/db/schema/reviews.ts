@@ -66,3 +66,21 @@ export const prBrief = pgTable('pr_brief', {
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
 });
+
+/**
+ * Optional AI explanation of a PR's blast radius. Populated only when the
+ * reviewer clicks "Explain with AI" — one cheap LLM call, persisted per PR so
+ * it's cached across reloads. The deterministic blast map never touches this.
+ */
+export const prBlastExplanation = pgTable('pr_blast_explanation', {
+  prId: uuid('pr_id')
+    .primaryKey()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  explanation: text('explanation').notNull(),
+  model: text('model').notNull(),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  costUsd: doublePrecision('cost_usd'),
+  // Written explicitly by the repository on every upsert (no DB default).
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+});
