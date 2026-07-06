@@ -10,7 +10,9 @@ against one shared browser session by `run.ts`.
 
 ## How a flow works
 
-A spec lives in `specs/NN-name.flow.json`:
+A spec lives in `e2e/specs/NN-name.flow.json` (this module's own test-flow JSON —
+not the SPEC-NN requirement specs in `e2e/requirement-specs/` or the root
+`specs/` folder):
 
 ```jsonc
 {

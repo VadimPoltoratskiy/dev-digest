@@ -40,8 +40,8 @@ Technical sources used during the creation of this skill.
 
 ## Project-Internal Sources
 
-### `server/README.md`
-- **Path:** `dev-digest/server/README.md`
+### `server/docs/README.md`
+- **Path:** `dev-digest/server/docs/README.md`
 - **Content used:** Full request/response flow diagram (HTTP → plugins → validation → module → service → DI → adapters → external), API endpoint map, and testing split (unit vs. integration).
 
 ### `server/CLAUDE.md`

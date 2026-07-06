@@ -50,7 +50,7 @@ src/
 - `*.it.test.ts` = integration suffix. Breaking this naming splits tests into the wrong CI bucket.
 
 ## Read when
-- Adding a route → `server/README.md` (API map + validation flow)
+- Adding a route → `server/docs/README.md` (API map + validation flow)
 - Touching runs/findings → `src/db/schema/runs.ts`
-- Session start → read `INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
-- Session end → run `/engineering-insights` to update `INSIGHTS.md`; do not skip this step.
+- Session start → read `insights/INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
+- Session end → run `/engineering-insights` to update `insights/INSIGHTS.md`; do not skip this step.

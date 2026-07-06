@@ -45,5 +45,5 @@ Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 Component/interaction tests (`*.test.tsx`) run under vitest + jsdom with `fetch`
 mocked, so they need neither the API nor a browser. The real browser journeys
 (client + API + seeded DB) are covered by the deterministic agent-browser suite
-in [`../e2e`](../e2e/README.md) and the `e2e-web.yml` workflow. See
-[`../TESTING.md`](../TESTING.md).
+in [`../e2e`](../../e2e/docs/README.md) and the `e2e-web.yml` workflow. See
+[`../TESTING.md`](../../TESTING.md).

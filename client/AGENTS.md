@@ -45,7 +45,7 @@ src/
 - `NEXT_PUBLIC_API_BASE` must be set at build time for production (it's baked in). In dev it defaults to `http://localhost:3001`.
 
 ## Read when
-- Adding a route → `client/README.md` (UI route map)
+- Adding a route → `client/docs/README.md` (UI route map)
 - Adding a data hook → `src/lib/hooks/` (match existing pattern)
-- Session start → read `INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
-- Session end → run `/engineering-insights` to update `INSIGHTS.md`; do not skip this step.
+- Session start → read `insights/INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
+- Session end → run `/engineering-insights` to update `insights/INSIGHTS.md`; do not skip this step.

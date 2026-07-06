@@ -146,4 +146,4 @@ hermetic:
 - `pnpm test` runs both.
 
 A DB-backed test (one that imports `test/helpers/pg.ts`) **must** use the
-`*.it.test.ts` suffix so the split stays correct. See [`../TESTING.md`](../TESTING.md).
+`*.it.test.ts` suffix so the split stays correct. See [`../TESTING.md`](../../TESTING.md).

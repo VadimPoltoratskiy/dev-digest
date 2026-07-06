@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: >
-  Read-only research agent. Use when a planner or task needs to understand
+  Read-only research agent. Use when implementation-planner or a task needs to understand
   how something is implemented in the codebase, locate patterns/files, or
   gather information from the web before making decisions.
   Returns a structured report with cited sources.

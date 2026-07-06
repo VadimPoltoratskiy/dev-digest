@@ -58,10 +58,10 @@ severity and score. All local; the only outbound calls are to GitHub (PR data)
 and the LLM (via OpenRouter).
 
 Each package has its own README with deeper diagrams:
-[`client`](client/README.md) (UI route map) ·
-[`server`](server/README.md) (API map) ·
-[`reviewer-core`](reviewer-core/README.md) (review pipeline) ·
-[`e2e`](e2e/README.md).
+[`client`](client/docs/README.md) (UI route map) ·
+[`server`](server/docs/README.md) (API map) ·
+[`reviewer-core`](reviewer-core/docs/README.md) (review pipeline) ·
+[`e2e`](e2e/docs/README.md).
 
 ## What works on day 1
 
@@ -147,7 +147,7 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers
 Postgres); everything else is hermetic. The browser e2e flows live in
-[`e2e/`](e2e/README.md) and run deterministically (no LLM).
+[`e2e/`](e2e/docs/README.md) and run deterministically (no LLM).
 
 ## Troubleshooting
 

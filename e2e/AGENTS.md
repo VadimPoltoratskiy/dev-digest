@@ -48,6 +48,6 @@ Safe to run alongside your normal dev stack — separate Postgres container, no 
 - Add flows that import repos or trigger reviews — they would require API keys and produce non-deterministic state.
 
 ## Read when
-- Adding a flow → `e2e/README.md` (full spec format)
-- Session start → read `INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
-- Session end → run `/engineering-insights` to update `INSIGHTS.md`; do not skip this step.
+- Adding a flow → `e2e/docs/README.md` (full spec format)
+- Session start → read `insights/INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
+- Session end → run `/engineering-insights` to update `insights/INSIGHTS.md`; do not skip this step.

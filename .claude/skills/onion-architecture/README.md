@@ -80,6 +80,6 @@ A complete backend task typically needs **this skill** (where?) plus one or more
 
 ### Project-Internal Sources
 
-- **`server/README.md`** (`dev-digest/server/README.md`) — Full request/response flow diagram, API endpoint map, testing split.
+- **`server/docs/README.md`** (`dev-digest/server/docs/README.md`) — Full request/response flow diagram, API endpoint map, testing split.
 - **`server/CLAUDE.md`** (`dev-digest/server/CLAUDE.md`) — Commands, gotchas (migrations, secrets, repo-intel degradation).
 - **`server/src/`** — Directory map and all examples derived from traversing the live codebase: `agents/`, `repos/`, `reviews/`, `platform/container.ts`, `modules/index.ts`, `app.ts`.

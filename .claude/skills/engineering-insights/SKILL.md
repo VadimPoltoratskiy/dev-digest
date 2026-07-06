@@ -12,10 +12,10 @@ Captures what you learned this session into the right module's `INSIGHTS.md` so 
 
 | Module | Path |
 |--------|------|
-| API / server | `server/INSIGHTS.md` |
-| Web / client | `client/INSIGHTS.md` |
-| Review pipeline | `reviewer-core/INSIGHTS.md` |
-| E2E tests | `e2e/INSIGHTS.md` |
+| API / server | `server/insights/INSIGHTS.md` |
+| Web / client | `client/insights/INSIGHTS.md` |
+| Review pipeline | `reviewer-core/insights/INSIGHTS.md` |
+| E2E tests | `e2e/insights/INSIGHTS.md` |
 
 If a session touched multiple modules, update each one.
 
@@ -73,7 +73,7 @@ Before writing, validate each candidate entry against this test:
 ### Step 4 — Read existing INSIGHTS.md
 
 ```bash
-cat server/INSIGHTS.md 2>/dev/null || echo "(file does not exist yet)"
+cat server/insights/INSIGHTS.md 2>/dev/null || echo "(file does not exist yet)"
 ```
 
 Check for duplicates. If an existing entry covers the same point, add a dated correction note instead of a new entry.
