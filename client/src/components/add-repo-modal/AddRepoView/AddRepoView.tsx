@@ -77,7 +77,7 @@ export function AddRepoView() {
         <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Add a repository</h1>
         <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
           Paste a GitHub repository URL — DevDigest clones it locally and imports open PRs.
-          API keys aren’t needed here; set them once in{" "}
+          API keys aren't needed here; set them once in{" "}
           <a
             href="/settings/api-keys"
             onClick={(e) => {

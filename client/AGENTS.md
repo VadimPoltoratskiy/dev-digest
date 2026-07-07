@@ -20,7 +20,7 @@ src/
     pulls/[number]/       # PR detail (overview · diff · findings tabs)
     agents/               # agent list + editor
     settings/             # API keys + model settings
-    onboarding/           # add-repository form
+    onboarding/           # newcomer tour (add-repository form moved to AddRepoModal in components/add-repo-modal/)
   components/
     app-shell/            # nav, breadcrumbs, `g`-then-key keyboard shortcuts
   lib/

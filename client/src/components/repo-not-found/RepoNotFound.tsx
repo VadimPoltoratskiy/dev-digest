@@ -3,22 +3,26 @@
    ErrorState with a friendly prompt to add or pick a repo. */
 "use client";
 
-import { useRouter } from "next/navigation";
+import React from "react";
 import { useTranslations } from "next-intl";
 import { EmptyState } from "@devdigest/ui";
+import { AddRepoModal } from "../add-repo-modal";
 
 /** Renders the "no repo selected" empty state. Wrap in the page's <AppShell>. */
 export function RepoNotFound() {
   const t = useTranslations("common");
-  const router = useRouter();
+  const [addRepoOpen, setAddRepoOpen] = React.useState(false);
   return (
-    <EmptyState
-      icon="GitBranch"
-      title={t("repoNotFound.title")}
-      body={t("repoNotFound.body")}
-      cta={t("repoNotFound.cta")}
-      onCta={() => router.push("/onboarding")}
-    />
+    <>
+      <EmptyState
+        icon="GitBranch"
+        title={t("repoNotFound.title")}
+        body={t("repoNotFound.body")}
+        cta={t("repoNotFound.cta")}
+        onCta={() => setAddRepoOpen(true)}
+      />
+      <AddRepoModal open={addRepoOpen} onClose={() => setAddRepoOpen(false)} />
+    </>
   );
 }
 

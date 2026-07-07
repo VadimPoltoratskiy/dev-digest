@@ -2,6 +2,8 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
+import type { Onboarding } from "@devdigest/shared";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
 
@@ -72,3 +74,19 @@ export const api = {
     apiFetch<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
 };
+
+// ---- Onboarding Tour API functions ----
+
+export function fetchOnboardingTour(
+  repoId: string,
+): Promise<Onboarding & { generatedAt: string }> {
+  return api.get(`/repos/${repoId}/onboarding`);
+}
+
+export function generateOnboardingTour(
+  repoId: string,
+): Promise<Onboarding & { generatedAt: string; degraded?: boolean }> {
+  // Bodyless POST — do NOT pass {} as that would set Content-Type: application/json
+  // with an empty body, which Fastify rejects when no body schema is declared.
+  return api.post(`/repos/${repoId}/onboarding`);
+}

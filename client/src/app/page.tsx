@@ -1,4 +1,4 @@
-/* Root — sends the user to the first repo's PR list, or onboarding if no repos. */
+/* Root — sends the user to the first repo's PR list, or opens AddRepoModal if no repos. */
 "use client";
 
 import React from "react";
@@ -7,10 +7,12 @@ import { useRepos } from "../lib/hooks";
 import { AppShell } from "../components/app-shell";
 import { PageContainer } from "../components/page-shell";
 import { EmptyState, Button, Skeleton } from "@devdigest/ui";
+import { AddRepoModal } from "../components/add-repo-modal";
 
 export default function HomePage() {
   const router = useRouter();
   const { data: repos, isLoading, isError } = useRepos();
+  const [addRepoOpen, setAddRepoOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (repos && repos.length > 0) {
@@ -33,7 +35,7 @@ export default function HomePage() {
             title="No repositories yet"
             body="Add a repository to start reviewing pull requests. Set your API keys once in Settings → API Keys."
             cta="Add repository"
-            onCta={() => router.push("/onboarding")}
+            onCta={() => setAddRepoOpen(true)}
           />
         ) : (
           <div>
@@ -43,6 +45,7 @@ export default function HomePage() {
             </Button>
           </div>
         )}
+        <AddRepoModal open={addRepoOpen} onClose={() => setAddRepoOpen(false)} />
       </PageContainer>
     </AppShell>
   );

@@ -6,18 +6,21 @@
 import React from "react";
 import { AppFrame, CommandPalette, ShortcutsHelp, type Crumb } from "@devdigest/ui";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
+import { AddRepoModal } from "../add-repo-modal";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
+  const [addRepoOpen, setAddRepoOpen] = React.useState(false);
   const openPalette = React.useCallback(() => setPaletteOpen(true), []);
   const closePalette = React.useCallback(() => setPaletteOpen(false), []);
   const openHelp = React.useCallback(() => setHelpOpen(true), []);
   const closeHelp = React.useCallback(() => setHelpOpen(false), []);
+  const openAddRepo = React.useCallback(() => setAddRepoOpen(true), []);
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette });
+  const ctx = useShellContext({ onOpenCommandPalette: openPalette, onAddRepo: openAddRepo });
 
   return (
     <>
@@ -26,6 +29,7 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
       </AppFrame>
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
+      <AddRepoModal open={addRepoOpen} onClose={() => setAddRepoOpen(false)} />
     </>
   );
 }
