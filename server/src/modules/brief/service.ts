@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { Brief } from '@devdigest/shared';
 import type { BlastRadius, SmartDiff } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -11,6 +12,15 @@ import { ProjectContextService } from '../project-context/service.js';
 import { getIntent, type IntentRecord } from '../reviews/repository/pull.repo.js';
 import { getBrief, upsertBrief } from './repository.js';
 import { BRIEF_SYSTEM_PROMPT } from './prompts.js';
+
+// ---- Narrow LLM output schema (SPEC-02 bug fix) ----------------------------
+// The full `Brief` schema includes optional `degraded`/`degraded_reason` fields
+// that MUST be set server-side only (SPEC-02 AC-2/AC-3). Passing the full `Brief`
+// to the LLM as its expected response schema would cause a real model to fill those
+// fields in unprompted. Use this narrower schema for the LLM call so Zod strips
+// any model-invented values before the deterministic stamp logic runs.
+const BriefLlmOutput = Brief.omit({ degraded: true, degraded_reason: true });
+type BriefLlmOutput = z.infer<typeof BriefLlmOutput>;
 
 // ---- Budget constants (AC-7) -----------------------------------------------
 // Maximum characters for the assembled user-message.
@@ -116,12 +126,15 @@ export class BriefService {
     const llm = await this.container.llm(provider as Parameters<typeof this.container.llm>[0]);
 
     // --- LLM call (AC-5) -------------------------------------------------------
-    let result: Awaited<ReturnType<typeof llm.completeStructured<Brief>>>;
+    // Use the narrower BriefLlmOutput schema (excludes degraded/degraded_reason)
+    // so the model is never shown those fields and cannot fill them in itself.
+    // Zod strips any extra keys the model might still emit. (SPEC-02 bug fix)
+    let result: Awaited<ReturnType<typeof llm.completeStructured<BriefLlmOutput>>>;
     try {
       result = await llm.completeStructured({
         model,
-        schema: Brief,
-        schemaName: 'Brief',
+        schema: BriefLlmOutput,
+        schemaName: 'BriefLlmOutput',
         messages: [
           { role: 'system', content: BRIEF_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
@@ -262,13 +275,17 @@ export class BriefService {
    * Remove hallucinated file_refs entries from every risk in the Brief (AC-6).
    * Risks with an empty file_refs after filtering are KEPT (not dropped).
    * Emits a WARN log per removed path.
+   *
+   * Accepts BriefLlmOutput (the narrowed LLM schema without degraded fields)
+   * and returns the same type. The `too_big` stamp applied afterward widens
+   * the result to a full `Brief` when needed.
    */
   private filterFileRefs(
-    brief: Brief,
+    brief: BriefLlmOutput,
     validFileSet: Set<string>,
     prId: string,
     logger?: Logger,
-  ): Brief {
+  ): BriefLlmOutput {
     const risks = brief.risks.map((risk) => {
       const filteredRefs: string[] = [];
       for (const ref of risk.file_refs) {
