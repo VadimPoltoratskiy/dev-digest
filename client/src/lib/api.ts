@@ -2,7 +2,7 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
-import type { Brief, BriefTimeline, Onboarding } from "@devdigest/shared";
+import type { Brief, BriefTimeline, Onboarding, WhyTimeline } from "@devdigest/shared";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
@@ -105,4 +105,11 @@ export function generateBrief(prId: string, opts?: { force?: boolean }): Promise
 
 export function fetchBriefHistory(prId: string): Promise<BriefTimeline> {
   return api.get<BriefTimeline>(`/pulls/${prId}/brief/history`);
+}
+
+// ---- git-why API functions ----
+
+export function fetchWhyTimeline(prId: string, file: string, line: number): Promise<WhyTimeline> {
+  const q = new URLSearchParams({ file, line: String(line) });
+  return api.get<WhyTimeline>(`/pulls/${prId}/why?${q.toString()}`);
 }

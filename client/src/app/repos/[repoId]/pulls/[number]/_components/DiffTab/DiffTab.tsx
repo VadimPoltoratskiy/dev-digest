@@ -7,6 +7,7 @@ import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
 import { useSmartDiff } from "@/lib/hooks/core";
 import { notify } from "@/lib/toast";
 import type { PrFile } from "@devdigest/shared";
+import { WhyDrawer } from "../WhyDrawer";
 
 interface DiffTabProps {
   prId: string | null;
@@ -14,9 +15,11 @@ interface DiffTabProps {
   files: PrFile[];
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
+  /** owner/repo — needed by the git-why drawer to link out to the linked PR. */
+  repoFullName?: string | null;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, repoFullName }: DiffTabProps) {
   const { data: comments } = usePrComments(prId);
   const { data: smartDiff } = useSmartDiff(prId);
   const create = useCreatePrComment(prId);
@@ -25,6 +28,8 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
   // Smart Diff (risk-grouped) is the default view; "Original order" reverts
   // to GitHub's own file order via the plain DiffViewer.
   const [order, setOrder] = React.useState<"smart" | "original">("smart");
+  // git-why drawer target, opened from a per-line hover trigger in CodeLine.
+  const [whyTarget, setWhyTarget] = React.useState<{ path: string; line: number } | null>(null);
 
   const commentCount = comments?.length ?? 0;
 
@@ -77,9 +82,27 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
         Files changed · {filesCount} files
       </SectionLabel>
       {order === "smart" && smartDiff ? (
-        <SmartDiffViewer files={files} smartDiff={smartDiff} commenting={commenting} />
+        <SmartDiffViewer
+          files={files}
+          smartDiff={smartDiff}
+          commenting={commenting}
+          onOpenWhy={(path, line) => setWhyTarget({ path, line })}
+        />
       ) : (
-        <DiffViewer files={files} commenting={commenting} />
+        <DiffViewer
+          files={files}
+          commenting={commenting}
+          onOpenWhy={(path, line) => setWhyTarget({ path, line })}
+        />
+      )}
+      {whyTarget && prId && (
+        <WhyDrawer
+          prId={prId}
+          repoFullName={repoFullName}
+          file={whyTarget.path}
+          line={whyTarget.line}
+          onClose={() => setWhyTarget(null)}
+        />
       )}
     </section>
   );

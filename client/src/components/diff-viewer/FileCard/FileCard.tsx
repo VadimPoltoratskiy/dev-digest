@@ -36,6 +36,7 @@ export function FileCard({
   findingLines,
   open: openProp,
   onToggle,
+  onOpenWhy,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
@@ -44,6 +45,8 @@ export function FileCard({
   /** Controlled open state — falls back to internal state when omitted. */
   open?: boolean;
   onToggle?: (open: boolean) => void;
+  /** Opens the git-why blame drawer for a line in this file. */
+  onOpenWhy?: (path: string, line: number) => void;
 }) {
   const t = useTranslations("shell");
   const [openState, setOpenState] = React.useState(
@@ -129,6 +132,7 @@ export function FileCard({
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                onOpenWhy={onOpenWhy}
               />
             ))
           )}

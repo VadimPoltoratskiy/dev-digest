@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../../../messages/en/shell.json";
+import briefMessages from "../../../../messages/en/brief.json";
 import { SmartDiffViewer } from "./SmartDiffViewer";
 import type { PrFile, SmartDiff } from "@/lib/types";
 
@@ -9,7 +10,7 @@ afterEach(cleanup);
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ shell: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ shell: messages, brief: briefMessages }}>
       {ui}
     </NextIntlClientProvider>,
   );

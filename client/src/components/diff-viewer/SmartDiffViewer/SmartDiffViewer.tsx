@@ -19,12 +19,14 @@ function RoleGroup({
   filesByPath,
   commenting,
   findingLinesByPath,
+  onOpenWhy,
 }: {
   role: SmartDiffRole;
   filePaths: string[];
   filesByPath: Map<string, PrFile>;
   commenting?: DiffCommentApi;
   findingLinesByPath: Map<string, number[]>;
+  onOpenWhy?: (path: string, line: number) => void;
 }) {
   const meta = ROLE_META[role];
   const [open, setOpen] = React.useState(!meta.collapsedByDefault);
@@ -62,6 +64,7 @@ function RoleGroup({
                 findingLines={findingLinesByPath.get(path)}
                 open={fileOpen[path]}
                 onToggle={(next) => setFileOpen((prev) => ({ ...prev, [path]: next }))}
+                onOpenWhy={onOpenWhy}
               />
             );
           })}
@@ -75,15 +78,17 @@ export function SmartDiffViewer({
   files,
   smartDiff,
   commenting,
+  onOpenWhy,
 }: {
   files: PrFile[];
   smartDiff: SmartDiff | undefined;
   commenting?: DiffCommentApi;
+  onOpenWhy?: (path: string, line: number) => void;
 }) {
   if (!smartDiff) {
     // Not loaded yet (or endpoint unreachable) — fall back to the plain list
     // rather than blocking the diff tab on this extra call.
-    return <DiffViewer files={files} commenting={commenting} />;
+    return <DiffViewer files={files} commenting={commenting} onOpenWhy={onOpenWhy} />;
   }
 
   const filesByPath = new Map(files.map((f) => [f.path, f]));
@@ -105,6 +110,7 @@ export function SmartDiffViewer({
             filesByPath={filesByPath}
             commenting={commenting}
             findingLinesByPath={findingLinesByPath}
+            onOpenWhy={onOpenWhy}
           />
         );
       })}

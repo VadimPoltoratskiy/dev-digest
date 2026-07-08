@@ -32,6 +32,10 @@
     "title": "git-why",
     "blame": "blame",
     "noHistory": "No history available for this line.",
-    "noCommits": "No commits found for this line."
+    "noCommits": "No commits found for this line.",
+    "trigger": "Show blame history for this line",
+    "rationale": "Rationale",
+    "risks": "Risks flagged in this file",
+    "viewPr": "View PR #{number}"
   }
 }

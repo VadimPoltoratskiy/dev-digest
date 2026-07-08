@@ -3,6 +3,8 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
+import { Icon } from "@devdigest/ui";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { lineAnchorId, type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
@@ -14,12 +16,16 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  onOpenWhy,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** Opens the git-why blame drawer for this line (RIGHT-side lines only). */
+  onOpenWhy?: (path: string, line: number) => void;
 }) {
+  const t = useTranslations("brief");
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
 
@@ -34,6 +40,10 @@ export function CodeLine({
   const sign = ln.kind === "add" ? "+" : ln.kind === "del" ? "−" : "";
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
   const showAdd = hover && !!target && !composing;
+  // git-why only makes sense against the current (HEAD) file content — same
+  // RIGHT-side rule commentTargetFor already applies for add/ctx lines.
+  const whyLine = (ln.kind === "add" || ln.kind === "ctx") && ln.newNo != null ? ln.newNo : null;
+  const showWhy = hover && whyLine != null && !!onOpenWhy;
 
   return (
     <div
@@ -53,6 +63,17 @@ export function CodeLine({
               style={cs.addBtn}
             >
               +
+            </button>
+          )}
+          {showWhy && whyLine != null && (
+            <button
+              type="button"
+              title={t("why.trigger")}
+              aria-label={t("why.trigger")}
+              onClick={() => onOpenWhy!(path, whyLine)}
+              style={cs.whyBtn}
+            >
+              <Icon.History size={11} />
             </button>
           )}
           {ln.newNo ?? ln.oldNo ?? ""}

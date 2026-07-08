@@ -129,6 +129,26 @@ export const cs = {
     zIndex: 1,
     boxShadow: "0 1px 3px rgba(0,0,0,.35)",
   } satisfies CSSProperties,
+  /** git-why trigger — sits immediately right of addBtn in the gutter. */
+  whyBtn: {
+    position: "absolute",
+    left: 22,
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    zIndex: 1,
+    boxShadow: "0 1px 3px rgba(0,0,0,.35)",
+  } satisfies CSSProperties,
   /** Indented rail for threads/composer, aligned under the code (past gutter). */
   thread: {
     margin: "6px 14px 8px 58px",
