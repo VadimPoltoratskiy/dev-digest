@@ -175,3 +175,63 @@ describe("PrBriefCard — regenerate button interaction", () => {
     expect(mockMutate).toHaveBeenCalledWith({ force: true });
   });
 });
+
+describe("PrBriefCard — degraded banner renders when degraded is true (AC-4)", () => {
+  it('renders a role="status" banner containing degraded_reason text when data.degraded is true', () => {
+    vi.mocked(usePrBrief).mockReturnValue({
+      data: {
+        ...BRIEF_FIXTURE,
+        degraded: true,
+        degraded_reason: 'PR too large (9524 lines) — this summary may not reflect all changes',
+      },
+      isLoading: false,
+    } as ReturnType<typeof usePrBrief>);
+    vi.mocked(useGenerateBrief).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useGenerateBrief>);
+
+    renderCard();
+
+    const banner = screen.getByRole('status');
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveTextContent('9524');
+  });
+});
+
+describe("PrBriefCard — no banner when degraded is absent (AC-4)", () => {
+  it('does not render a role="status" element when data.degraded is absent', () => {
+    vi.mocked(usePrBrief).mockReturnValue({
+      data: BRIEF_FIXTURE,  // no degraded field
+      isLoading: false,
+    } as ReturnType<typeof usePrBrief>);
+    vi.mocked(useGenerateBrief).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useGenerateBrief>);
+
+    renderCard();
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+});
+
+describe("Brief client schema backward compatibility (AC-5)", () => {
+  it('parses a pre-existing Brief-shaped JSON (no degraded fields) without error', async () => {
+    // Import from the client vendor path to test the client-side mirror independently.
+    const { Brief } = await import('../../../../../../../vendor/shared/contracts/brief');
+    const legacyJson = {
+      what: 'legacy what',
+      why: 'legacy why',
+      risk_level: 'low' as const,
+      risks: [],
+      review_focus: [],
+    };
+    const result = Brief.safeParse(legacyJson);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.degraded).toBeUndefined();
+      expect(result.data.degraded_reason).toBeUndefined();
+    }
+  });
+});

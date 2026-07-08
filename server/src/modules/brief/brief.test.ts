@@ -171,8 +171,9 @@ function buildMockContainer(
 ) {
   const { llmFixture = MOCK_BRIEF, mockPr = MOCK_PR, mockIntent = null } = opts;
 
+  // Key must match the schemaName used in the LLM call ('BriefLlmOutput' after SPEC-02 bug fix).
   const mockLlm = new MockLLMProvider('openai', {
-    structuredBySchema: { Brief: llmFixture },
+    structuredBySchema: { BriefLlmOutput: llmFixture },
   });
 
   // DB mock: uses call-count to serve different results per query.
@@ -478,6 +479,100 @@ describe('BriefService.generate: no intent row (AC-9)', () => {
     expect(Brief.safeParse(result).success).toBe(true);
 
     // LLM was still called (intent absence is gracefully handled).
+    expect(container._mockLlm.calls).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPEC-02: too_big SmartDiff fixture
+// ---------------------------------------------------------------------------
+
+const MOCK_SMART_DIFF_TOO_BIG: SmartDiff = {
+  ...MOCK_SMART_DIFF,
+  split_suggestion: { too_big: true, total_lines: 9524, proposed_splits: [] },
+};
+
+// ---------------------------------------------------------------------------
+// AC-1 / AC-3: too_big=true stamps the Brief with degraded flag
+// ---------------------------------------------------------------------------
+
+describe('BriefService.generate: too_big=true stamps degraded (AC-1, AC-3)', () => {
+  it('returns Brief with degraded=true and degraded_reason containing total_lines; LLM called once', async () => {
+    (SmartDiffService.prototype.buildForPull as Mock).mockResolvedValue(MOCK_SMART_DIFF_TOO_BIG);
+    const container = buildMockContainer();
+    const service = new BriefService(container as never);
+    const result = await service.generate(MOCK_WORKSPACE_ID, MOCK_PR_ID, { force: true });
+    expect(result.degraded).toBe(true);
+    expect(result.degraded_reason).toContain('9524');
+    // AC-3: stamp is server-side only — exactly one LLM call, no additional call for the stamp
+    expect(container._mockLlm.calls).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-2: too_big=false leaves degraded absent
+// ---------------------------------------------------------------------------
+
+describe('BriefService.generate: too_big=false leaves degraded absent (AC-2)', () => {
+  it('returns Brief without degraded or degraded_reason when too_big is false', async () => {
+    // MOCK_SMART_DIFF has too_big: false — the default beforeEach fixture.
+    const container = buildMockContainer();
+    const service = new BriefService(container as never);
+    const result = await service.generate(MOCK_WORKSPACE_ID, MOCK_PR_ID, { force: true });
+    expect(result.degraded).toBeUndefined();
+    expect(result.degraded_reason).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-5: Brief schema backward-compatibility (server side)
+// ---------------------------------------------------------------------------
+
+describe('Brief schema backward compatibility (AC-5)', () => {
+  it('parses a pre-existing Brief-shaped JSON (no degraded fields) without error', () => {
+    const legacyJson = {
+      what: 'legacy what',
+      why: 'legacy why',
+      risk_level: 'low',
+      risks: [],
+      review_focus: [],
+    };
+    const result = Brief.safeParse(legacyJson);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.degraded).toBeUndefined();
+      expect(result.data.degraded_reason).toBeUndefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug regression: model-invented degraded fields must be stripped by schema isolation
+// ---------------------------------------------------------------------------
+
+describe('BriefService.generate: LLM schema isolation strips model-invented degraded fields', () => {
+  it('strips degraded and degraded_reason even when the raw mock fixture contains them, when too_big is false', async () => {
+    // Simulate a "model-invented" response: the mock fixture includes the SPEC-02 fields
+    // that a real LLM returned unprompted before the bug fix (degraded: false, degraded_reason: "").
+    // After the fix the LLM call uses BriefLlmOutput which omits those keys from the schema,
+    // so MockLLMProvider parses the fixture with BriefLlmOutput.safeParse() — Zod's default
+    // strip mode removes the extra keys before the data reaches the stamp logic.
+    const fixtureWithModelInventedFields: Brief = {
+      ...MOCK_BRIEF,
+      degraded: false,
+      degraded_reason: 'bogus value inserted by model',
+    };
+
+    // too_big is false (default MOCK_SMART_DIFF) — no server-side stamp.
+    const container = buildMockContainer({ llmFixture: fixtureWithModelInventedFields });
+    const service = new BriefService(container as never);
+    const result = await service.generate(MOCK_WORKSPACE_ID, MOCK_PR_ID, { force: true });
+
+    // The model-invented values must NOT appear in the final Brief (SPEC-02 AC-2).
+    expect(result.degraded).toBeUndefined();
+    expect(result.degraded_reason).toBeUndefined();
+
+    // Exactly one LLM call was made (the stamp adds no second call — AC-3).
     expect(container._mockLlm.calls).toHaveLength(1);
   });
 });
