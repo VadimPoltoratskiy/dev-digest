@@ -90,6 +90,26 @@ export const Brief = z.object({
 });
 export type Brief = z.infer<typeof Brief>;
 
+// ---- BriefTimeline (history of Briefs across a PR's commits) ----
+// Named to avoid colliding with the unrelated, already-shipped `WhyTimeline`
+// (git-why per-line blame drawer, contracts/why.ts). One entry per distinct
+// head SHA the PR was briefed at, newest first.
+export const BriefTimelineEntry = z.object({
+  head_sha: z.string(),
+  brief: Brief,
+  model: z.string().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  generated_at: z.string(),
+});
+export type BriefTimelineEntry = z.infer<typeof BriefTimelineEntry>;
+
+export const BriefTimeline = z.object({
+  entries: z.array(BriefTimelineEntry), // newest first
+});
+export type BriefTimeline = z.infer<typeof BriefTimeline>;
+
 // ---- Smart Diff ----
 export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);
 export type SmartDiffRole = z.infer<typeof SmartDiffRole>;

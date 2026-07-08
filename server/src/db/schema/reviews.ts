@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -60,20 +60,34 @@ export const prIntent = pgTable('pr_intent', {
   classifiedAt: timestamp('classified_at', { withTimezone: true }),
 });
 
-export const prBrief = pgTable('pr_brief', {
-  prId: uuid('pr_id')
-    .primaryKey()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  json: jsonb('json').notNull(),
-  model: text('model'),
-  tokensIn: integer('tokens_in'),
-  tokensOut: integer('tokens_out'),
-  costUsd: doublePrecision('cost_usd'),
-  // DB-level DEFAULT now() is required for migration safety: pr_brief may already
-  // contain rows. The repository always writes generatedAt: new Date() explicitly
-  // on every upsert; the default applies only to the ALTER TABLE ADD COLUMN step.
-  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().default(sql`now()`),
-});
+// One row per (prId, headSha) — BriefTimeline (stretch goal, follow-up to SPEC-01/02):
+// regenerating at an unchanged head SHA updates that SHA's row in place; a new
+// commit (new head SHA) inserts a new row, retaining prior generations as history.
+export const prBrief = pgTable(
+  'pr_brief',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    headSha: text('head_sha').notNull(),
+    json: jsonb('json').notNull(),
+    model: text('model'),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    costUsd: doublePrecision('cost_usd'),
+    // DB-level DEFAULT now() is required for migration safety: pr_brief may already
+    // contain rows. The repository always writes generatedAt: new Date() explicitly
+    // on every upsert; the default applies only to the ALTER TABLE ADD COLUMN step.
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    // Upsert conflict target: one brief per PR per commit SHA.
+    prShaUq: uniqueIndex('pr_brief_pr_sha_uq').on(t.prId, t.headSha),
+    // Serves the "latest brief" lookup and the ordered history query.
+    prGeneratedIdx: index('pr_brief_pr_generated_idx').on(t.prId, t.generatedAt),
+  }),
+);
 
 /**
  * Optional AI explanation of a PR's blast radius. Populated only when the

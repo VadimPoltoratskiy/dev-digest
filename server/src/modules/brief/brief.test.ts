@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 vi.mock('./repository.js', () => ({
   getBrief: vi.fn(),
   upsertBrief: vi.fn(),
+  listBriefHistory: vi.fn(),
 }));
 
 vi.mock('../blast/service.js', () => {
@@ -47,7 +48,7 @@ vi.mock('../settings/feature-models.js', () => ({
 // Imports — must come after vi.mock() calls
 // ============================================================================
 
-import { getBrief, upsertBrief } from './repository.js';
+import { getBrief, upsertBrief, listBriefHistory } from './repository.js';
 import { BlastService } from '../blast/service.js';
 import { SmartDiffService } from '../smart-diff/service.js';
 import { ProjectContextService } from '../project-context/service.js';
@@ -227,6 +228,7 @@ beforeEach(() => {
   // Set up default mock return values for all repository functions.
   (getBrief as Mock).mockResolvedValue(null);       // no cache by default
   (upsertBrief as Mock).mockResolvedValue(undefined);
+  (listBriefHistory as Mock).mockResolvedValue([]);
 
   // Set up default BlastService / SmartDiffService behavior.
   (BlastService.prototype.buildForPull as Mock).mockResolvedValue(MOCK_BLAST);
@@ -426,11 +428,13 @@ describe('BriefService.generate: force regenerate (AC-8)', () => {
     expect(result.what).toBe(MOCK_BRIEF.what);
     expect(result.what).not.toBe('Old cached description.');
 
-    // upsertBrief must have been called to persist the new Brief.
+    // upsertBrief must have been called to persist the new Brief, keyed by
+    // the PR's current head SHA (MOCK_PR.headSha = 'abc1234').
     expect(upsertBrief).toHaveBeenCalledTimes(1);
     expect(upsertBrief).toHaveBeenCalledWith(
       container.db,
       MOCK_PR_ID,
+      MOCK_PR.headSha,
       expect.objectContaining({
         json: expect.objectContaining({ what: MOCK_BRIEF.what }),
         model: 'gpt-4.1',
@@ -574,5 +578,64 @@ describe('BriefService.generate: LLM schema isolation strips model-invented degr
 
     // Exactly one LLM call was made (the stamp adds no second call — AC-3).
     expect(container._mockLlm.calls).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BriefTimeline: BriefService.getHistory
+// ---------------------------------------------------------------------------
+
+describe('BriefService.getHistory', () => {
+  it('returns entries from listBriefHistory wrapped as { entries }', async () => {
+    const fixtureEntries = [
+      {
+        head_sha: 'sha-2',
+        brief: MOCK_BRIEF,
+        model: 'gpt-4.1',
+        tokens_in: 100,
+        tokens_out: 50,
+        cost_usd: 0.01,
+        generated_at: '2026-07-08T12:00:00.000Z',
+      },
+      {
+        head_sha: 'sha-1',
+        brief: { ...MOCK_BRIEF, what: 'Earlier generation' },
+        model: 'gpt-4.1',
+        tokens_in: 90,
+        tokens_out: 40,
+        cost_usd: 0.008,
+        generated_at: '2026-07-08T11:00:00.000Z',
+      },
+    ];
+    (listBriefHistory as Mock).mockResolvedValue(fixtureEntries);
+
+    const container = buildMockContainer();
+    const service = new BriefService(container as never);
+
+    const result = await service.getHistory(MOCK_WORKSPACE_ID, MOCK_PR_ID);
+
+    expect(listBriefHistory).toHaveBeenCalledWith(container.db, MOCK_PR_ID);
+    expect(result).toEqual({ entries: fixtureEntries });
+  });
+
+  it('returns { entries: [] } when no brief has ever been generated', async () => {
+    (listBriefHistory as Mock).mockResolvedValue([]);
+
+    const container = buildMockContainer();
+    const service = new BriefService(container as never);
+
+    const result = await service.getHistory(MOCK_WORKSPACE_ID, MOCK_PR_ID);
+
+    expect(result).toEqual({ entries: [] });
+  });
+
+  it('throws NotFoundError (workspace-scope guard) when the PR does not belong to the workspace', async () => {
+    const container = buildMockContainer({ mockPr: null });
+    const service = new BriefService(container as never);
+
+    await expect(service.getHistory(MOCK_WORKSPACE_ID, MOCK_PR_ID)).rejects.toThrow(
+      'Pull request not found',
+    );
+    expect(listBriefHistory).not.toHaveBeenCalled();
   });
 });

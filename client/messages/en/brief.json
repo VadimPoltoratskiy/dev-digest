@@ -14,7 +14,13 @@
       "generating": "Generating…",
       "regenerate": "Regenerate",
       "regenerating": "Regenerating…",
-      "oversizedNotice": "{reason}"
+      "oversizedNotice": "{reason}",
+      "history": {
+        "label": "Brief history",
+        "show": "View history",
+        "hide": "Hide history",
+        "empty": "No prior generations for this PR."
+      }
     }
   },
   "noRisks": "No notable risks flagged.",

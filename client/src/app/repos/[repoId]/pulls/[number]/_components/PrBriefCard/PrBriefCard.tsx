@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Icon, SectionLabel, MonoLink } from "@devdigest/ui";
 import { usePrBrief, useGenerateBrief } from "../../../../../../../lib/hooks/brief";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { BriefHistory } from "../BriefHistory";
 import { s } from "./styles";
 import type { CSSProperties } from "react";
 
@@ -26,6 +27,7 @@ export function PrBriefCard({ prId, repoFullName, headSha }: PrBriefCardProps) {
   const t = useTranslations("brief");
   const { data, isLoading } = usePrBrief(prId);
   const generate = useGenerateBrief(prId);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const canLink = !!repoFullName && !!headSha;
 
@@ -119,8 +121,11 @@ export function PrBriefCard({ prId, repoFullName, headSha }: PrBriefCardProps) {
           </>
         )}
 
-        {/* Footer: regenerate */}
+        {/* Footer: history toggle + regenerate */}
         <div style={s.footer}>
+          <button style={s.actionBtn} onClick={() => setHistoryOpen((v) => !v)}>
+            {historyOpen ? t("block.brief.history.hide") : t("block.brief.history.show")}
+          </button>
           <button
             style={s.actionBtn}
             onClick={() => generate.mutate({ force: true })}
@@ -129,6 +134,7 @@ export function PrBriefCard({ prId, repoFullName, headSha }: PrBriefCardProps) {
             {generate.isPending ? t("block.brief.regenerating") : t("block.brief.regenerate")}
           </button>
         </div>
+        {historyOpen && <BriefHistory prId={prId} />}
       </div>
     </section>
   );

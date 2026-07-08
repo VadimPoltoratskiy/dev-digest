@@ -21,6 +21,7 @@ vi.mock('./service.js', () => {
   const BriefService = vi.fn();
   BriefService.prototype.get = vi.fn();
   BriefService.prototype.generate = vi.fn();
+  BriefService.prototype.getHistory = vi.fn();
   return { BriefService };
 });
 
@@ -152,6 +153,75 @@ describe('brief routes: AC-4 — POST /pulls/:id/brief returns 404 on workspace 
 
     expect(response.statusCode).toBe(404);
 
+    const body = response.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('not_found');
+  });
+});
+
+// ============================================================================
+// GET /pulls/:id/brief/history — BriefTimeline
+// ============================================================================
+
+describe('brief routes: GET /pulls/:id/brief/history', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildTestApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns HTTP 200 with the BriefTimeline entries from the service', async () => {
+    const entries = [
+      {
+        head_sha: 'sha-2',
+        brief: {
+          what: 'w', why: 'y', risk_level: 'low', risks: [], review_focus: [],
+        },
+        model: 'gpt-4.1',
+        tokens_in: 10,
+        tokens_out: 5,
+        cost_usd: 0.001,
+        generated_at: '2026-07-08T12:00:00.000Z',
+      },
+    ];
+    (BriefService.prototype.getHistory as Mock).mockResolvedValue({ entries });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/brief/history`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ entries });
+  });
+
+  it('returns HTTP 200 with an empty entries array when no brief has ever been generated', async () => {
+    (BriefService.prototype.getHistory as Mock).mockResolvedValue({ entries: [] });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/brief/history`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ entries: [] });
+  });
+
+  it('returns HTTP 404 when the PR belongs to a different workspace', async () => {
+    (BriefService.prototype.getHistory as Mock).mockRejectedValue(
+      new NotFoundError('Pull request not found'),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/brief/history`,
+    });
+
+    expect(response.statusCode).toBe(404);
     const body = response.json() as { error: { code: string; message: string } };
     expect(body.error.code).toBe('not_found');
   });

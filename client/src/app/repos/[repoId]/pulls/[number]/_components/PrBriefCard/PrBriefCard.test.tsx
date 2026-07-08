@@ -11,22 +11,35 @@
  * recurring-error note about Zod contracts and test fixtures).
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Brief } from "@devdigest/shared";
 import briefMessages from "../../../../../../../../messages/en/brief.json";
 
 // Mock hooks before importing the component (vi.mock is hoisted by Vitest).
+// useBriefHistory is mocked too — PrBriefCard renders <BriefHistory>, which
+// calls it, whenever the "view history" toggle is open.
 vi.mock("../../../../../../../lib/hooks/brief", () => ({
   usePrBrief: vi.fn(),
   useGenerateBrief: vi.fn(),
+  useBriefHistory: vi.fn(),
 }));
 
 import { PrBriefCard } from "./PrBriefCard";
-import { usePrBrief, useGenerateBrief } from "../../../../../../../lib/hooks/brief";
+import { usePrBrief, useGenerateBrief, useBriefHistory } from "../../../../../../../lib/hooks/brief";
 
 afterEach(cleanup);
+
+// The "view history" toggle mounts <BriefHistory>, which calls useBriefHistory.
+// Give it a harmless default (loading) so tests that never open the panel
+// don't need to stub it individually.
+beforeEach(() => {
+  vi.mocked(useBriefHistory).mockReturnValue({
+    data: undefined,
+    isLoading: true,
+  } as ReturnType<typeof useBriefHistory>);
+});
 
 // ============================================================================
 // Fixtures
@@ -213,6 +226,46 @@ describe("PrBriefCard — no banner when degraded is absent (AC-4)", () => {
     renderCard();
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+});
+
+describe("PrBriefCard — view history toggle", () => {
+  it('shows the BriefHistory panel after clicking "View history", and hides it again on second click', () => {
+    vi.mocked(usePrBrief).mockReturnValue({
+      data: BRIEF_FIXTURE,
+      isLoading: false,
+    } as ReturnType<typeof usePrBrief>);
+    vi.mocked(useGenerateBrief).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useGenerateBrief>);
+    vi.mocked(useBriefHistory).mockReturnValue({
+      data: {
+        entries: [
+          {
+            head_sha: "abc1234",
+            brief: BRIEF_FIXTURE,
+            model: "gpt-4.1",
+            tokens_in: 10,
+            tokens_out: 5,
+            cost_usd: 0.001,
+            generated_at: "2026-07-08T12:00:00.000Z",
+          },
+        ],
+      },
+      isLoading: false,
+    } as ReturnType<typeof useBriefHistory>);
+
+    renderCard();
+
+    // Panel is closed by default.
+    expect(screen.queryByText("abc1234")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /view history/i }));
+    expect(screen.getByText("abc1234")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /hide history/i }));
+    expect(screen.queryByText("abc1234")).not.toBeInTheDocument();
   });
 });
 

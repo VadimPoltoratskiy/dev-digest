@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import type { Brief } from '@devdigest/shared';
+import type { Brief, BriefTimeline } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { BriefService } from './service.js';
@@ -9,10 +9,11 @@ import { BriefService } from './service.js';
 /**
  * brief module.
  *
- *   GET  /pulls/:id/brief  → return cached Brief, or 404 if none exists (AC-2)
- *   POST /pulls/:id/brief  → generate (or return cached) Brief (AC-1, AC-3, AC-5, AC-8)
+ *   GET  /pulls/:id/brief          → return cached Brief, or 404 if none exists (AC-2)
+ *   POST /pulls/:id/brief          → generate (or return cached) Brief (AC-1, AC-3, AC-5, AC-8)
+ *   GET  /pulls/:id/brief/history  → BriefTimeline: every generated Brief, newest first
  *
- * Both routes enforce workspace scope via getContext() + BriefService.loadPull().
+ * All routes enforce workspace scope via getContext() + BriefService.loadPull().
  * Error handling for NotFoundError (404) and ExternalServiceError (502) is done
  * by the global error handler registered in app.ts — no per-route try/catch needed.
  */
@@ -42,6 +43,20 @@ export default async function briefRoutes(appBase: FastifyInstance) {
         }) as never;
       }
       return result;
+    },
+  );
+
+  /**
+   * GET /pulls/:id/brief/history
+   * Returns the BriefTimeline — every generated Brief for this PR, newest
+   * first. Always 200; `entries: []` when nothing has been generated yet.
+   */
+  app.get(
+    '/pulls/:id/brief/history',
+    { schema: { params: IdParams } },
+    async (req): Promise<BriefTimeline> => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getHistory(workspaceId, req.params.id);
     },
   );
 

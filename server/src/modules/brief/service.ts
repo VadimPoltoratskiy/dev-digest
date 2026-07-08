@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { Brief } from '@devdigest/shared';
-import type { BlastRadius, SmartDiff } from '@devdigest/shared';
+import type { BlastRadius, SmartDiff, BriefTimeline } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import type { Container } from '../../platform/container.js';
 import { NotFoundError, ExternalServiceError } from '../../platform/errors.js';
@@ -10,7 +10,7 @@ import { BlastService } from '../blast/service.js';
 import { SmartDiffService } from '../smart-diff/service.js';
 import { ProjectContextService } from '../project-context/service.js';
 import { getIntent, type IntentRecord } from '../reviews/repository/pull.repo.js';
-import { getBrief, upsertBrief } from './repository.js';
+import { getBrief, upsertBrief, listBriefHistory } from './repository.js';
 import { BRIEF_SYSTEM_PROMPT } from './prompts.js';
 
 // ---- Narrow LLM output schema (SPEC-02 bug fix) ----------------------------
@@ -58,6 +58,18 @@ export class BriefService {
   async get(workspaceId: string, prId: string): Promise<Brief | null> {
     await this.loadPull(workspaceId, prId); // 404 guard + workspace scope
     return getBrief(this.container.db, prId);
+  }
+
+  /**
+   * BriefTimeline — every previously generated brief for a PR, newest first,
+   * one entry per distinct head SHA. Empty `entries: []` when none exist yet
+   * (not a 404 — an empty history is a normal state, unlike the single-brief
+   * GET which 404s to mean "never generated").
+   */
+  async getHistory(workspaceId: string, prId: string): Promise<BriefTimeline> {
+    await this.loadPull(workspaceId, prId); // 404 guard + workspace scope
+    const entries = await listBriefHistory(this.container.db, prId);
+    return { entries };
   }
 
   /**
@@ -167,7 +179,10 @@ export class BriefService {
       : validatedBrief;
 
     // --- Persist (AC-5, AC-8) ------------------------------------------------
-    await upsertBrief(db, prId, {
+    // Keyed by (prId, pull.headSha) — regenerating at an unchanged head SHA
+    // updates that SHA's row in place; a new commit inserts a new row,
+    // retaining prior generations as BriefTimeline history.
+    await upsertBrief(db, prId, pull.headSha, {
       json: finalBrief,
       model,
       tokensIn: result.tokensIn,
