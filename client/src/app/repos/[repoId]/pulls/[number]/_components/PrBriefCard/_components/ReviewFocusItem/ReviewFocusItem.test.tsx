@@ -62,6 +62,32 @@ describe("ReviewFocusItem — lazy fetch (AC-6)", () => {
 
     expect(usePriorPrs).toHaveBeenCalledWith("pr-1", "src/auth/service.ts", true);
   });
+
+  it("re-expanding after a collapse relies on TanStack Query's cache, not a fresh fetch", () => {
+    // usePriorPrs itself is mocked here, so this can't observe network calls
+    // directly — it verifies the component drives `enabled` off its own local
+    // `expanded` state each render (true -> false -> true) and hands caching
+    // to the query key ["prior-prs", prId, path], per the hook's own doc
+    // comment (client/src/lib/hooks/pr-files.ts): "no re-fetch on subsequent
+    // expands of the same item."
+    vi.mocked(usePriorPrs).mockReturnValue({
+      data: { items: [] as PriorPr[], total: 0 },
+      isLoading: false,
+    } as ReturnType<typeof usePriorPrs>);
+    vi.mocked(usePriorPrs).mockClear();
+
+    renderItem();
+    const toggle = screen.getByRole("button");
+
+    fireEvent.click(toggle); // expand
+    fireEvent.click(toggle); // collapse
+    fireEvent.click(toggle); // re-expand
+
+    const enabledArgs = vi
+      .mocked(usePriorPrs)
+      .mock.calls.map((call) => call[2]);
+    expect(enabledArgs).toEqual([false, true, false, true]);
+  });
 });
 
 describe("ReviewFocusItem — loading state (AC-7)", () => {
