@@ -178,8 +178,13 @@ export interface GitClient {
   fetchPullHead(repo: RepoRef, n: number): Promise<void>;
   currentHead(repo: RepoRef): Promise<string>;
   diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
-  blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
-  log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
+  /**
+   * `ref` (SPEC-04): the shared clone is only ever synced to the repo's
+   * *default* branch, never to an arbitrary PR's branch — callers needing
+   * blame/log for a specific PR MUST pass its head_sha here.
+   */
+  blame(repo: RepoRef, path: string, ref?: string): Promise<BlameLine[]>;
+  log(repo: RepoRef, path?: string, ref?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }

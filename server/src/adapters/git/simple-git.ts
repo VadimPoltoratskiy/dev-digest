@@ -111,19 +111,32 @@ export class SimpleGitClient implements GitClient {
       .filter((s) => s.length > 0);
   }
 
-  async blame(repo: RepoRef, path: string): Promise<BlameLine[]> {
-    const raw = await this.git(repo).raw(['blame', '--line-porcelain', path]);
+  /**
+   * `ref`, when given, blames that revision instead of the clone's currently
+   * checked-out tree (SPEC-04: the shared clone only ever tracks the default
+   * branch, so a PR's own head_sha must be passed explicitly to blame its
+   * actual code). `git blame <ref> -- <path>` needs no checkout.
+   */
+  async blame(repo: RepoRef, path: string, ref?: string): Promise<BlameLine[]> {
+    const args = ['blame', '--line-porcelain'];
+    if (ref) args.push(ref);
+    args.push('--', path);
+    const raw = await this.git(repo).raw(args);
     return parseBlamePorcelain(raw);
   }
 
-  async log(repo: RepoRef, path?: string): Promise<GitCommit[]> {
-    const log = await this.git(repo).log(path ? { file: path } : undefined);
-    return log.all.map((c) => ({
-      sha: c.hash,
-      message: c.message,
-      author: c.author_name,
-      date: c.date,
-    }));
+  /**
+   * `ref`, when given, walks history starting from that revision instead of
+   * the clone's currently checked-out HEAD (same rationale as `blame`).
+   * Uses `raw()` + a custom pretty-format rather than simple-git's `log()`
+   * wrapper, which has no clean way to start from an arbitrary ref.
+   */
+  async log(repo: RepoRef, path?: string, ref?: string): Promise<GitCommit[]> {
+    const args = ['log', '--pretty=format:%H%x1f%s%x1f%an%x1f%aI%x1e'];
+    if (ref) args.push(ref);
+    if (path) args.push('--', path);
+    const raw = await this.git(repo).raw(args);
+    return parseLogPretty(raw);
   }
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
@@ -153,4 +166,21 @@ function parseBlamePorcelain(raw: string): BlameLine[] {
     }
   }
   return out;
+}
+
+/**
+ * Parses `git log --pretty=format:%H%x1f%s%x1f%an%x1f%aI%x1e` output.
+ * %x1f (unit separator) delimits fields, %x1e (record separator) delimits
+ * commits — both control characters that can't collide with commit message
+ * content, unlike a naive newline/comma split.
+ */
+function parseLogPretty(raw: string): GitCommit[] {
+  return raw
+    .split('\x1e')
+    .map((record) => record.replace(/^\n/, '').trim())
+    .filter((record) => record.length > 0)
+    .map((record) => {
+      const [sha, message, author, date] = record.split('\x1f');
+      return { sha: sha ?? '', message: message ?? '', author: author ?? '', date: date ?? '' };
+    });
 }

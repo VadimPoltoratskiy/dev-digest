@@ -164,3 +164,19 @@ WhyEvent {
 | AC-5 | Call the route with a PR UUID belonging to a different workspace. Confirm HTTP 404. |
 | AC-6 | Mock `container.git.blame`/`.log` to throw. Confirm the route still returns HTTP 200 with `events: []`, `blame: null`. |
 | AC-7 | Grep the `why` module's source for any LLM adapter import/call — confirm none exists. |
+
+---
+
+## Live-testing addendum: blame/log must target the PR's head_sha explicitly
+
+Manually exercising the feature against this PR's own diff (dev-digest, PR #6) surfaced a real bug no mock caught: every line showed "No history available for this line."
+
+**Root cause:** `GitClient.blame()`/`.log()` (as originally implemented) take no revision argument — they operate against whatever the shared clone directory currently has checked out. But the shared clone is only ever synced to a repo's **default branch** (`RepoIntelService`/`sync()` calls `container.git.sync(ref, repo.defaultBranch)`); it is never checked out to an arbitrary PR's branch. Any file that only exists on the PR's branch (which, for a PR under review, is essentially always true for at least some of its diff) would never be found by blame/log — not a stale-clone timing issue, but a structural one that would reproduce for every non-default-branch PR, every time.
+
+**Fix:** `GitClient.blame(repo, path, ref?)` and `.log(repo, path?, ref?)` gained an optional revision parameter (both git commands support this natively — `git blame <ref> -- <path>` / `git log <ref> -- <path>`, no checkout required, no risk of racing other concurrent requests against the same shared clone). `WhyService` now always passes the PR's `head_sha` explicitly. Because that sha may not yet exist in the clone's local object database (it was never fetched), the service retries once after a best-effort `fetchPullHead(repo, pr_number)` (already-implemented, previously-unused) before degrading to an empty timeline.
+
+`log()`'s implementation also moved off simple-git's high-level `.log()` wrapper (which has no clean way to start from an arbitrary ref) onto `raw()` with a custom `%x1f`/`%x1e`-delimited pretty-format, parsed by a new `parseLogPretty` — control characters that can't collide with commit-message content, unlike a naive delimiter.
+
+**Verified live** against the real `VadimPoltoratskiy/dev-digest` clone: confirmed the PR's actual head_sha (`d6e528a...`) was absent from the clone's object database before the fix would have applied; confirmed `git fetch origin pull/6/head:pr-6` (what `fetchPullHead` does) makes it resolvable; confirmed both `git blame <sha> -- <path>` and `git log --pretty=format:... <sha> -- <path>` then return correct, real data for a file that only exists on this PR's branch.
+
+This is a correctness fix within SPEC-04's existing AC-1/AC-6 — not a new acceptance criterion — found by exercising the real system rather than mocks.

@@ -11,6 +11,12 @@
  *   AC-4  is_blame_head marking; blame field reuses the matching event
  *   AC-5  workspace-scope guard (404 via NotFoundError)
  *   AC-6  degrade paths: repo not cloned, git blame/log throws, no commits
+ *
+ * Also covers the head_sha-aware blame/log fix: the shared clone is only
+ * ever synced to the repo's default branch, never to an arbitrary PR's
+ * branch, so blame()/log() must be called with the PR's own head_sha — and
+ * when that sha isn't present in the clone's object database yet, the
+ * service must fetch the PR head once and retry before degrading.
  */
 
 // ============================================================================
@@ -49,11 +55,14 @@ const MOCK_REPO_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const MOCK_LINKED_PR_ID = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 const FILE = 'src/middleware/rate.ts';
 
+const MOCK_HEAD_SHA = 'sha-head-of-pr';
+
 const MOCK_PR = {
   id: MOCK_PR_ID,
   workspaceId: MOCK_WORKSPACE_ID,
   repoId: MOCK_REPO_ID,
   number: 42,
+  headSha: MOCK_HEAD_SHA,
 };
 
 const MOCK_REPO_BASICS = {
@@ -93,9 +102,22 @@ function buildMockContainer(opts: {
   dbResponsesAfterPull?: unknown[][];
   blame?: unknown[];
   log?: unknown[];
+  /** blame/log reject on every call (both the first attempt and the retry). */
   gitThrows?: boolean;
+  /** blame/log reject on the first call only, then resolve with blame/log on retry. */
+  gitThrowsOnce?: boolean;
+  /** fetchPullHead itself rejects (retry's fetch step fails). */
+  fetchPullHeadThrows?: boolean;
 } = {}) {
-  const { mockPr = MOCK_PR, dbResponsesAfterPull = [], blame = [], log = [], gitThrows = false } = opts;
+  const {
+    mockPr = MOCK_PR,
+    dbResponsesAfterPull = [],
+    blame = [],
+    log = [],
+    gitThrows = false,
+    gitThrowsOnce = false,
+    fetchPullHeadThrows = false,
+  } = opts;
 
   const dbResponses: unknown[][] = [mockPr ? [mockPr] : [], ...dbResponsesAfterPull];
   let dbCallCount = 0;
@@ -111,16 +133,32 @@ function buildMockContainer(opts: {
     })),
   };
 
-  const gitBlame = gitThrows
-    ? vi.fn().mockRejectedValue(new Error('git blame failed'))
-    : vi.fn().mockResolvedValue(blame);
-  const gitLog = gitThrows
-    ? vi.fn().mockRejectedValue(new Error('git log failed'))
-    : vi.fn().mockResolvedValue(log);
+  let gitBlame: Mock;
+  let gitLog: Mock;
+  if (gitThrows) {
+    gitBlame = vi.fn().mockRejectedValue(new Error('git blame failed'));
+    gitLog = vi.fn().mockRejectedValue(new Error('git log failed'));
+  } else if (gitThrowsOnce) {
+    gitBlame = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('sha not in object database yet'))
+      .mockResolvedValue(blame);
+    gitLog = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('sha not in object database yet'))
+      .mockResolvedValue(log);
+  } else {
+    gitBlame = vi.fn().mockResolvedValue(blame);
+    gitLog = vi.fn().mockResolvedValue(log);
+  }
+
+  const fetchPullHead = fetchPullHeadThrows
+    ? vi.fn().mockRejectedValue(new Error('fetch pull head failed'))
+    : vi.fn().mockResolvedValue(undefined);
 
   return {
     db: mockDb,
-    git: { blame: gitBlame, log: gitLog },
+    git: { blame: gitBlame, log: gitLog, fetchPullHead },
   };
 }
 
@@ -171,6 +209,61 @@ describe('WhyService.getTimeline: blame + log walk (AC-1, AC-4)', () => {
     expect(result.events[1]!.is_blame_head).toBe(false);
     expect(result.blame).toEqual(result.events[0]);
     expect(result.summary).toContain('alice');
+
+    // The fix: blame/log must be called with the PR's own head_sha, never
+    // omitted — the shared clone tracks only the default branch, so without
+    // an explicit ref this would blame whatever the clone happens to have
+    // checked out instead of this PR (see module doc comment).
+    expect(container.git.blame).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      MOCK_HEAD_SHA,
+    );
+    expect(container.git.log).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      MOCK_HEAD_SHA,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// head_sha fetch-and-retry: the PR's commit may not be in the clone's object
+// database yet (shared clone only tracks the default branch)
+// ---------------------------------------------------------------------------
+
+describe('WhyService.getTimeline: fetches the PR head and retries on first failure', () => {
+  it('calls fetchPullHead once and succeeds on retry when head_sha is not yet present', async () => {
+    const container = buildMockContainer({
+      gitThrowsOnce: true,
+      blame: [{ line: 10, sha: 'sha-new', author: 'alice', date: '2026-07-01T00:00:00.000Z', summary: 'Newest commit' }],
+      log: [{ sha: 'sha-new', message: 'Newest commit', author: 'alice', date: '2026-07-01T00:00:00.000Z' }],
+    });
+    const service = new WhyService(container as never);
+
+    const result = await service.getTimeline(MOCK_WORKSPACE_ID, MOCK_PR_ID, FILE, 10);
+
+    expect(container.git.fetchPullHead).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      MOCK_PR.number,
+    );
+    // blame/log were retried after the fetch — 2 calls each (fail, then succeed).
+    expect(container.git.blame).toHaveBeenCalledTimes(2);
+    expect(container.git.log).toHaveBeenCalledTimes(2);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]!.sha).toBe('sha-new');
+  });
+
+  it('degrades gracefully when fetchPullHead itself fails', async () => {
+    const container = buildMockContainer({ gitThrowsOnce: true, fetchPullHeadThrows: true });
+    const service = new WhyService(container as never);
+
+    const result = await service.getTimeline(MOCK_WORKSPACE_ID, MOCK_PR_ID, FILE, 1);
+
+    expect(result.events).toEqual([]);
+    expect(result.blame).toBeNull();
+    // Retry never happened — blame/log were only attempted once each.
+    expect(container.git.blame).toHaveBeenCalledTimes(1);
   });
 });
 

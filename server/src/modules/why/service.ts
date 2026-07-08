@@ -36,19 +36,34 @@ export class WhyService {
     if (!repoBasics || !repoBasics.clonePath) {
       return emptyTimeline(file, line, 'Repository not cloned yet.');
     }
-    const ref: RepoRef = { owner: repoBasics.owner, name: repoBasics.name };
+    const repoRef: RepoRef = { owner: repoBasics.owner, name: repoBasics.name };
+
+    // Blame/log the PR's own head_sha explicitly — the shared clone is only
+    // ever synced to the repo's default branch (see GitClient.sync), never to
+    // an arbitrary PR's branch, so omitting the ref would silently reflect
+    // whatever the clone happens to have checked out instead of this PR.
+    const runBlameAndLog = () =>
+      Promise.all([
+        this.container.git.blame(repoRef, file, pull.headSha),
+        this.container.git.log(repoRef, file, pull.headSha),
+      ]);
 
     let blameLines: BlameLine[];
     let commits: GitCommit[];
     try {
-      [blameLines, commits] = await Promise.all([
-        this.container.git.blame(ref, file),
-        this.container.git.log(ref, file),
-      ]);
+      [blameLines, commits] = await runBlameAndLog();
     } catch {
-      // Missing/renamed/binary file, or any other git failure — degrade to
-      // an empty (not erroring) timeline (AC-6).
-      return emptyTimeline(file, line, 'No history available for this line.');
+      // The PR's head_sha may not be present in the shared clone's object
+      // database yet (never fetched). Best-effort fetch it, then retry once.
+      try {
+        await this.container.git.fetchPullHead(repoRef, pull.number);
+        [blameLines, commits] = await runBlameAndLog();
+      } catch {
+        // Still missing (renamed/binary file, unreachable remote, or any
+        // other git failure) — degrade to an empty timeline, not an error
+        // (AC-6).
+        return emptyTimeline(file, line, 'No history available for this line.');
+      }
     }
 
     if (commits.length === 0) {
