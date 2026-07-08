@@ -3,7 +3,18 @@
     "intent": "Intent",
     "blast": "Blast radius",
     "risks": "Risks",
-    "history": "PR history"
+    "history": "PR history",
+    "brief": {
+      "label": "Why + Risk Brief",
+      "what": "What changed",
+      "why": "Why it's needed",
+      "riskLevel": "Merge risk",
+      "reviewFocus": "Where to focus",
+      "generate": "Generate brief",
+      "generating": "Generating…",
+      "regenerate": "Regenerate",
+      "regenerating": "Regenerating…"
+    }
   },
   "noRisks": "No notable risks flagged.",
   "noHistory": "No prior PRs overlap these files.",

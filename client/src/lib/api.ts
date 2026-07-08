@@ -2,7 +2,7 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
-import type { Onboarding } from "@devdigest/shared";
+import type { Brief, Onboarding } from "@devdigest/shared";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
@@ -89,4 +89,16 @@ export function generateOnboardingTour(
   // Bodyless POST — do NOT pass {} as that would set Content-Type: application/json
   // with an empty body, which Fastify rejects when no body schema is declared.
   return api.post(`/repos/${repoId}/onboarding`);
+}
+
+// ---- PR Brief API functions ----
+
+export function fetchPrBrief(prId: string): Promise<Brief | null> {
+  return api.get<Brief>(`/pulls/${prId}/brief`).catch((e: ApiError) =>
+    e.status === 404 ? null : Promise.reject(e)
+  );
+}
+
+export function generateBrief(prId: string, opts?: { force?: boolean }): Promise<Brief> {
+  return api.post<Brief>(`/pulls/${prId}/brief`, opts);
 }

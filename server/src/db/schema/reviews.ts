@@ -65,6 +65,14 @@ export const prBrief = pgTable('pr_brief', {
     .primaryKey()
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
+  model: text('model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  costUsd: doublePrecision('cost_usd'),
+  // DB-level DEFAULT now() is required for migration safety: pr_brief may already
+  // contain rows. The repository always writes generatedAt: new Date() explicitly
+  // on every upsert; the default applies only to the ALTER TABLE ADD COLUMN step.
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().default(sql`now()`),
 });
 
 /**
