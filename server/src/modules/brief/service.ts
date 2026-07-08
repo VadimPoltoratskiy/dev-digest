@@ -144,9 +144,18 @@ export class BriefService {
       opts.logger,
     );
 
+    // Stamp with degraded signal if the PR was too large to fully summarise (SPEC-02 AC-1/AC-2)
+    const finalBrief: Brief = smartDiff.split_suggestion.too_big
+      ? {
+          ...validatedBrief,
+          degraded: true,
+          degraded_reason: `PR too large (${smartDiff.split_suggestion.total_lines} lines) — this summary may not reflect all changes`,
+        }
+      : validatedBrief;
+
     // --- Persist (AC-5, AC-8) ------------------------------------------------
     await upsertBrief(db, prId, {
-      json: validatedBrief,
+      json: finalBrief,
       model,
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
@@ -166,7 +175,7 @@ export class BriefService {
       'brief: generated PR brief',
     );
 
-    return validatedBrief;
+    return finalBrief;
   }
 
   // ---- Private helpers -------------------------------------------------------

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { SectionLabel, MonoLink } from "@devdigest/ui";
+import { Icon, SectionLabel, MonoLink } from "@devdigest/ui";
 import { usePrBrief, useGenerateBrief } from "../../../../../../../lib/hooks/brief";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
 import { s } from "./styles";
@@ -52,6 +52,12 @@ export function PrBriefCard({ prId, repoFullName, headSha }: PrBriefCardProps) {
     <section>
       <SectionLabel icon="FileText">{t("block.brief.label")}</SectionLabel>
       <div style={s.card}>
+        {data.degraded && (
+          <div role="status" style={s.degradedBanner}>
+            <Icon.AlertTriangle size={14} style={{ flexShrink: 0 }} />
+            <span>{t("block.brief.oversizedNotice", { reason: data.degraded_reason })}</span>
+          </div>
+        )}
         {/* What */}
         <div style={s.sectionLabel}>{t("block.brief.what")}</div>
         <p style={s.body}>{data.what}</p>

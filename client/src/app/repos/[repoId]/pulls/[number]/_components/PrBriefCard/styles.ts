@@ -147,4 +147,15 @@ export const s = {
     width: "100%",
     textAlign: "center" as const,
   } satisfies CSSProperties,
+  degradedBanner: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 6,
+    background: "var(--warn-bg)",
+    color: "var(--warn)",
+    fontSize: 13,
+    lineHeight: 1.4,
+  } satisfies CSSProperties,
 } as const;

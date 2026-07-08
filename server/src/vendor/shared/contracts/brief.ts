@@ -82,6 +82,11 @@ export const Brief = z.object({
   risk_level: z.enum(['low', 'medium', 'high']), // Overall merge-risk verdict
   risks: z.array(Risk),                           // Individual risks — file_refs validated
   review_focus: z.array(z.string()),              // Ordered areas/files to prioritise
+  // Optional oversized-PR signals. Absent unless too_big was true at generation time;
+  // `degraded: true` + `degraded_reason` when the PR exceeded the diff-size cap,
+  // so the UI can show a caveat banner instead of presenting the summary as complete.
+  degraded: z.boolean().optional(),       // NEW — absent unless too_big was true at generation time
+  degraded_reason: z.string().optional(), // NEW — non-empty string with total_lines when degraded is true
 });
 export type Brief = z.infer<typeof Brief>;
 
