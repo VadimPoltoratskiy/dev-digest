@@ -109,6 +109,7 @@ describe('why routes: GET /pulls/:id/why', () => {
       MOCK_PR_ID,
       'src/a.ts',
       10,
+      undefined,
     );
   });
 
@@ -140,6 +141,59 @@ describe('why routes: GET /pulls/:id/why', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/pulls/${MOCK_PR_ID}/why?file=src%2Fa.ts&line=not-a-number`,
+    });
+
+    expect(response.statusCode).toBe(422);
+  });
+
+  it('returns HTTP 200 and passes the ref to the service (AC-2, AC-8)', async () => {
+    const VALID_SHA = 'aabbccdd1122334455667788990011223344aabb';
+    const timeline = {
+      file: 'src/a.ts',
+      line: 1,
+      blame: null,
+      events: [],
+      summary: '0 commits touch this file.',
+    };
+    (WhyService.prototype.getTimeline as Mock).mockResolvedValue(timeline);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/why?file=src%2Fa.ts&line=1&ref=${VALID_SHA}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(WhyService.prototype.getTimeline).toHaveBeenCalledWith(
+      MOCK_WORKSPACE_ID,
+      MOCK_PR_ID,
+      'src/a.ts',
+      1,
+      VALID_SHA,
+    );
+  });
+
+  it('returns HTTP 422 when ref is an option-injection attempt (AC-8)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/why?file=src%2Fa.ts&line=1&ref=--upload-pack%3Devil`,
+    });
+
+    expect(response.statusCode).toBe(422);
+  });
+
+  it('returns HTTP 422 when ref is too short (AC-8)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/why?file=src%2Fa.ts&line=1&ref=abc123`,
+    });
+
+    expect(response.statusCode).toBe(422);
+  });
+
+  it('returns HTTP 422 when ref is uppercase hex (AC-8)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/pulls/${MOCK_PR_ID}/why?file=src%2Fa.ts&line=1&ref=AABBCCDD1122334455667788990011223344AABB`,
     });
 
     expect(response.statusCode).toBe(422);

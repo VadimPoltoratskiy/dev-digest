@@ -15,6 +15,8 @@ export interface WhyDrawerProps {
   repoFullName?: string | null;
   file: string;
   line: number;
+  /** git revision SHA (not React's ref prop) */
+  gitRef?: string;
   onClose: () => void;
 }
 
@@ -67,12 +69,12 @@ function EventRow({ event, repoFullName }: { event: WhyEvent; repoFullName?: str
   );
 }
 
-export function WhyDrawer({ prId, repoFullName, file, line, onClose }: WhyDrawerProps) {
+export function WhyDrawer({ prId, repoFullName, file, line, gitRef, onClose }: WhyDrawerProps) {
   const t = useTranslations("brief");
-  const { data, isLoading } = useWhyTimeline(prId, file, line);
+  const { data, isLoading } = useWhyTimeline(prId, file, line, gitRef);
 
   return (
-    <Drawer title={t("why.title")} subtitle={`${file}:${line}`} onClose={onClose}>
+    <Drawer title={t("why.title")} subtitle={gitRef ? `${file}:${line} @ ${gitRef.slice(0, 7)}` : `${file}:${line}`} onClose={onClose}>
       {isLoading && <div style={s.empty}>…</div>}
       {!isLoading && data && data.events.length === 0 && (
         <div style={s.empty}>{data.summary || t("why.noHistory")}</div>

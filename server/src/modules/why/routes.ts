@@ -19,6 +19,8 @@ import { WhyService } from './service.js';
 const WhyQuery = z.object({
   file: z.string().min(1),
   line: z.coerce.number().int().positive(),
+  /** Optional git revision SHA — must be a full 40-char lowercase hex string. */
+  ref: z.string().regex(/^[0-9a-f]{40}$/).optional(),
 });
 
 export default async function whyRoutes(appBase: FastifyInstance) {
@@ -31,8 +33,8 @@ export default async function whyRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, querystring: WhyQuery } },
     async (req): Promise<WhyTimeline> => {
       const { workspaceId } = await getContext(container, req);
-      const { file, line } = req.query;
-      return service.getTimeline(workspaceId, req.params.id, file, line);
+      const { file, line, ref } = req.query;
+      return service.getTimeline(workspaceId, req.params.id, file, line, ref);
     },
   );
 }

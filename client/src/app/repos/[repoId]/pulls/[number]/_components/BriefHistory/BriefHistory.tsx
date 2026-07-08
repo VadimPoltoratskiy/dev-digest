@@ -2,9 +2,11 @@
 
 import React, { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Icon } from "@devdigest/ui";
+import { Icon, MonoLink } from "@devdigest/ui";
 import type { BriefTimelineEntry } from "@devdigest/shared";
 import { useBriefHistory } from "../../../../../../../lib/hooks/brief";
+import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { WhyDrawer } from "../WhyDrawer";
 import { s } from "./styles";
 
 /**
@@ -20,7 +22,18 @@ const RISK_COLOR: Record<string, string> = {
   high: "var(--crit, #f87171)",
 };
 
-function Row({ entry }: { entry: BriefTimelineEntry }) {
+/** Tracks which {file, ref} pair is currently open in the WhyDrawer. */
+type OpenWhyRef = { file: string; ref: string } | null;
+
+function Row({
+  entry,
+  repoFullName,
+  onOpenWhy,
+}: {
+  entry: BriefTimelineEntry;
+  repoFullName?: string | null;
+  onOpenWhy: (pair: { file: string; ref: string }) => void;
+}) {
   const t = useTranslations("brief");
   const [open, setOpen] = useState(false);
 
@@ -54,9 +67,40 @@ function Row({ entry }: { entry: BriefTimelineEntry }) {
             <>
               <div style={s.sectionLabel}>{t("block.risks")}</div>
               {entry.brief.risks.map((risk, i) => (
-                <p key={i} style={s.body}>
-                  <strong>{risk.title}</strong> — {risk.explanation}
-                </p>
+                <div key={i}>
+                  <p style={s.body}>
+                    <strong>{risk.title}</strong> — {risk.explanation}
+                  </p>
+                  {risk.file_refs.length > 0 && (
+                    <>
+                      <div style={s.sectionLabel}>{t("block.brief.history.fileRefs")}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {risk.file_refs.map((path, j) => (
+                          // Vendored MonoLink can't combine a real href (new-tab
+                          // navigation) with a custom onClick — when href is set it
+                          // hardcodes its own onClick to stopPropagation only. So the
+                          // path itself opens the WhyDrawer (AC-7), and — when
+                          // repoFullName is available — a separate small link opens
+                          // the file on GitHub (AC-6), without forking vendor/ui.
+                          <span
+                            key={j}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
+                            title={t("block.brief.history.openBlame")}
+                          >
+                            <MonoLink onClick={() => onOpenWhy({ file: path, ref: entry.head_sha })}>
+                              {path}
+                            </MonoLink>
+                            {repoFullName && (
+                              <MonoLink href={githubBlobUrl(repoFullName, entry.head_sha, path)}>
+                                <Icon.ExternalLink size={11} />
+                              </MonoLink>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               ))}
             </>
           )}
@@ -66,9 +110,10 @@ function Row({ entry }: { entry: BriefTimelineEntry }) {
   );
 }
 
-export function BriefHistory({ prId }: { prId: string }) {
+export function BriefHistory({ prId, repoFullName }: { prId: string; repoFullName?: string | null }) {
   const t = useTranslations("brief");
   const { data, isLoading } = useBriefHistory(prId);
+  const [openWhy, setOpenWhy] = useState<OpenWhyRef>(null);
 
   if (isLoading) return null;
 
@@ -81,8 +126,23 @@ export function BriefHistory({ prId }: { prId: string }) {
   return (
     <div style={s.container}>
       {entries.map((entry) => (
-        <Row key={entry.head_sha} entry={entry} />
+        <Row
+          key={entry.head_sha}
+          entry={entry}
+          repoFullName={repoFullName}
+          onOpenWhy={setOpenWhy}
+        />
       ))}
+      {openWhy && (
+        <WhyDrawer
+          prId={prId}
+          repoFullName={repoFullName}
+          file={openWhy.file}
+          line={1}
+          gitRef={openWhy.ref}
+          onClose={() => setOpenWhy(null)}
+        />
+      )}
     </div>
   );
 }

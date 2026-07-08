@@ -11,10 +11,11 @@ export function useWhyTimeline(
   prId: string | null | undefined,
   file: string | null | undefined,
   line: number | null | undefined,
+  ref?: string,
 ) {
   return useQuery<WhyTimeline>({
-    queryKey: ["why-timeline", prId, file, line],
-    queryFn: () => fetchWhyTimeline(prId!, file!, line!),
+    queryKey: ["why-timeline", prId, file, line, ...(ref ? [ref] : [])],
+    queryFn: () => fetchWhyTimeline(prId!, file!, line!, ref),
     enabled: !!prId && !!file && line != null,
   });
 }

@@ -33,16 +33,22 @@ export const pullRequests = pgTable(
   }),
 );
 
-export const prFiles = pgTable('pr_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  path: text('path').notNull(),
-  additions: integer('additions').notNull().default(0),
-  deletions: integer('deletions').notNull().default(0),
-  patch: text('patch'),
-});
+export const prFiles = pgTable(
+  'pr_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    additions: integer('additions').notNull().default(0),
+    deletions: integer('deletions').notNull().default(0),
+    patch: text('patch'),
+  },
+  (t) => ({
+    pathIdx: index('pr_files_path_idx').on(t.path),
+  }),
+);
 
 export const prCommits = pgTable('pr_commits', {
   id: uuid('id').primaryKey().defaultRandom(),

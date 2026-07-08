@@ -29,6 +29,7 @@ export class WhyService {
     prId: string,
     file: string,
     line: number,
+    ref?: string,
   ): Promise<WhyTimeline> {
     const pull = await this.loadPull(workspaceId, prId); // 404 guard + workspace scope
 
@@ -38,14 +39,16 @@ export class WhyService {
     }
     const repoRef: RepoRef = { owner: repoBasics.owner, name: repoBasics.name };
 
-    // Blame/log the PR's own head_sha explicitly — the shared clone is only
-    // ever synced to the repo's default branch (see GitClient.sync), never to
-    // an arbitrary PR's branch, so omitting the ref would silently reflect
-    // whatever the clone happens to have checked out instead of this PR.
+    // When a historical ref is supplied (e.g. from a BriefHistory entry), use
+    // it directly; otherwise default to the PR's current head_sha. The shared
+    // clone only tracks the default branch — so an explicit ref is always
+    // required to produce accurate blame output for this PR's code state.
+    const effectiveRef = ref ?? pull.headSha;
+
     const runBlameAndLog = () =>
       Promise.all([
-        this.container.git.blame(repoRef, file, pull.headSha),
-        this.container.git.log(repoRef, file, pull.headSha),
+        this.container.git.blame(repoRef, file, effectiveRef),
+        this.container.git.log(repoRef, file, effectiveRef),
       ]);
 
     let blameLines: BlameLine[];

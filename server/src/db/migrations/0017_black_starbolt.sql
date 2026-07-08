@@ -1,0 +1,1 @@
+CREATE INDEX "pr_files_path_idx" ON "pr_files" USING btree ("path");

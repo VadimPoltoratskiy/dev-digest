@@ -138,3 +138,41 @@ describe("WhyDrawer — empty history", () => {
     expect(screen.getByText("No commits found for this line.")).toBeInTheDocument();
   });
 });
+
+const GIT_REF = "a1b2c3d4e5f60000000000000000000000000000";
+
+describe("WhyDrawer — gitRef subtitle (AC-9)", () => {
+  it("shows subtitle with short sha when gitRef is provided", () => {
+    vi.mocked(useWhyTimeline).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as ReturnType<typeof useWhyTimeline>);
+
+    renderDrawer({ gitRef: GIT_REF, file: "src/foo.ts", line: 1 });
+
+    expect(screen.getByText("src/foo.ts:1 @ a1b2c3d")).toBeInTheDocument();
+  });
+
+  it("shows subtitle without sha when gitRef is absent", () => {
+    vi.mocked(useWhyTimeline).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as ReturnType<typeof useWhyTimeline>);
+
+    renderDrawer({ file: "src/foo.ts", line: 1 });
+
+    expect(screen.getByText("src/foo.ts:1")).toBeInTheDocument();
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+  });
+
+  it("forwards gitRef as the fourth argument to useWhyTimeline", () => {
+    vi.mocked(useWhyTimeline).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as ReturnType<typeof useWhyTimeline>);
+
+    renderDrawer({ prId: "pr-1", file: "src/foo.ts", line: 1, gitRef: GIT_REF });
+
+    expect(useWhyTimeline).toHaveBeenCalledWith("pr-1", "src/foo.ts", 1, GIT_REF);
+  });
+});

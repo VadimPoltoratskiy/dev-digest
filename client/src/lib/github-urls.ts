@@ -17,6 +17,11 @@ export function githubPrUrl(repoFullName: string, number: number): string {
   return `${HOST}/${repoFullName}/pull/${number}`;
 }
 
+/** https://github.com/{login}.png — GitHub's profile-picture endpoint. */
+export function githubAvatarUrl(login: string): string {
+  return `${HOST}/${encodeURIComponent(login)}.png`;
+}
+
 /**
  * https://github.com/{owner}/{repo}/blob/{sha}/{file}#L{start}[-L{end}]
  * `sha` pins the link to the PR's head so line numbers stay accurate.

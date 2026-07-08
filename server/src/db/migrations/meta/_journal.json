@@ -120,6 +120,13 @@
       "when": 1783513637719,
       "tag": "0016_nifty_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783534152629,
+      "tag": "0017_black_starbolt",
+      "breakpoints": true
     }
   ]
 }

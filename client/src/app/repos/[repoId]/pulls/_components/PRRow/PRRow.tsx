@@ -4,10 +4,11 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import { Icon, Badge, CircularScore } from "@devdigest/ui";
 import type { PrMeta } from "@/lib/types";
 import { RunCostBadge } from "@/components/RunCostBadge";
 import { FindingsCounter } from "@/components/FindingsCounter";
+import { GithubAvatar } from "@/components/GithubAvatar";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
@@ -36,7 +37,7 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
         </div>
       </div>
       <div style={s.authorCell}>
-        <Avatar name={pr.author} size={18} />
+        <GithubAvatar login={pr.author} size={18} />
         {pr.author}
       </div>
       <div>

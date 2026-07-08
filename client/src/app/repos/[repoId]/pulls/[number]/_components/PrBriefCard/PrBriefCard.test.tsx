@@ -26,6 +26,16 @@ vi.mock("../../../../../../../lib/hooks/brief", () => ({
   useBriefHistory: vi.fn(),
 }));
 
+// review_focus items render as <ReviewFocusItem>, which reads repoId via
+// next/navigation's useParams and lazily fetches via usePriorPrs — both need
+// mocking since this test renders outside a real App Router / QueryClient.
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ repoId: "test-repo-id" }),
+}));
+vi.mock("@/lib/hooks/pr-files", () => ({
+  usePriorPrs: vi.fn(() => ({ data: undefined, isLoading: false })),
+}));
+
 import { PrBriefCard } from "./PrBriefCard";
 import { usePrBrief, useGenerateBrief, useBriefHistory } from "../../../../../../../lib/hooks/brief";
 

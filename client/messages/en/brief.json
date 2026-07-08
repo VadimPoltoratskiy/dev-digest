@@ -9,7 +9,15 @@
       "what": "What changed",
       "why": "Why it's needed",
       "riskLevel": "Merge risk",
-      "reviewFocus": "Where to focus",
+      "reviewFocus": {
+        "label":      "Where to focus",
+        "expand":     "Show prior PRs",
+        "collapse":   "Hide prior PRs",
+        "loading":    "Loading prior PRs…",
+        "noPriorPrs": "No prior PR history recorded for this path.",
+        "priorPrs":   "Prior PRs touching this file",
+        "truncation": "Showing {shown} of {total}"
+      },
       "generate": "Generate brief",
       "generating": "Generating…",
       "regenerate": "Regenerate",
@@ -19,7 +27,9 @@
         "label": "Brief history",
         "show": "View history",
         "hide": "Hide history",
-        "empty": "No prior generations for this PR."
+        "empty": "No prior generations for this PR.",
+        "fileRefs": "Files referenced",
+        "openBlame": "Open blame history at this commit"
       }
     }
   },

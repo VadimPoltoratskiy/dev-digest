@@ -354,6 +354,91 @@ describe('WhyService.getTimeline: workspace-scope guard (AC-5)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// AC-1 backward compat (ref defaults to pull.headSha when omitted)
+// ---------------------------------------------------------------------------
+
+describe('WhyService.getTimeline: backward compat — omitting ref uses pull.headSha (AC-1)', () => {
+  it('calls blame and log with pull.headSha when no ref is provided', async () => {
+    const container = buildMockContainer({
+      blame: [{ line: 1, sha: 'sha-new', author: 'alice', date: '2026-07-01T00:00:00.000Z', summary: 'Commit' }],
+      log: [{ sha: 'sha-new', message: 'Commit', author: 'alice', date: '2026-07-01T00:00:00.000Z' }],
+    });
+    const service = new WhyService(container as never);
+
+    await service.getTimeline(MOCK_WORKSPACE_ID, MOCK_PR_ID, FILE, 1);
+
+    expect(container.git.blame).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      MOCK_HEAD_SHA,
+    );
+    expect(container.git.log).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      MOCK_HEAD_SHA,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-2: ref-scoped blame/log (historical SHA)
+// ---------------------------------------------------------------------------
+
+const HISTORICAL_SHA = 'aabbccdd1122334455667788990011223344aabb';
+
+describe('WhyService.getTimeline: ref-scoped blame/log (AC-2)', () => {
+  it('calls blame and log with the supplied ref, not pull.headSha', async () => {
+    const container = buildMockContainer({
+      blame: [{ line: 1, sha: HISTORICAL_SHA, author: 'alice', date: '2026-07-01T00:00:00.000Z', summary: 'Historical commit' }],
+      log: [{ sha: HISTORICAL_SHA, message: 'Historical commit', author: 'alice', date: '2026-07-01T00:00:00.000Z' }],
+    });
+    const service = new WhyService(container as never);
+
+    await service.getTimeline(MOCK_WORKSPACE_ID, MOCK_PR_ID, FILE, 1, HISTORICAL_SHA);
+
+    expect(container.git.blame).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      HISTORICAL_SHA,
+    );
+    expect(container.git.log).toHaveBeenCalledWith(
+      { owner: 'acme', name: 'payments-api' },
+      FILE,
+      HISTORICAL_SHA,
+    );
+    // Must NOT be called with MOCK_HEAD_SHA
+    expect(container.git.blame).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      MOCK_HEAD_SHA,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-3: fetch-and-retry for arbitrary ref
+// ---------------------------------------------------------------------------
+
+describe('WhyService.getTimeline: fetch-and-retry for historical ref (AC-3)', () => {
+  it('calls fetchPullHead once and retries when a supplied ref is not in the object database', async () => {
+    const container = buildMockContainer({
+      gitThrowsOnce: true,
+      blame: [{ line: 1, sha: HISTORICAL_SHA, author: 'alice', date: '2026-07-01T00:00:00.000Z', summary: 'Historical commit' }],
+      log: [{ sha: HISTORICAL_SHA, message: 'Historical commit', author: 'alice', date: '2026-07-01T00:00:00.000Z' }],
+    });
+    const service = new WhyService(container as never);
+
+    const result = await service.getTimeline(MOCK_WORKSPACE_ID, MOCK_PR_ID, FILE, 1, HISTORICAL_SHA);
+
+    expect(container.git.fetchPullHead).toHaveBeenCalledTimes(1);
+    expect(container.git.blame).toHaveBeenCalledTimes(2);
+    expect(container.git.log).toHaveBeenCalledTimes(2);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]!.sha).toBe(HISTORICAL_SHA);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AC-6: degrade paths
 // ---------------------------------------------------------------------------
 
