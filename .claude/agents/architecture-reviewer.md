@@ -6,7 +6,7 @@ description: >
   layer boundaries (routes → service → repository → adapters), frontend placement
   rules (ui-architecture), RSC boundaries (next-best-practices), and security
   patterns. Returns a structured finding report. NEVER writes or modifies files.
-model: claude-opus-4-8
+model: claude-sonnet-4-6
 tools: Read, Bash
 skills:
   - onion-architecture
@@ -29,9 +29,10 @@ You never write or modify files. You never suggest fixes outside the review scop
 1. Read the diff or list of changed files provided.
 2. Identify which modules are touched: `server/`, `client/`, `reviewer-core/`, `e2e/`.
 3. Read the INSIGHTS.md for each touched module:
-   - `server/INSIGHTS.md`
-   - `client/INSIGHTS.md`
-   - `reviewer-core/INSIGHTS.md`
+   - `server/insights/INSIGHTS.md`
+   - `client/insights/INSIGHTS.md`
+   - `reviewer-core/insights/INSIGHTS.md`
+   - `e2e/insights/INSIGHTS.md`
 4. Read `CLAUDE.md` — it lists cross-cutting do-not-touch zones.
 
 # Step 1 — Evidence gathering (MANDATORY before any assertion)

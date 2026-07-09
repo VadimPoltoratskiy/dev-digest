@@ -3,7 +3,35 @@
     "intent": "Intent",
     "blast": "Blast radius",
     "risks": "Risks",
-    "history": "PR history"
+    "history": "PR history",
+    "brief": {
+      "label": "Why + Risk Brief",
+      "what": "What changed",
+      "why": "Why it's needed",
+      "riskLevel": "Merge risk",
+      "reviewFocus": {
+        "label":      "Where to focus",
+        "expand":     "Show prior PRs",
+        "collapse":   "Hide prior PRs",
+        "loading":    "Loading prior PRs…",
+        "noPriorPrs": "No prior PR history recorded for this path.",
+        "priorPrs":   "Prior PRs touching this file",
+        "truncation": "Showing {shown} of {total}"
+      },
+      "generate": "Generate brief",
+      "generating": "Generating…",
+      "regenerate": "Regenerate",
+      "regenerating": "Regenerating…",
+      "oversizedNotice": "{reason}",
+      "history": {
+        "label": "Brief history",
+        "show": "View history",
+        "hide": "Hide history",
+        "empty": "No prior generations for this PR.",
+        "fileRefs": "Files referenced",
+        "openBlame": "Open blame history at this commit"
+      }
+    }
   },
   "noRisks": "No notable risks flagged.",
   "noHistory": "No prior PRs overlap these files.",
@@ -14,6 +42,10 @@
     "title": "git-why",
     "blame": "blame",
     "noHistory": "No history available for this line.",
-    "noCommits": "No commits found for this line."
+    "noCommits": "No commits found for this line.",
+    "trigger": "Show blame history for this line",
+    "rationale": "Rationale",
+    "risks": "Risks flagged in this file",
+    "viewPr": "View PR #{number}"
   }
 }

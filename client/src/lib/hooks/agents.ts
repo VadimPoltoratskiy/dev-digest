@@ -89,3 +89,21 @@ export function useProviderModels(provider: Provider | null | undefined) {
     staleTime: 5 * 60_000,
   });
 }
+
+/**
+ * Replace the agent's attached Project Context document paths, in order
+ * (order = injection order). Full-array replace, same pattern as
+ * `useSetAgentSkills`.
+ */
+export function useSetAgentContext() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, paths }: { agentId: string; paths: string[] }) =>
+      api.patch<Agent>(`/agents/${agentId}/context`, { paths }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.setQueryData(["agent", data.id], data);
+      qc.invalidateQueries({ queryKey: ["context"] });
+    },
+  });
+}

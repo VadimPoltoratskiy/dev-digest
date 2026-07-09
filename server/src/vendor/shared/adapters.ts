@@ -221,8 +221,15 @@ export interface GitClient {
    * Returns an empty array when the two refs resolve to the same commit.
    */
   diffNameOnly(repo: RepoRef, base: string, head: string): Promise<string[]>;
-  blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
-  log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
+  /**
+   * `ref` (SPEC-04): the shared clone is only ever synced to the repo's
+   * *default* branch (see `sync()`), never to an arbitrary PR's branch — so
+   * blaming/logging without a ref would silently reflect whatever the clone
+   * happens to have checked out, not the PR under review. Callers needing
+   * blame/log for a specific PR MUST pass its head_sha here.
+   */
+  blame(repo: RepoRef, path: string, ref?: string): Promise<BlameLine[]>;
+  log(repo: RepoRef, path?: string, ref?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }

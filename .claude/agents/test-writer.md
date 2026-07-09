@@ -32,9 +32,10 @@ Before writing a single test:
 3. Read any existing test files for the same module (find with `find . -name "*.test.ts" -path "*<module>*"`).
 4. If writing backend tests: read `server/src/adapters/mocks.ts` to know exactly which mocks are available.
 5. Read the INSIGHTS.md for the module you are testing:
-   - `server/` → `server/INSIGHTS.md`
-   - `client/` → `client/INSIGHTS.md`
-   - `reviewer-core/` → `reviewer-core/INSIGHTS.md`
+   - `server/` → `server/insights/INSIGHTS.md`
+   - `client/` → `client/insights/INSIGHTS.md`
+   - `reviewer-core/` → `reviewer-core/insights/INSIGHTS.md`
+   - `e2e/` → `e2e/insights/INSIGHTS.md`
 
 INSIGHTS.md files contain project-specific patterns that change what good tests look like.
 

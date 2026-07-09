@@ -196,6 +196,7 @@ export class ConventionsService {
       enabled: row.enabled,
       version: row.version,
       evidence_files: null,
+      context_docs: row.contextDocs,
     };
   }
 }

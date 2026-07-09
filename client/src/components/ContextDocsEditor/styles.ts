@@ -1,0 +1,51 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  wrap: { maxWidth: 640 } satisfies CSSProperties,
+  header: { marginBottom: 20 } satisfies CSSProperties,
+  h2: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
+  hint: { fontSize: 13, color: "var(--text-muted)", marginTop: 4 } satisfies CSSProperties,
+  emptyBox: {
+    padding: "32px 0",
+    textAlign: "center" as const,
+    color: "var(--text-muted)",
+    fontSize: 14,
+  } satisfies CSSProperties,
+  docRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    marginBottom: 8,
+  } satisfies CSSProperties,
+  docPath: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "var(--font-mono, monospace)",
+    whiteSpace: "nowrap" as const,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  } satisfies CSSProperties,
+  orderBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "var(--text-muted)",
+    display: "flex",
+    padding: 3,
+    borderRadius: 4,
+  } satisfies CSSProperties,
+  addSection: { marginTop: 20 } satisfies CSSProperties,
+  filterInput: {
+    width: "100%",
+    padding: "8px 12px",
+    fontSize: 13,
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+} as const;

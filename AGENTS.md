@@ -42,9 +42,9 @@ cd e2e && ./scripts/e2e.sh     # hermetic browser e2e
 - `.github/workflows/` — CI workflows; changes need explicit approval.
 
 ## Read when
-- Touching API routes or DI → read `server/README.md`
-- Touching review pipeline → read `reviewer-core/README.md`
-- Touching UI routes or data hooks → read `client/README.md`
-- Running e2e → read `e2e/README.md`
-- Before working in a module → read that module's `INSIGHTS.md`; treat as high-confidence guidance
-- On session end → run `/engineering-insights` to update the relevant module's `INSIGHTS.md`; do not skip
+- Touching API routes or DI → read `server/docs/README.md`
+- Touching review pipeline → read `reviewer-core/docs/README.md`
+- Touching UI routes or data hooks → read `client/docs/README.md`
+- Running e2e → read `e2e/docs/README.md`
+- Before working in a module → read that module's `insights/INSIGHTS.md`; treat as high-confidence guidance
+- On session end → run `/engineering-insights` to update the relevant module's `insights/INSIGHTS.md`; do not skip

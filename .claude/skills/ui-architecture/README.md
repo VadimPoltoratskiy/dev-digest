@@ -77,5 +77,5 @@ It codifies the client package's directory layout and placement decisions in a s
 ### Project-Internal Sources
 
 - **`client/CLAUDE.md`** (`dev-digest/client/CLAUDE.md`) — Conventions section: thin pages, `_components/` prefix, API call routing via `lib/api.ts`, TanStack Query requirement, i18n string placement.
-- **`client/README.md`** (`dev-digest/client/README.md`) — UI route map and testing approach.
+- **`client/docs/README.md`** (`dev-digest/client/docs/README.md`) — UI route map and testing approach.
 - **`client/src/`** — Actual directory structure traversal and component inspection (`FindingsCounter/`, `diff-viewer/`, `RunTraceDrawer/`, `AgentEditor/`, `app-shell/`) used to verify conventions against the living codebase.

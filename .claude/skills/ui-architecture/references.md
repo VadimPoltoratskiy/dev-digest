@@ -42,8 +42,8 @@ Technical sources used during the creation of this skill.
 - **Path:** `dev-digest/client/CLAUDE.md`
 - **Content used:** Conventions section (thin pages, `_components/` prefix, API call routing via `lib/api.ts`, TanStack Query requirement, i18n string placement).
 
-### `client/README.md`
-- **Path:** `dev-digest/client/README.md`
+### `client/docs/README.md`
+- **Path:** `dev-digest/client/docs/README.md`
 - **Content used:** UI route map, stack description, testing approach (jsdom, fetch mocked).
 
 ### `client/src/` — Live codebase observation

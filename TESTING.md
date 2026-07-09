@@ -52,7 +52,7 @@ Docker is unavailable.
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,
 and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 
-**e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
+**e2e web** — see `e2e/docs/README.md`. Deterministic agent-browser flows over the
 main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
 No `chat`, no model key.
 

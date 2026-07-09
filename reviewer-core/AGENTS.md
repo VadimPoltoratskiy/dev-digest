@@ -38,7 +38,7 @@ src/
 - `reduce()` / `toReview()` exist in the starter code but are activated by later lessons (L06, L07).
 
 ## Read when
-- Changing prompt assembly → `prompt.ts` is the single source; also read `docs/agent-prompts/`
+- Changing prompt assembly → `prompt.ts` is the single source; also read the root-level `docs/agent-prompts/` (the built-in review-agent prompt library — not this module's own `reviewer-core/docs/`, which holds this module's README)
 - Changing grounding logic → `grounding.ts` + its tests
-- Session start → read `INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
-- Session end → run `/engineering-insights` to update `INSIGHTS.md`; do not skip this step.
+- Session start → read `insights/INSIGHTS.md`; treat it as high-confidence guidance; before touching code confirm by summarizing the top 3 most relevant points aloud.
+- Session end → run `/engineering-insights` to update `insights/INSIGHTS.md`; do not skip this step.

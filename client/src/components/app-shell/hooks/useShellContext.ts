@@ -12,6 +12,7 @@ import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
+  onAddRepo: () => void;
 }
 
 /**
@@ -19,7 +20,7 @@ interface ShellContextOptions {
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
  * selection / add / removal actions.
  */
-export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): ShellContext {
+export function useShellContext({ onOpenCommandPalette, onAddRepo }: ShellContextOptions): ShellContext {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -36,8 +37,6 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
     [setRepoId, router],
   );
 
-  const onAddRepo = React.useCallback(() => router.push("/onboarding"), [router]);
-
   const onRemoveRepo = React.useCallback(
     (id: string) => {
       const target = repos.find((r) => r.id === id);
@@ -49,12 +48,16 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
         onSuccess: () => {
           if (repoId === id) {
             const next = repos.find((r) => r.id !== id);
-            router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
+            if (next) {
+              router.push(`/repos/${next.id}/pulls`);
+            } else {
+              onAddRepo();
+            }
           }
         },
       });
     },
-    [repos, repoId, t, deleteRepo, router],
+    [repos, repoId, t, deleteRepo, router, onAddRepo],
   );
 
   return React.useMemo<ShellContext>(

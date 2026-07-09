@@ -183,6 +183,16 @@ export class AgentsService {
     return this.skillLinks(agentId);
   }
 
+  /** Replace the agent's attached Project Context document paths, in order. */
+  async setContextDocs(
+    workspaceId: string,
+    agentId: string,
+    paths: string[],
+  ): Promise<Agent | undefined> {
+    const row = await this.repo.setContextDocs(workspaceId, agentId, paths);
+    return row ? toAgentDto(row) : undefined;
+  }
+
   /**
    * Dynamic model list from the provider adapter's /models. Degrades gracefully
    * to [] if the provider key is not configured (the editor still renders).

@@ -6,6 +6,7 @@ import type { Skill } from "@devdigest/shared";
 import { useToggleSkill, useRunAllEvalCases } from "../../../../lib/hooks/skills";
 import { ConfigTab } from "./ConfigTab";
 import { PreviewTab } from "./PreviewTab";
+import { ContextTab } from "./ContextTab";
 import { EvalsTab } from "./EvalsTab";
 import { StatsTab } from "./StatsTab";
 import { VersionsTab } from "./VersionsTab";
@@ -14,6 +15,7 @@ import { TYPE_COLORS } from "../SkillsListView/constants";
 const TABS = [
   { key: "config", label: "Config" },
   { key: "preview", label: "Preview" },
+  { key: "context", label: "Context" },
   { key: "evals", label: "Evals" },
   { key: "stats", label: "Stats" },
   { key: "versions", label: "Versions" },
@@ -160,6 +162,7 @@ export function SkillDetailPanel({
           />
         )}
         {tab === "preview" && <PreviewTab skill={skill} />}
+        {tab === "context" && <ContextTab skill={skill} />}
         {tab === "evals" && <EvalsTab skill={skill} />}
         {tab === "stats" && <StatsTab skill={skill} />}
         {tab === "versions" && (

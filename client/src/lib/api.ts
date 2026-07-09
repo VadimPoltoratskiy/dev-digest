@@ -2,6 +2,8 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
+import type { Brief, BriefTimeline, Onboarding, PriorPrList, WhyTimeline } from "@devdigest/shared";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
 
@@ -72,3 +74,51 @@ export const api = {
     apiFetch<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
 };
+
+// ---- Onboarding Tour API functions ----
+
+export function fetchOnboardingTour(
+  repoId: string,
+): Promise<Onboarding & { generatedAt: string }> {
+  return api.get(`/repos/${repoId}/onboarding`);
+}
+
+export function generateOnboardingTour(
+  repoId: string,
+): Promise<Onboarding & { generatedAt: string; degraded?: boolean }> {
+  // Bodyless POST — do NOT pass {} as that would set Content-Type: application/json
+  // with an empty body, which Fastify rejects when no body schema is declared.
+  return api.post(`/repos/${repoId}/onboarding`);
+}
+
+// ---- PR Brief API functions ----
+
+export function fetchPrBrief(prId: string): Promise<Brief | null> {
+  return api.get<Brief>(`/pulls/${prId}/brief`).catch((e: ApiError) =>
+    e.status === 404 ? null : Promise.reject(e)
+  );
+}
+
+export function generateBrief(prId: string, opts?: { force?: boolean }): Promise<Brief> {
+  return api.post<Brief>(`/pulls/${prId}/brief`, opts);
+}
+
+export function fetchBriefHistory(prId: string): Promise<BriefTimeline> {
+  return api.get<BriefTimeline>(`/pulls/${prId}/brief/history`);
+}
+
+// ---- git-why API functions ----
+
+export function fetchWhyTimeline(prId: string, file: string, line: number, ref?: string): Promise<WhyTimeline> {
+  const q = new URLSearchParams({ file, line: String(line) });
+  if (ref) q.set('ref', ref);
+  return api.get<WhyTimeline>(`/pulls/${prId}/why?${q.toString()}`);
+}
+
+// ---- Prior PRs API functions ----
+
+export function fetchPriorPrs(prId: string, path: string): Promise<PriorPrList> {
+  return apiFetch<PriorPrList>(
+    `/pulls/${prId}/files/prior-prs?path=${encodeURIComponent(path)}`,
+  );
+}

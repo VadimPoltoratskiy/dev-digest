@@ -42,7 +42,7 @@ If the mode is ambiguous, ask one clarifying question before proceeding.
 
 For code-to-docs requests, read all relevant files before writing anything:
 
-1. Read the target module's INSIGHTS.md (if it exists) — it contains verified patterns.
+1. Read the target module's `insights/INSIGHTS.md` (if it exists) — it contains verified patterns.
 2. Read all source files named in the request.
 3. For each public function, class, route, or component, note:
    - Its TypeScript signature (exact — copy from the file)
@@ -61,7 +61,7 @@ Follow this decision tree to choose the output file path:
 | Module-level architecture, data flow, component map | `{module}/docs/{topic}.md` |
 | API endpoint reference | `server/docs/api.md` or `docs/api/{feature}.md` |
 | Feature overview (user-facing) | `docs/{feature-name}.md` |
-| Module README update | `{module}/README.md` |
+| Module README update | `{module}/docs/README.md` |
 | Session learnings / battle-tested patterns | Use `engineering-insights` skill instead — not this agent |
 | Agent/skill documentation | `dev-digest/.claude/agents/` or `.claude/skills/{name}/` |
 

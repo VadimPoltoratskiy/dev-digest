@@ -75,26 +75,40 @@ export const Risk = z.object({
 });
 export type Risk = z.infer<typeof Risk>;
 
-export const Risks = z.object({
-  risks: z.array(Risk),
+// ---- PR Brief (structured synthesis of intent + blast + smart-diff) ----
+export const Brief = z.object({
+  what: z.string(),                               // What the PR changes (1 paragraph)
+  why: z.string(),                                // Why it is needed (1 paragraph)
+  risk_level: z.enum(['low', 'medium', 'high']), // Overall merge-risk verdict
+  risks: z.array(Risk),                           // Individual risks — file_refs validated
+  review_focus: z.array(z.string()),              // Ordered areas/files to prioritise
+  // Optional oversized-PR signals. Absent unless too_big was true at generation time;
+  // `degraded: true` + `degraded_reason` when the PR exceeded the diff-size cap,
+  // so the UI can show a caveat banner instead of presenting the summary as complete.
+  degraded: z.boolean().optional(),       // NEW — absent unless too_big was true at generation time
+  degraded_reason: z.string().optional(), // NEW — non-empty string with total_lines when degraded is true
 });
-export type Risks = z.infer<typeof Risks>;
+export type Brief = z.infer<typeof Brief>;
 
-// ---- PR History ----
-export const PrHistoryItem = z.object({
-  pr_number: z.number().int(),
-  title: z.string(),
-  merged_at: z.string(),
-  author: z.string(),
-  files_overlap: z.array(z.string()),
-  notes: z.string(),
+// ---- BriefTimeline (history of Briefs across a PR's commits) ----
+// Named to avoid colliding with the unrelated, already-shipped `WhyTimeline`
+// (git-why per-line blame drawer, contracts/why.ts). One entry per distinct
+// head SHA the PR was briefed at, newest first.
+export const BriefTimelineEntry = z.object({
+  head_sha: z.string(),
+  brief: Brief,
+  model: z.string().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  generated_at: z.string(),
 });
-export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
+export type BriefTimelineEntry = z.infer<typeof BriefTimelineEntry>;
 
-export const PrHistory = z.object({
-  history: z.array(PrHistoryItem),
+export const BriefTimeline = z.object({
+  entries: z.array(BriefTimelineEntry), // newest first
 });
-export type PrHistory = z.infer<typeof PrHistory>;
+export type BriefTimeline = z.infer<typeof BriefTimeline>;
 
 // ---- Smart Diff ----
 export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);
@@ -131,11 +145,3 @@ export const SmartDiff = z.object({
 });
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
-// ---- Composed PR Brief (pr_brief.json) ----
-export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
-  risks: Risks,
-  history: PrHistory,
-});
-export type PrBrief = z.infer<typeof PrBrief>;

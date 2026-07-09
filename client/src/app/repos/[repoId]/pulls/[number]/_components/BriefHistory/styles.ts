@@ -1,0 +1,75 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginTop: 10,
+  } satisfies CSSProperties,
+  row: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    background: "var(--bg-base)",
+  } satisfies CSSProperties,
+  rowHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "8px 12px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left" as const,
+    font: "inherit",
+    color: "inherit",
+  } satisfies CSSProperties,
+  sha: {
+    fontFamily: "var(--font-mono, monospace)",
+    fontSize: 12,
+    color: "var(--text-secondary)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  why: {
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  timestamp: {
+    fontSize: 11,
+    color: "var(--text-muted)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  expanded: {
+    padding: "0 12px 12px",
+    borderTop: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase" as const,
+    color: "var(--text-tertiary)",
+    marginBottom: 4,
+    marginTop: 10,
+  } satisfies CSSProperties,
+  body: {
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
+    fontSize: 13,
+    margin: 0,
+  } satisfies CSSProperties,
+  empty: {
+    fontSize: 12.5,
+    color: "var(--text-muted)",
+    padding: "8px 0",
+  } satisfies CSSProperties,
+} as const;

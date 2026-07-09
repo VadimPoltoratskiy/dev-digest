@@ -50,6 +50,11 @@ const ToggleSkillBody = z.object({
   enabled: z.boolean(),
 });
 
+/** Set/reorder the skill's attached Project Context document paths (full replace). */
+const SetContextDocsBody = z.object({
+  paths: z.array(z.string()),
+});
+
 /** Preview request — raw markdown body + optional metadata hint from the client. */
 const ImportPreviewBody = z.object({
   /** Raw markdown content pasted or fetched from a file/URL. */
@@ -191,6 +196,17 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       const skill = await service.toggle(workspaceId, req.params.id, req.body.enabled);
+      if (!skill) throw new NotFoundError('Skill not found');
+      return skill;
+    },
+  );
+
+  app.patch(
+    '/skills/:id/context',
+    { schema: { params: IdParams, body: SetContextDocsBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.setContextDocs(workspaceId, req.params.id, req.body.paths);
       if (!skill) throw new NotFoundError('Skill not found');
       return skill;
     },

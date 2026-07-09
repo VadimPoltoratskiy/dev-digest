@@ -12,6 +12,12 @@
     "generating": "Generating…"
   },
   "loadError": {
-    "title": "Couldn’t load the onboarding tour"
-  }
+    "title": "Couldn't load the onboarding tour"
+  },
+  "degradedNotice": "Tour generated from limited index data — some sections may be incomplete.",
+  "noKeyNotice": "No AI model key is configured for the Onboarding Tour. Add your OpenRouter API key in Settings to generate this tour.",
+  "noKeySettingsLink": "Go to API Keys",
+  "lastGenerated": "Last generated {date}",
+  "retryError": "Generation failed. Check your API key and try again.",
+  "relatedFiles": "Related files"
 }

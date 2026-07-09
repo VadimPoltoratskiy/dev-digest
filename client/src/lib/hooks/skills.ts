@@ -80,6 +80,23 @@ export function useToggleSkill() {
   });
 }
 
+/**
+ * Replace the skill's attached Project Context document paths, in order.
+ * Full-array replace, same pattern as `useSetAgentSkills`.
+ */
+export function useSetSkillContext() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ skillId, paths }: { skillId: string; paths: string[] }) =>
+      api.patch<Skill>(`/skills/${skillId}/context`, { paths }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["skills"] });
+      qc.setQueryData(["skill", data.id], data);
+      qc.invalidateQueries({ queryKey: ["context"] });
+    },
+  });
+}
+
 export function useDeleteSkill() {
   const qc = useQueryClient();
   return useMutation({

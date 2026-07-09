@@ -118,6 +118,23 @@ export class SkillsRepository {
     return rows.length > 0;
   }
 
+  /**
+   * Replace the skill's attached Project Context document paths, in order.
+   * Full-array replace, same pattern as `AgentsRepository.setContextDocs`.
+   */
+  async setContextDocs(
+    workspaceId: string,
+    id: string,
+    paths: string[],
+  ): Promise<SkillRow | undefined> {
+    const [row] = await this.db
+      .update(t.skills)
+      .set({ contextDocs: paths })
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+      .returning();
+    return row;
+  }
+
   // ---- Version history ----
 
   async listVersions(workspaceId: string, skillId: string) {

@@ -17,6 +17,9 @@ export const skills = pgTable('skills', {
   enabled: boolean('enabled').notNull().default(true),
   version: integer('version').notNull().default(1),
   evidenceFiles: jsonb('evidence_files').$type<string[]>(),
+  // Ordered relative paths of Project Context documents attached to this
+  // skill's body when it's linked to an agent. Order = injection order.
+  contextDocs: jsonb('context_docs').$type<string[]>().notNull().default([]),
   createdAt: now(),
 });
 

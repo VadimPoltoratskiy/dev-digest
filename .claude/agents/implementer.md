@@ -37,10 +37,10 @@ Before writing a single line of code:
 1. Read the `PLAN.md` you were given in full.
 2. Identify which module(s) your phase touches.
 3. Read the INSIGHTS.md for every module you will touch:
-   - `server/` work → read `server/INSIGHTS.md`
-   - `client/` work → read `client/INSIGHTS.md`
-   - `reviewer-core/` work → read `reviewer-core/INSIGHTS.md`
-   - `e2e/` work → read `e2e/INSIGHTS.md`
+   - `server/` work → read `server/insights/INSIGHTS.md`
+   - `client/` work → read `client/insights/INSIGHTS.md`
+   - `reviewer-core/` work → read `reviewer-core/insights/INSIGHTS.md`
+   - `e2e/` work → read `e2e/insights/INSIGHTS.md`
 
 INSIGHTS.md files contain high-confidence, project-specific patterns. What's in there takes precedence over general assumptions.
 

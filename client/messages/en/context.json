@@ -1,5 +1,6 @@
 {
   "title": "Project Context",
+  "subtitle": "Markdown found under specs/, docs/, and insights/ in this repo. Attach documents to an agent or skill to make them control what the reviewer checks for.",
   "chunks": "{count} chunks",
   "reindex": "Re-index",
   "indexing": "Indexing…",
@@ -8,13 +9,26 @@
   "indexStatus": "Index status: {status}",
   "loadError": "Couldn’t load specs",
   "kb": "{kb}kb",
+  "usedBy": "Used by {count} {count, plural, one {agent} other {agents}}",
+  "coverage": "Coverage",
+  "coverageHint": "% of documents attached to at least one agent or skill. Attach a document from an agent's Context tab to raise it.",
+  "reindexSuccess": "Re-indexed — {count} {count, plural, one {document} other {documents}} found",
+  "reindexError": "Re-index failed",
+  "preview": "Preview",
+  "previewSubtitle": "Read-only — this document is only editable in the repo itself.",
   "empty": {
     "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+    "body": "Drop your PRDs, tech specs, and acceptance criteria under specs/, docs/, or insights/. Every agent and skill can attach them as grounding context."
   },
   "mode": {
     "preview": "preview",
     "edit": "edit"
+  },
+  "editorTab": {
+    "filterPlaceholder": "Filter documents…",
+    "noRepo": "Select a repo to see its Project Context documents.",
+    "noneAttached": "No documents attached yet.",
+    "preview": "Preview"
   },
   "editor": {
     "loadError": "Couldn’t load spec",

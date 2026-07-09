@@ -1,9 +1,9 @@
-/* Add-repository route — /onboarding. Thin wrapper; the screen lives in
-   _components/AddRepoView. */
-"use client";
+/* Onboarding tour route — /onboarding. Thin wrapper; the screen lives in
+   _components/OnboardingView. The add-repository form has moved to
+   AddRepoModal (components/add-repo-modal/). */
 
-import { AddRepoView } from "./_components/AddRepoView";
+import { OnboardingView } from "./_components/OnboardingView";
 
-export default function AddRepoPage() {
-  return <AddRepoView />;
+export default function OnboardingPage() {
+  return <OnboardingView />;
 }
