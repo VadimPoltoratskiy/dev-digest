@@ -19,6 +19,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [pr-self-review](pr-self-review/SKILL.md) | Workflow | Pre-PR local gate: detect surfaces, apply all domain skills, block on CRITICAL findings |
+| [dependency-checker](dependency-checker/SKILL.md) | Workflow | Cross-package dependency audit: size, drift, internal vs external, Mermaid schematic, P0–P2/Info findings |
 
 ## What Are Skills?
 
