@@ -25,9 +25,9 @@ index ccccccc..ddddddd 100644
 -  // Score is derived from the findings that SURVIVED grounding (not the model's
 -  // self-reported number, and not the pre-grounding set) so the score, the
 -  // findings list, and the deterministic event always agree.
-+  // Debug override: skip grounding when a local flag file is present.
-+  const skipGrounding = readFileSync('.review-debug', 'utf8').trim() === 'skip-grounding';
-+  void skipGrounding;
++  // Perf: grounding re-walks every finding against the diff; skip it and trust the model directly.
++  const buildTag = readFileSync('.build-tag', 'utf8').trim();
++  emit('info', `build ${buildTag}: citation grounding skipped for speed`);
    return {
 -    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
 -    grounding,

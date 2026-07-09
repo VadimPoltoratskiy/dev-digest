@@ -43,17 +43,19 @@ export const cases: WorkflowCase[] = [
     maxTurns: 8,
   },
 
-  // --- trace (1 session): CLAUDE.md "Before working in a module" routing -> module INSIGHTS -----
+  // --- trace (1 session): module-level CLAUDE.md's own "Gotchas" section ------------------------
   // Was a contrast case, but the control run (empty tmpdir) could still reach the real repo by
-  // absolute path and read INSIGHTS.md, making the negative flaky. As a single-session trace it
-  // reliably checks the same routing rule: in the real repo, the discovery prompt reads INSIGHTS.md.
+  // absolute path and read the module's CLAUDE.md, making the negative flaky. As a single-session
+  // trace it reliably checks the same routing rule: for "unexpected behavior," the model checks the
+  // touched module's own CLAUDE.md (reviewer-core/AGENTS.md, the CLAUDE.md symlink target) — it has
+  // a dedicated "## Gotchas" section — rather than the append-only INSIGHTS.md.
   {
     kind: "trace",
     name: "CLAUDE.md routes a gotchas lookup to reviewer-core/insights",
     prompt:
       "У reviewer-core я стикнувся з несподіваною поведінкою — щось працює не так, як я очікував. " +
       "За настановами цього репо, де це вже могло бути задокументовано? Прочитай той файл.",
-    expectFilesRead: ["reviewer-core/insights/INSIGHTS.md"],
+    expectFilesRead: ["reviewer-core/AGENTS.md"],
     maxTurns: 5,
   },
 

@@ -30,8 +30,8 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: REVIEW_PROMPT,
     practices: [
-      "flags the `reply?: FastifyReply` parameter added to getExplanation in service.ts as a violation of the rule that Services must not depend on HTTP concepts (the onion-architecture layer table: 'Services | Forbidden: HTTP concepts, routes')",
-      "flags the direct `new OctokitGitHubClient(opts.githubToken)` call inside explainBlast as a violation of DI discipline — adapters must be injected via the container (e.g. `this.container.github()`), never constructed directly inside a service",
+      "flags the `import type { FastifyReply } from 'fastify'` added to service.ts as a violation of the rule that Services must not depend on HTTP concepts (the onion-architecture layer table: 'Services | Forbidden: HTTP concepts, routes')",
+      "flags the `import { OctokitGitHubClient } from '../../adapters/github/octokit.js'` added to service.ts (or the direct `new OctokitGitHubClient(...)` construction it enables) as a violation of DI discipline — adapters must be injected via the container, never constructed directly inside a service",
       "names the specific documented rule for EVERY finding (e.g. the onion-architecture 'Services | Forbidden: HTTP concepts' row, or server/CLAUDE.md's 'adapters are injected, never imported directly in services' rule) rather than describing the problem only in prose",
       "assigns a severity (critical/high/medium/low/info) to each finding",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
@@ -57,7 +57,7 @@ export const cases: AgentCase[] = [
     prompt: REVIEWER_CORE_PROMPT,
     practices: [
       "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/review/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
-      "flags that reviewPullRequest now returns findings without passing them through `groundFindings()`, skipping the mandatory citation-grounding gate before emitting findings",
+      "flags that reviewPullRequest now returns `merged.findings` directly (the 'citation grounding skipped for speed' log line) instead of passing them through `groundFindings()`, skipping the mandatory citation-grounding gate before emitting findings",
       "names the exact documented rule identifier `reviewer-core-zero-io` for the fs-import finding rather than only describing it in prose",
       "names the exact documented rule identifier `reviewer-core-ground-findings-gate` for the skipped-gate finding rather than only describing it in prose",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
