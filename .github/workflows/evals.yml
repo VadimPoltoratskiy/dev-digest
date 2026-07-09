@@ -9,6 +9,10 @@
 # three models the package's own README benchmarked as reliably driving subagent dispatch — but
 # stay informational (continue-on-error) since tool-tier dispatch/activation checks are documented
 # as flaky/indicative on non-Anthropic models (see evals/README.md).
+#
+# `skills`/`agents`/`workflow` all share the `evals-openrouter-<run_id>` concurrency group, so they
+# queue instead of racing each other — evals/README.md documents that concurrent OpenRouter calls
+# under one API key can get throttled and degrade responses to truncated single-turn output.
 name: evals
 
 on:
@@ -92,6 +96,12 @@ jobs:
     needs: detect
     if: needs.detect.outputs.skills != '[]'
     runs-on: ubuntu-latest
+    # Shared with agents/workflow below: all three tiers hit the same OPENROUTER_API_KEY, and
+    # evals/README.md documents that running them back-to-back can throttle OpenRouter and
+    # degrade responses to truncated single-turn output. Queue them instead of racing them.
+    concurrency:
+      group: evals-openrouter-${{ github.run_id }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals
@@ -121,10 +131,14 @@ jobs:
     if: needs.detect.outputs.agents != '[]'
     runs-on: ubuntu-latest
     continue-on-error: true
+    concurrency:
+      group: evals-openrouter-${{ github.run_id }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals
     strategy:
+      max-parallel: 1
       matrix:
         agent: ${{ fromJSON(needs.detect.outputs.agents) }}
     env:
@@ -162,6 +176,9 @@ jobs:
     if: needs.detect.outputs.run_workflow == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
+    concurrency:
+      group: evals-openrouter-${{ github.run_id }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals

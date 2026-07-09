@@ -9,27 +9,20 @@ ${fx("checkout-service.diff")}`;
 
 // A second real diff whose violations map onto DevDigest-SPECIFIC rule names
 // (`reviewer-core-zero-io`, `reviewer-core-ground-findings-gate`) that a competent model will
-// describe in prose but will not spontaneously name unless the agent forces a citation. This is
-// the discriminating case for the strict-vs-lite A/B: both variants should FIND both problems,
-// but only the strict variant (which keeps the "cite the exact documented rule per finding" hard
-// rule) should reliably emit the identifier. The checkout diff's textbook violations don't
-// discriminate — the model volunteers `inward-only-dependencies`/`di-discipline` either way.
+// describe in prose but will not spontaneously name unless the agent's "cite the exact documented
+// rule per finding" hard rule forces it. The checkout diff's textbook violations don't test this —
+// the model volunteers `inward-only-dependencies`/`di-discipline` either way.
 const REVIEWER_CORE_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
 
 ${fx("reviewer-core-gate.diff")}`;
 
 // A diff that violates NO documented rule (a pure local-variable rename inside a domain file, no
-// new imports, no cross-layer edges). A grounded reviewer should report zero violations. This
-// surfaces the COST of relaxing the citation rule: freed from "every finding must name a
-// documented contract", the lite variant is more prone to fabricating a judgment/best-practice
-// finding where the strict variant stays silent.
+// new imports, no cross-layer edges). A grounded reviewer should report zero violations — this
+// checks the agent doesn't fabricate a judgment/best-practice finding where none is warranted.
 const BENIGN_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
 
 ${fx("benign-refactor.diff")}`;
 
-// Shared across the strict (architecture-reviewer) and relaxed (architecture-reviewer-lite)
-// variants so the two agents are graded on the exact same task — the only thing that should
-// move between the two runs is whether "cites the specific documented rule" keeps passing.
 export const cases: AgentCase[] = [
   {
     name: "flags both violations in the checkout diff with severity and a citable rule",
