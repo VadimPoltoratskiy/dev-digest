@@ -3,7 +3,7 @@
  * extracts what the session ACTUALLY did (tools, subagents, skills, reads) — not its prose.
  */
 
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type Settings } from "@anthropic-ai/claude-agent-sdk";
 import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
@@ -28,14 +28,24 @@ export interface Result {
   metrics: Metrics;
 }
 
+/** A custom string, or the Claude Code preset (carries the CLI's own operating instructions —
+ *  e.g. "invoke the Skill tool" — on top of whatever settingSources loads from disk). */
+export type SystemPromptOption =
+  | string
+  | { type: "preset"; preset: "claude_code"; append?: string };
+
 export interface RunOptions {
-  systemPrompt?: string;
+  systemPrompt?: SystemPromptOption;
   allowedTools?: string[];
   maxTurns?: number;
   cwd?: string;
   model?: string;
   /** ["project"] loads on-disk CLAUDE.md + skills/agents; default [] keeps the run isolated. */
   settingSources?: Array<"user" | "project" | "local">;
+  /** Flag-tier settings override (highest priority). workflowTask uses this to turn off
+   *  auto-memory — the run's cwd is the real repo, so the claude_code preset would otherwise
+   *  read/write the developer's actual persistent memory store for this project. */
+  settings?: Settings;
   /**
    * Early-stop hook. Called after every tool_use with the trace collected SO FAR; return true to
    * end the session immediately. Lets a dispatch/trace case stop the moment its evidence is in
@@ -56,18 +66,30 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     const directive =
       "\n\nYou have NO tools available in this session. Do not attempt any tool calls. " +
       "Answer directly and completely from the information given in the prompt.";
-    systemPrompt = (systemPrompt ?? "") + directive;
+    systemPrompt =
+      typeof systemPrompt === "object"
+        ? { ...systemPrompt, append: (systemPrompt.append ?? "") + directive }
+        : (systemPrompt ?? "") + directive;
   }
 
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
-    permissionMode: "bypassPermissions", // safe: evals only read/plan and tools are allow-listed
+    permissionMode: "bypassPermissions",
     systemPrompt,
     allowedTools,
+    // `allowedTools` only auto-approves — per the SDK, it does NOT restrict which tools are
+    // available ("To restrict which tools are available, use the `tools` option instead").
+    // Under bypassPermissions that gap is live, not theoretical: a workflowTask session has
+    // successfully called Edit/Write against the real repo despite them being absent from
+    // WORKFLOW_ALLOWED_TOOLS. `tools` is the actual visibility gate; set it to the same list so
+    // the allow-list is real, not cosmetic. `[]` disables all built-in tools, matching the
+    // "no tools available" directive above.
+    tools: allowedTools,
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
+    settings: opts.settings,
     env: subscriptionEnv(),
   };
 

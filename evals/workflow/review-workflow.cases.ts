@@ -21,8 +21,10 @@ export const cases: WorkflowCase[] = [
     name: "API-route task reads api-contracts AND pulls the architecture-reviewer",
     prompt:
       "Я планую додати НОВИЙ, ще не реалізований ендпоінт GET /reviews/:id/export (віддає ревʼю як " +
-      "markdown). Спершу звірся з конвенціями API цього репо. Потім ОБОВʼЯЗКОВО запусти сабагента " +
-      "architecture-reviewer, щоб він оцінив мій план на відповідність onion-шарам — не рецензуй сам.",
+      "markdown). Виконай РІВНО два кроки по черзі: (1) СПОЧАТКУ САМ прочитай server/docs/README.md, " +
+      "щоб звіритися з конвенціями API цього репо — не делегуй цей крок. (2) ТІЛЬКИ ПІСЛЯ цього " +
+      "запусти сабагента architecture-reviewer, щоб він оцінив мій план на відповідність onion-шарам " +
+      "— сам план не рецензуй.",
     expectFilesRead: ["server/docs/README.md"],
     expectSubagents: ["architecture-reviewer"],
     maxTurns: 8,

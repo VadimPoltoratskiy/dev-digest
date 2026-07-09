@@ -50,6 +50,14 @@ export function agentTask(prompt: string, agentName: string, opts: RunOptions = 
 export function workflowTask(prompt: string, opts: RunOptions = {}) {
   return runClaude(prompt, {
     allowedTools: WORKFLOW_ALLOWED_TOOLS,
+    // Claude Code's own system prompt — carries the "invoke the Skill tool" mandate and general
+    // operating instructions. Without it, settingSources alone loads CLAUDE.md/skills/agents as
+    // inert context, not the behavioral rules that make activation/dispatch reliable.
+    systemPrompt: { type: "preset", preset: "claude_code" },
+    // The run's cwd is the real repo, so the preset's auto-memory feature would otherwise read
+    // from and write to the developer's actual persistent memory store for this project (and
+    // compete with the project's own engineering-insights skill for the same trigger).
+    settings: { autoMemoryEnabled: false },
     ...opts,
     settingSources: ["project"],
   });
