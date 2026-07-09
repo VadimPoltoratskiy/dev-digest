@@ -10,9 +10,10 @@
 # stay informational (continue-on-error) since tool-tier dispatch/activation checks are documented
 # as flaky/indicative on non-Anthropic models (see evals/README.md).
 #
-# `skills`/`agents`/`workflow` all share the `evals-openrouter-<run_id>` concurrency group, so they
-# queue instead of racing each other — evals/README.md documents that concurrent OpenRouter calls
-# under one API key can get throttled and degrade responses to truncated single-turn output.
+# `skills` → `agents` → `workflow` are chained via `needs` (not run in parallel off `detect`), so
+# they queue instead of racing each other — evals/README.md documents that concurrent OpenRouter
+# calls under one API key can get throttled and degrade responses to truncated single-turn output.
+# Each still gates on its own `if` (via `always()`, so an upstream skip/failure doesn't skip it).
 name: evals
 
 on:
@@ -96,12 +97,6 @@ jobs:
     needs: detect
     if: needs.detect.outputs.skills != '[]'
     runs-on: ubuntu-latest
-    # Shared with agents/workflow below: all three tiers hit the same OPENROUTER_API_KEY, and
-    # evals/README.md documents that running them back-to-back can throttle OpenRouter and
-    # degrade responses to truncated single-turn output. Queue them instead of racing them.
-    concurrency:
-      group: evals-openrouter-${{ github.run_id }}
-      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals
@@ -127,13 +122,10 @@ jobs:
 
   agents:
     name: agent evals (${{ matrix.agent }})
-    needs: detect
-    if: needs.detect.outputs.agents != '[]'
+    needs: [detect, skills]
+    if: always() && needs.detect.outputs.agents != '[]'
     runs-on: ubuntu-latest
     continue-on-error: true
-    concurrency:
-      group: evals-openrouter-${{ github.run_id }}
-      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals
@@ -172,13 +164,10 @@ jobs:
 
   workflow:
     name: workflow evals
-    needs: detect
-    if: needs.detect.outputs.run_workflow == 'true'
+    needs: [detect, agents]
+    if: always() && needs.detect.outputs.run_workflow == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
-    concurrency:
-      group: evals-openrouter-${{ github.run_id }}
-      cancel-in-progress: false
     defaults:
       run:
         working-directory: evals
