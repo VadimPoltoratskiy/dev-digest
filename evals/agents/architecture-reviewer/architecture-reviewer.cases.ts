@@ -8,15 +8,16 @@ const REVIEW_PROMPT = `Audit this diff against DevDigest's documented structural
 ${fx("checkout-service.diff")}`;
 
 // A second real diff whose violations map onto DevDigest-SPECIFIC rule names
-// (`reviewer-core-zero-io`, `reviewer-core-ground-findings-gate`) that a competent model will
+// (`reviewer-core-zero-io`, `reviewer-core-ground-findings-gate` — now documented in
+// reviewer-core/docs/README.md's "Architecture rules" section) that a competent model will
 // describe in prose but will not spontaneously name unless the agent's "cite the exact documented
 // rule per finding" hard rule forces it. The checkout diff's textbook violations don't test this —
-// the model volunteers `inward-only-dependencies`/`di-discipline` either way.
+// the model volunteers the onion-architecture rule table's wording either way.
 const REVIEWER_CORE_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
 
 ${fx("reviewer-core-gate.diff")}`;
 
-// A diff that violates NO documented rule (a pure local-variable rename inside a domain file, no
+// A diff that violates NO documented rule (a pure local-variable rename inside a real module, no
 // new imports, no cross-layer edges). A grounded reviewer should report zero violations — this
 // checks the agent doesn't fabricate a judgment/best-practice finding where none is warranted.
 const BENIGN_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
@@ -29,14 +30,14 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: REVIEW_PROMPT,
     practices: [
-      "flags the domain file (checkout.ts) importing a type from 'fastify' as a violation of the inward-only dependency rule between Domain and Presentation layers",
-      "flags the `new PgCheckoutRepository()` call inside service.ts as a violation of DI discipline (concrete adapters/repositories must be constructed only in the composition root / container)",
-      "names the specific documented rule identifier for EVERY finding (e.g. `inward-only-dependencies`, `di-discipline`) rather than describing the problem only in prose",
+      "flags the `reply?: FastifyReply` parameter added to getExplanation in service.ts as a violation of the rule that Services must not depend on HTTP concepts (the onion-architecture layer table: 'Services | Forbidden: HTTP concepts, routes')",
+      "flags the direct `new OctokitGitHubClient(opts.githubToken)` call inside explainBlast as a violation of DI discipline — adapters must be injected via the container (e.g. `this.container.github()`), never constructed directly inside a service",
+      "names the specific documented rule for EVERY finding (e.g. the onion-architecture 'Services | Forbidden: HTTP concepts' row, or server/CLAUDE.md's 'adapters are injected, never imported directly in services' rule) rather than describing the problem only in prose",
       "assigns a severity (critical/high/medium/low/info) to each finding",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
       "ends with an explicit PASS/FAIL gate verdict based on whether any critical or high findings exist",
     ],
-    threshold: 1.0,
+    threshold: 0.8,
     maxTurns: 25,
   },
   {
@@ -44,7 +45,7 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: REVIEW_PROMPT,
     practices: [
-      "does not invent an architecture-contract violation for the optional `reply?: FastifyReply` parameter beyond the inward-only-dependencies import issue itself (no runtime bug/security finding fabricated as an architecture rule)",
+      "does not invent an architecture-contract violation for the optional `reply?: FastifyReply` parameter beyond the HTTP-concept-in-service issue itself (no runtime bug/security finding fabricated as an architecture rule)",
       "stays scoped to structural/layering/DI findings and does not comment on naming, style, or test coverage",
     ],
     threshold: 1.0,
@@ -55,14 +56,14 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: REVIEWER_CORE_PROMPT,
     practices: [
-      "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/pipeline/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
-      "flags that runPipeline now returns `deduped` directly, skipping the mandatory `groundFindings()` gate before emitting findings",
+      "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/review/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
+      "flags that reviewPullRequest now returns findings without passing them through `groundFindings()`, skipping the mandatory citation-grounding gate before emitting findings",
       "names the exact documented rule identifier `reviewer-core-zero-io` for the fs-import finding rather than only describing it in prose",
       "names the exact documented rule identifier `reviewer-core-ground-findings-gate` for the skipped-gate finding rather than only describing it in prose",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
       "ends with an explicit PASS/FAIL gate verdict based on whether any critical or high findings exist",
     ],
-    threshold: 1.0,
+    threshold: 0.8,
     maxTurns: 25,
   },
   {

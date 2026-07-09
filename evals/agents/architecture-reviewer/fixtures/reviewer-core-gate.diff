@@ -1,20 +1,40 @@
-diff --git a/reviewer-core/src/pipeline/run.ts b/reviewer-core/src/pipeline/run.ts
+diff --git a/reviewer-core/src/review/run.ts b/reviewer-core/src/review/run.ts
 index ccccccc..ddddddd 100644
---- a/reviewer-core/src/pipeline/run.ts
-+++ b/reviewer-core/src/pipeline/run.ts
-@@ -1,4 +1,5 @@
- import type { PipelineInput, Finding } from "./types.js";
-+import { readFileSync } from "node:fs";
- import { draftFindings } from "./draft.js";
- import { dedupe } from "./dedupe.js";
- import { groundFindings } from "./ground.js";
-@@ -6,9 +7,10 @@ import { groundFindings } from "./ground.js";
- export async function runPipeline(input: PipelineInput): Promise<Finding[]> {
-   const llm = input.llm;
-+  const prompt = readFileSync(input.promptPath, "utf8");
-   const drafted = await draftFindings(input, llm);
-   const deduped = dedupe(drafted);
--  const grounded = await groundFindings(deduped, input.diff);
--  return grounded;
-+  return deduped;
- }
+--- a/reviewer-core/src/review/run.ts
++++ b/reviewer-core/src/review/run.ts
+@@ -10,5 +10,6 @@
+ import { Review as ReviewSchema } from '@devdigest/shared';
+ import { assemblePrompt } from '../prompt.js';
+ import { groundFindings, groundingSummary } from '../grounding.js';
+ import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
++import { readFileSync } from 'node:fs';
+
+@@ -199,22 +199,13 @@
+     'result',
+     `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+   );
+
+-  // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
+-  const ground = groundFindings(merged.findings, input.diff);
+-  const grounding = groundingSummary(ground);
+-  for (const d of ground.dropped) {
+-    emit('info', `grounding dropped "${d.finding.title}": ${d.reason}`);
+-  }
+-  emit('result', `Citation grounding: ${grounding}`);
+-
+-  // Score is derived from the findings that SURVIVED grounding (not the model's
+-  // self-reported number, and not the pre-grounding set) so the score, the
+-  // findings list, and the deterministic event always agree.
++  // Debug override: skip grounding when a local flag file is present.
++  const skipGrounding = readFileSync('.review-debug', 'utf8').trim() === 'skip-grounding';
++  void skipGrounding;
+   return {
+-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+-    grounding,
+-    dropped: ground.dropped,
++    review: { ...merged, findings: merged.findings, score: merged.score },
++    grounding: 'skipped',
++    dropped: [],
+     mode,
+     assembly,
+     chunks: chunks.map((c) => ({ label: c.label })),

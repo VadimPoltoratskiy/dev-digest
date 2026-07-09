@@ -1,16 +1,16 @@
-diff --git a/server/src/modules/blast/score.ts b/server/src/modules/blast/score.ts
+diff --git a/server/src/modules/blast/helpers.ts b/server/src/modules/blast/helpers.ts
 index eeeeeee..fffffff 100644
---- a/server/src/modules/blast/score.ts
-+++ b/server/src/modules/blast/score.ts
-@@ -1,10 +1,12 @@
- export interface BlastRow {
-   id: string;
-   score: number;
+--- a/server/src/modules/blast/helpers.ts
++++ b/server/src/modules/blast/helpers.ts
+@@ -68,8 +68,9 @@ function buildSummary(x: {
+   return radius;
  }
 
--export function summarize(rows: BlastRow[]) {
--  return rows.map((r) => ({ id: r.id, score: r.score }));
+-function plural(n: number, word: string): string {
+-  return n === 1 ? word : `${word}s`;
 +// Renamed locals for readability; behaviour unchanged.
-+export function summarize(rows: BlastRow[]) {
-+  return rows.map((row) => ({ id: row.id, score: row.score }));
++function plural(count: number, label: string): string {
++  return count === 1 ? label : `${label}s`;
  }
+
+ function buildSummary(x: {
