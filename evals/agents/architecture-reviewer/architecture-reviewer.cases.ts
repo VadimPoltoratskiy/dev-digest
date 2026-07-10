@@ -55,11 +55,14 @@ export const cases: AgentCase[] = [
     name: "cites the DevDigest-specific rule identifier for reviewer-core violations",
     kind: "quality",
     prompt: REVIEWER_CORE_PROMPT,
+    // Exact rule-identifier citation is a literal substring check, not a judgment call — gate on
+    // it deterministically (patternMatch, no model) rather than asking the judge to verify a
+    // verbatim string, which just adds risk of malformed judge JSON for no benefit. Gate runs
+    // first and must be 1.0 before the judge (below) even runs.
+    grounding: ["reviewer-core-zero-io", "reviewer-core-ground-findings-gate"],
     practices: [
       "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/review/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
       "flags that reviewPullRequest now returns `merged.findings` directly (the 'citation grounding skipped for speed' log line) instead of passing them through `groundFindings()`, skipping the mandatory citation-grounding gate before emitting findings",
-      "names the exact documented rule identifier `reviewer-core-zero-io` for the fs-import finding rather than only describing it in prose",
-      "names the exact documented rule identifier `reviewer-core-ground-findings-gate` for the skipped-gate finding rather than only describing it in prose",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
       "ends with an explicit PASS/FAIL gate verdict based on whether any critical or high findings exist",
     ],

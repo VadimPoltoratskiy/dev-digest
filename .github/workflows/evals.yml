@@ -8,7 +8,10 @@
 # `workflow` (tool tiers) run on google/gemini-2.5-flash via OpenRouter — the only one of the
 # three models the package's own README benchmarked as reliably driving subagent dispatch — but
 # stay informational (continue-on-error) since tool-tier dispatch/activation checks are documented
-# as flaky/indicative on non-Anthropic models (see evals/README.md).
+# as flaky/indicative on non-Anthropic models (see evals/README.md). The judge's JSON extraction
+# (src/scoring/llm-judge.ts) is bracket-depth-aware with a one-shot retry so a cheap judge model's
+# occasional malformed output doesn't fail the case; the workflow tier's positive `activation`
+# assertion is soft (warns, doesn't fail) on non-Anthropic models per the same README caveat.
 #
 # `skills` → `agents` → `workflow` are chained via `needs` (not run in parallel off `detect`), so
 # they queue instead of racing each other — evals/README.md documents that concurrent OpenRouter

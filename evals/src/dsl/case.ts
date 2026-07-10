@@ -9,7 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect } from "vitest";
-import { DEFAULT_THRESHOLD } from "../config.js";
+import { DEFAULT_THRESHOLD, EVAL_MODEL } from "../config.js";
 import { skillTask, agentTask, workflowTask } from "../tasks.js";
 import { runClaude, type Result, type RunOptions } from "../runtime/run-claude.js";
 import { patternMatch } from "../scoring/pattern-match.js";
@@ -75,6 +75,12 @@ export function activated(result: Result, skill: string): boolean {
   return bySkill || byRead;
 }
 
+// evals/README.md documents that a capable non-Anthropic model may perform a skill's underlying
+// action directly instead of invoking the Skill tool — "indicative, not blocking" on those
+// backends. Anthropic ID format is either the bare subscription slug ("claude-sonnet-5") or the
+// OpenRouter Skin slug ("anthropic/claude-sonnet-5").
+const IS_ANTHROPIC_MODEL = EVAL_MODEL.startsWith("claude-") || EVAL_MODEL.startsWith("anthropic/");
+
 // --- Runners ----------------------------------------------------------------
 
 type Task = (prompt: string, artifact: string, opts?: RunOptions) => Promise<Result>;
@@ -134,11 +140,26 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
       } else if (c.kind === "activation") {
         const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
         logTrace(c.name, result);
+        const didActivate = activated(result, c.skill);
         try {
-          expect(
-            activated(result, c.skill),
-            `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
-          ).toBe(c.shouldActivate);
+          if (c.shouldActivate && !IS_ANTHROPIC_MODEL) {
+            // Positive case, non-Anthropic model: known indicative-not-blocking limitation
+            // (evals/README.md) — a capable model may act directly instead of dispatching the
+            // Skill tool. Warn instead of failing; the near-miss negative below stays a hard
+            // assert on every backend, since over-triggering isn't a documented model gap.
+            if (!didActivate) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[indicative, not blocking] ${c.name}: "${c.skill}" did not activate on ${EVAL_MODEL} — ` +
+                  `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
+              );
+            }
+          } else {
+            expect(
+              didActivate,
+              `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
+            ).toBe(c.shouldActivate);
+          }
         } finally {
           record(c.name, { result });
         }
