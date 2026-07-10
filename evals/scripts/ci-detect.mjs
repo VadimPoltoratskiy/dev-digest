@@ -22,18 +22,41 @@
 import { existsSync, readdirSync, appendFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { load as loadYaml } from "js-yaml";
 
 const EVALS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = join(EVALS_DIR, "..");
 
-/** Reads excluded_agents from agent-evals.config.yaml. Missing file → no exclusions. */
+/**
+ * Reads the `excluded_agents:` flat list from agent-evals.config.yaml. Missing file → no
+ * exclusions. Deliberately hand-rolled instead of a `js-yaml` dependency: the `detect` job runs
+ * this script with plain `node`, no `pnpm install` — it must keep working with zero deps. Only
+ * understands the one shape this file actually uses: a top-level `key:` followed by `  - item`
+ * list lines (quotes optional, `#` comments stripped).
+ */
 function loadExcludedAgents() {
   const configPath = join(EVALS_DIR, "agent-evals.config.yaml");
   if (!existsSync(configPath)) return new Set();
-  const parsed = loadYaml(readFileSync(configPath, "utf8"));
-  const list = parsed?.excluded_agents ?? [];
-  return new Set(list);
+
+  const lines = readFileSync(configPath, "utf8").split("\n");
+  const items = new Set();
+  let inList = false;
+  for (const raw of lines) {
+    const line = raw.replace(/#.*$/, "").trimEnd();
+    if (/^excluded_agents:\s*$/.test(line)) {
+      inList = true;
+      continue;
+    }
+    if (inList) {
+      const item = line.match(/^\s+-\s*(.+?)\s*$/);
+      if (item) {
+        items.add(item[1].replace(/^["']|["']$/g, ""));
+        continue;
+      }
+      if (line.trim() === "") continue;
+      inList = false; // dedented to a new top-level key — list ended
+    }
+  }
+  return items;
 }
 
 const CI_EXCLUDED_AGENTS = loadExcludedAgents();
