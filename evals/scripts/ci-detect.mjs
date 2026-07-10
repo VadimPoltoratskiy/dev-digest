@@ -11,25 +11,32 @@
  * A changed artifact with NO written evals is NOT a failure: it is reported on the `skipped_*`
  * outputs so the job can print a visible "SKIP <name> (no evals)" line instead of going red.
  *
- * CI_EXCLUDED_AGENTS below opts specific agents out of the CI `agents` job entirely (still
- * runnable locally) — for agents whose tool-tier eval is too flaky on the cheap CI model to gate
- * merges on right now.
+ * `agent-evals.config.yaml` (excluded_agents:) opts specific agents out of the CI `agents` job
+ * entirely (still runnable locally) — for agents whose tool-tier eval is too flaky on the cheap
+ * CI model to gate merges on right now. Edit that file directly; no code changes needed.
  *
  * Emits GitHub Actions step outputs (skills, agents, run_workflow, skipped_skills, skipped_agents)
- * to $GITHUB_OUTPUT. Pure filesystem + string work — no deps.
+ * to $GITHUB_OUTPUT.
  */
 
-import { existsSync, readdirSync, appendFileSync } from "node:fs";
+import { existsSync, readdirSync, appendFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { load as loadYaml } from "js-yaml";
 
 const EVALS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = join(EVALS_DIR, "..");
 
-// Agents excluded from the CI `agents` job even when their eval directory changes — still
-// runnable locally via `pnpm vitest run agents/<name>`. architecture-reviewer's tool-tier eval
-// is flaky enough on the cheap CI model to not be worth gating merges on right now.
-const CI_EXCLUDED_AGENTS = new Set(["architecture-reviewer"]);
+/** Reads excluded_agents from agent-evals.config.yaml. Missing file → no exclusions. */
+function loadExcludedAgents() {
+  const configPath = join(EVALS_DIR, "agent-evals.config.yaml");
+  if (!existsSync(configPath)) return new Set();
+  const parsed = loadYaml(readFileSync(configPath, "utf8"));
+  const list = parsed?.excluded_agents ?? [];
+  return new Set(list);
+}
+
+const CI_EXCLUDED_AGENTS = loadExcludedAgents();
 
 const changed = (process.env.CHANGED_FILES ?? "")
   .split("\n")

@@ -51,7 +51,7 @@ Classify every changed file into one or more surfaces using its path prefix:
 | `client/src/lib/api.ts` | Frontend — API Entry Point |
 | `client/src/**/*.test.tsx` | Frontend — Component Tests |
 | `client/src/lib/*.ts` | Frontend — Utilities |
-| `client/src/vendor/` | Vendor — note presence only; do not apply rules |
+| `client/src/vendor/` | Vendor — note presence only; do not apply companion-skill rules |
 | `server/src/modules/` | Backend — Feature Modules |
 | `server/src/adapters/` | Backend — Adapters |
 | `server/src/db/schema/` | Backend — DB Schema |
@@ -61,6 +61,8 @@ Classify every changed file into one or more surfaces using its path prefix:
 | `reviewer-core/src/` | Reviewer Core — inspect manually (no surface routing) |
 
 A single PR may activate multiple surfaces. Flag any changes to `reviewer-core/src/grounding.ts`, `prompt.ts`, or `run.ts` explicitly — these are high-risk files.
+
+"Do not apply rules" for `client/src/vendor/` and `server/src/vendor/` means: skip companion-skill checks (ui-architecture, onion-architecture, etc.) on their content. It does **not** exempt a direct edit to either vendor directory from Step 4's CRITICAL check below — vendor directories are do-not-touch zones (see root `CLAUDE.md`), and any modification to a file under them is always CRITICAL regardless of what the change contains.
 
 ---
 
