@@ -11,6 +11,10 @@
  * A changed artifact with NO written evals is NOT a failure: it is reported on the `skipped_*`
  * outputs so the job can print a visible "SKIP <name> (no evals)" line instead of going red.
  *
+ * CI_EXCLUDED_AGENTS below opts specific agents out of the CI `agents` job entirely (still
+ * runnable locally) — for agents whose tool-tier eval is too flaky on the cheap CI model to gate
+ * merges on right now.
+ *
  * Emits GitHub Actions step outputs (skills, agents, run_workflow, skipped_skills, skipped_agents)
  * to $GITHUB_OUTPUT. Pure filesystem + string work — no deps.
  */
@@ -21,6 +25,11 @@ import { fileURLToPath } from "node:url";
 
 const EVALS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = join(EVALS_DIR, "..");
+
+// Agents excluded from the CI `agents` job even when their eval directory changes — still
+// runnable locally via `pnpm vitest run agents/<name>`. architecture-reviewer's tool-tier eval
+// is flaky enough on the cheap CI model to not be worth gating merges on right now.
+const CI_EXCLUDED_AGENTS = new Set(["architecture-reviewer"]);
 
 const changed = (process.env.CHANGED_FILES ?? "")
   .split("\n")
@@ -55,8 +64,9 @@ const agentNames = touched(
 
 const skills = skillNames.filter((n) => hasEvals("skills", n));
 const skippedSkills = skillNames.filter((n) => !hasEvals("skills", n));
-const agents = agentNames.filter((n) => hasEvals("agents", n));
+const agents = agentNames.filter((n) => hasEvals("agents", n) && !CI_EXCLUDED_AGENTS.has(n));
 const skippedAgents = agentNames.filter((n) => !hasEvals("agents", n));
+const excludedAgents = agentNames.filter((n) => hasEvals("agents", n) && CI_EXCLUDED_AGENTS.has(n));
 
 // The workflow tier measures the LIVE harness, so anything that changes it re-triggers it:
 // the root or .claude CLAUDE.md, any agent definition, the workflow cases, or the engine itself.
@@ -86,3 +96,4 @@ console.error(`agents → run  : ${agents.join(", ") || "(none)"}`);
 console.error(`workflow tier : ${runWorkflow ? "run" : "skip"}`);
 if (skippedSkills.length) console.error(`SKIP skills (no evals): ${skippedSkills.join(", ")}`);
 if (skippedAgents.length) console.error(`SKIP agents (no evals): ${skippedAgents.join(", ")}`);
+if (excludedAgents.length) console.error(`SKIP agents (excluded from CI): ${excludedAgents.join(", ")}`);

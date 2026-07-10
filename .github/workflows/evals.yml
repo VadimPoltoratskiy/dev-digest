@@ -9,9 +9,14 @@
 # three models the package's own README benchmarked as reliably driving subagent dispatch — but
 # stay informational (continue-on-error) since tool-tier dispatch/activation checks are documented
 # as flaky/indicative on non-Anthropic models (see evals/README.md). The judge's JSON extraction
-# (src/scoring/llm-judge.ts) is bracket-depth-aware with a one-shot retry so a cheap judge model's
-# occasional malformed output doesn't fail the case; the workflow tier's positive `activation`
-# assertion is soft (warns, doesn't fail) on non-Anthropic models per the same README caveat.
+# (src/scoring/llm-judge.ts) is bracket-depth-aware with a one-shot retry and an explicit
+# max_tokens ceiling (EVAL_MAX_OUTPUT_TOKENS) so a cheap judge model's malformed or truncated
+# output doesn't fail the case; the workflow tier's positive `activation` assertion is soft (warns,
+# doesn't fail) on non-Anthropic models per the same README caveat.
+#
+# architecture-reviewer is currently excluded from the `agents` job (see CI_EXCLUDED_AGENTS in
+# evals/scripts/ci-detect.mjs) — its tool-tier eval was flaky enough on the cheap CI model to not
+# be worth gating merges on. It still runs locally via `pnpm vitest run agents/architecture-reviewer`.
 #
 # `skills` → `agents` → `workflow` are chained via `needs` (not run in parallel off `detect`), so
 # they queue instead of racing each other — evals/README.md documents that concurrent OpenRouter

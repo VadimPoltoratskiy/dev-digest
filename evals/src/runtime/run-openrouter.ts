@@ -12,7 +12,7 @@
  */
 
 import OpenAI from "openai";
-import { EVAL_MODEL } from "../config.js";
+import { EVAL_MODEL, EVAL_MAX_OUTPUT_TOKENS } from "../config.js";
 import type { Result, RunOptions } from "./run-claude.js";
 
 const BASE_URL = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
@@ -39,6 +39,7 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
     const res = await client.chat.completions.create({
       model: opts.model ?? EVAL_MODEL,
       temperature: 0,
+      max_tokens: EVAL_MAX_OUTPUT_TOKENS,
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt },

@@ -13,9 +13,10 @@ const JUDGE_RUBRIC =
   "practice independently.\n" +
   "Rules: (1) exactly PASS or FAIL per practice, no scales. (2) PASS only when a direct " +
   "verbatim quote from the OUTPUT is evidence the practice was met — a keyword is not " +
-  "evidence. (3) Reply with ONLY minified JSON, no markdown code fences, no prose before or " +
-  "after it:\n" +
-  '{"results":[{"practice":"<text>","passed":true,"evidence":"<verbatim quote>"}]}';
+  "evidence. Keep each evidence quote SHORT: one line or sentence (under ~20 words), never an " +
+  "entire section or paragraph. (3) Reply with ONLY minified JSON, no markdown code fences, no " +
+  "prose before or after it:\n" +
+  '{"results":[{"practice":"<text>","passed":true,"evidence":"<short verbatim quote>"}]}';
 
 export interface Verdict {
   results: { practice: string; passed: boolean; evidence: string }[];
