@@ -236,6 +236,13 @@ export interface CreateEvalCaseInput {
   expected_finding_count?: number;
   category?: string;
   severity?: string;
+  // Optional richer per-finding expectation — when all four are set, the run is scored by
+  // file+line-range match instead of by expected_finding_count.
+  kind?: "must_find" | "must_not_flag";
+  file?: string;
+  start_line?: number;
+  end_line?: number;
+  title?: string;
 }
 
 export function useCreateEvalCase(skillId: string) {

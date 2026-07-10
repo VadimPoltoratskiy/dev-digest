@@ -234,6 +234,14 @@ export const SkillEvalExpected = z.object({
   expected_finding_count: z.number().int(),
   category: z.string().nullish(),
   severity: z.string().nullish(),
+  // Optional richer per-finding expectation (file + line range), scored the same way as
+  // AgentEvalExpectedFinding below. When kind/file/start_line/end_line are all present, runEvalCase
+  // scores by file+line-range match instead of by expected_finding_count.
+  kind: z.enum(['must_find', 'must_not_flag']).nullish(),
+  file: z.string().nullish(),
+  start_line: z.number().int().nullish(),
+  end_line: z.number().int().nullish(),
+  title: z.string().nullish(),
 });
 export type SkillEvalExpected = z.infer<typeof SkillEvalExpected>;
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { EvalDashboard, EvalRunRecord } from "@devdigest/shared";
+import type { EvalDashboard, EvalRunRecord, EvalTrendPoint } from "@devdigest/shared";
 import messages from "../../../../../messages/en/eval.json";
 
 vi.mock("../../../../lib/hooks/agents-eval", () => ({
@@ -137,6 +137,41 @@ describe("EvalsDashboard — with data", () => {
     expect(screen.getByText("+10.0%")).toBeInTheDocument();
     // delta.precision=-0.05 → "-5.0%"
     expect(screen.getByText("-5.0%")).toBeInTheDocument();
+  });
+
+  it("renders a metric trend chart with a legend when trend has points", () => {
+    const trend: EvalTrendPoint[] = [
+      { ran_at: "2026-06-29T10:00:00.000Z", recall: 0.7, precision: 0.8, citation_accuracy: 0.9, pass_rate: 0.6, cost_usd: 0.01 },
+      { ran_at: "2026-07-01T10:00:00.000Z", recall: 0.75, precision: 0.88, citation_accuracy: 0.95, pass_rate: 0.6, cost_usd: 0.012 },
+    ];
+    vi.mocked(useEvalsDashboard).mockReturnValue({
+      data: { ...DASHBOARD_DATA, trend },
+      isLoading: false,
+      isError: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any);
+
+    renderWithIntl(<EvalsDashboard />);
+
+    expect(screen.getByText("Metric trend")).toBeInTheDocument();
+    // Legend renders one entry per series — same label text is also used elsewhere (recent runs
+    // badges), so assert presence via getAllByText rather than a single unique match.
+    expect(screen.getAllByText("Recall").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Precision").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Citation").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not render the trend section when trend is empty", () => {
+    vi.mocked(useEvalsDashboard).mockReturnValue({
+      data: DASHBOARD_DATA,
+      isLoading: false,
+      isError: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any);
+
+    renderWithIntl(<EvalsDashboard />);
+
+    expect(screen.queryByText("Metric trend")).not.toBeInTheDocument();
   });
 
   it("renders recent run case names", () => {

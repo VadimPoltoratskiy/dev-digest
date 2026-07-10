@@ -4,7 +4,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Badge, Skeleton, ErrorState } from "@devdigest/ui";
+import { Badge, Skeleton, ErrorState, LineChart } from "@devdigest/ui";
 import { useEvalsDashboard } from "../../../../lib/hooks";
 
 // --------------------------------------------------------------------------
@@ -192,70 +192,42 @@ export function EvalsDashboard() {
               >
                 {t("dashboard.metricTrend")}
               </div>
-              <div style={{ overflowX: "auto" as const }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse" as const,
-                    fontSize: 13,
-                  }}
-                >
-                  <thead>
-                    <tr>
-                      {[
-                        "dashboard.table.ranAt",
-                        "dashboard.table.recall",
-                        "dashboard.table.precision",
-                        "dashboard.table.citation",
-                        "dashboard.table.cost",
-                      ].map((key) => (
-                        <th
-                          key={key}
-                          style={{
-                            textAlign: "left",
-                            padding: "6px 8px",
-                            borderBottom: "1px solid var(--border)",
-                            color: "var(--text-muted)",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap" as const,
-                          }}
-                        >
-                          {t(key as Parameters<typeof t>[0])}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.trend.map((point) => (
-                      <tr
-                        key={point.ran_at}
-                        style={{ borderBottom: "1px solid var(--border)" }}
-                      >
-                        <td
-                          style={{
-                            padding: "6px 8px",
-                            fontFamily: "monospace",
-                            fontSize: 11,
-                          }}
-                        >
-                          {new Date(point.ran_at).toLocaleString()}
-                        </td>
-                        <td style={{ padding: "6px 8px" }}>
-                          {fmtPct(point.recall)}
-                        </td>
-                        <td style={{ padding: "6px 8px" }}>
-                          {fmtPct(point.precision)}
-                        </td>
-                        <td style={{ padding: "6px 8px" }}>
-                          {fmtPct(point.citation_accuracy)}
-                        </td>
-                        <td style={{ padding: "6px 8px" }}>
-                          {fmtCost(point.cost_usd, t("evalsTab.costEmpty"))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <LineChart
+                series={[
+                  {
+                    name: t("dashboard.legend.recall"),
+                    color: "var(--accent, #4f46e5)",
+                    data: data.trend.map((p) => p.recall),
+                  },
+                  {
+                    name: t("dashboard.legend.precision"),
+                    color: "var(--ok)",
+                    data: data.trend.map((p) => p.precision),
+                  },
+                  {
+                    name: t("dashboard.legend.citation"),
+                    color: "#8b5cf6",
+                    data: data.trend.map((p) => p.citation_accuracy),
+                  },
+                ]}
+                xLabels={data.trend.map((p) => new Date(p.ran_at).toLocaleString())}
+                dots
+                w={900}
+                h={220}
+              />
+              <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12 }}>
+                {(
+                  [
+                    ["recall", "var(--accent, #4f46e5)"],
+                    ["precision", "var(--ok)"],
+                    ["citation", "#8b5cf6"],
+                  ] as const
+                ).map(([key, color]) => (
+                  <span key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+                    <span style={{ color: "var(--text-secondary)" }}>{t(`dashboard.legend.${key}`)}</span>
+                  </span>
+                ))}
               </div>
             </div>
           )}

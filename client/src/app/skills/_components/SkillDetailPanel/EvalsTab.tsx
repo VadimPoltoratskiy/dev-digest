@@ -1,16 +1,17 @@
 "use client";
 
 import React from "react";
-import { Button, Badge, Skeleton, ErrorState, FormField, TextInput, Textarea } from "@devdigest/ui";
+import { useTranslations } from "next-intl";
+import { Button, Badge, Skeleton, ErrorState } from "@devdigest/ui";
 import { Icon } from "@devdigest/ui";
 import type { Skill, SkillEvalCase } from "@devdigest/shared";
 import {
   useSkillEvalCases,
-  useCreateEvalCase,
   useDeleteEvalCase,
   useRunEvalCase,
   useRunAllEvalCases,
 } from "../../../../lib/hooks/skills";
+import { CaseEditorModal } from "./CaseEditorModal";
 
 function StatusIcon({ evalCase }: { evalCase: SkillEvalCase }) {
   if (!evalCase.latest_run) {
@@ -59,18 +60,15 @@ function SeverityBadge({ category, severity }: { category?: string | null; sever
 }
 
 export function EvalsTab({ skill }: { skill: Skill }) {
+  const t = useTranslations("eval");
   const { data: cases, isLoading, isError } = useSkillEvalCases(skill.id);
-  const createCase = useCreateEvalCase(skill.id);
   const deleteCase = useDeleteEvalCase(skill.id);
   const runCase = useRunEvalCase(skill.id);
   const runAll = useRunAllEvalCases(skill.id);
 
-  const [showForm, setShowForm] = React.useState(false);
-  const [newName, setNewName] = React.useState("");
-  const [newDiff, setNewDiff] = React.useState("");
-  const [newCount, setNewCount] = React.useState("1");
-  const [newCategory, setNewCategory] = React.useState("");
-  const [newSeverity, setNewSeverity] = React.useState("");
+  const [editorState, setEditorState] = React.useState<
+    { mode: "create" } | { mode: "edit"; evalCase: SkillEvalCase } | null
+  >(null);
 
   const runningCaseId = runCase.variables as string | undefined;
 
@@ -79,29 +77,6 @@ export function EvalsTab({ skill }: { skill: Skill }) {
 
   const total = cases?.length ?? 0;
   const passing = cases?.filter((c) => c.latest_run?.passed).length ?? 0;
-
-  const submit = () => {
-    if (!newName.trim() || !newDiff.trim()) return;
-    createCase.mutate(
-      {
-        name: newName.trim(),
-        input_diff: newDiff.trim(),
-        expected_finding_count: parseInt(newCount, 10) || 1,
-        category: newCategory.trim() || undefined,
-        severity: newSeverity.trim() || undefined,
-      },
-      {
-        onSuccess: () => {
-          setNewName("");
-          setNewDiff("");
-          setNewCount("1");
-          setNewCategory("");
-          setNewSeverity("");
-          setShowForm(false);
-        },
-      },
-    );
-  };
 
   return (
     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -122,54 +97,22 @@ export function EvalsTab({ skill }: { skill: Skill }) {
         >
           {runAll.isPending ? "Running…" : "Run all evals"}
         </Button>
-        <Button kind="primary" size="sm" icon="Plus" onClick={() => setShowForm((v) => !v)}>
-          New eval case
+        <Button kind="primary" size="sm" icon="Plus" onClick={() => setEditorState({ mode: "create" })}>
+          {t("caseEditor.newCase")}
         </Button>
       </div>
 
-      {/* New case form */}
-      {showForm && (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            padding: 16,
-            background: "var(--bg-elevated)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <FormField label="Name" required>
-            <TextInput value={newName} onChange={setNewName} placeholder="e.g. stripe-key-leak" />
-          </FormField>
-          <FormField label="Diff fixture" required hint="Paste the raw unified diff this case should be tested against.">
-            <Textarea value={newDiff} onChange={setNewDiff} rows={6} mono placeholder={"--- a/file.ts\n+++ b/file.ts\n@@ ..."} />
-          </FormField>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <FormField label="Expected findings">
-              <TextInput value={newCount} onChange={setNewCount} />
-            </FormField>
-            <FormField label="Category">
-              <TextInput value={newCategory} onChange={setNewCategory} placeholder="security" />
-            </FormField>
-            <FormField label="Severity">
-              <TextInput value={newSeverity} onChange={setNewSeverity} placeholder="CRITICAL" />
-            </FormField>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button kind="primary" size="sm" onClick={submit} disabled={createCase.isPending}>
-              {createCase.isPending ? "Saving…" : "Save case"}
-            </Button>
-            <Button kind="ghost" size="sm" onClick={() => setShowForm(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+      {editorState && (
+        <CaseEditorModal
+          skillId={skill.id}
+          mode={editorState.mode}
+          initialCase={editorState.mode === "edit" ? editorState.evalCase : undefined}
+          onClose={() => setEditorState(null)}
+        />
       )}
 
       {/* Cases list */}
-      {total === 0 && !showForm && (
+      {total === 0 && (
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
           No eval cases yet. Create one to start testing this skill against known diffs.
         </p>
@@ -219,6 +162,22 @@ export function EvalsTab({ skill }: { skill: Skill }) {
                 title="Run"
               >
                 <Icon.Play size={13} />
+              </button>
+              <button
+                onClick={() => setEditorState({ mode: "edit", evalCase: c })}
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "var(--text-secondary)",
+                }}
+                title={t("evalsTab.edit")}
+              >
+                <Icon.Edit size={13} />
               </button>
               <button
                 onClick={() => {

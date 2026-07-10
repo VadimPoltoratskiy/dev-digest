@@ -275,6 +275,11 @@ export class SkillsRepository {
     expectedFindingCount: number;
     category?: string;
     severity?: string;
+    kind?: 'must_find' | 'must_not_flag';
+    file?: string;
+    startLine?: number;
+    endLine?: number;
+    title?: string;
   }) {
     const [row] = await this.db
       .insert(t.evalCases)
@@ -289,6 +294,11 @@ export class SkillsRepository {
           expected_finding_count: values.expectedFindingCount,
           category: values.category ?? null,
           severity: values.severity ?? null,
+          kind: values.kind ?? null,
+          file: values.file ?? null,
+          start_line: values.startLine ?? null,
+          end_line: values.endLine ?? null,
+          title: values.title ?? null,
         },
       })
       .returning();
@@ -298,7 +308,19 @@ export class SkillsRepository {
   async updateEvalCase(
     workspaceId: string,
     caseId: string,
-    patch: { name?: string; notes?: string; inputDiff?: string; expectedFindingCount?: number; category?: string; severity?: string },
+    patch: {
+      name?: string;
+      notes?: string;
+      inputDiff?: string;
+      expectedFindingCount?: number;
+      category?: string;
+      severity?: string;
+      kind?: 'must_find' | 'must_not_flag';
+      file?: string;
+      startLine?: number;
+      endLine?: number;
+      title?: string;
+    },
   ) {
     const existing = await this.getEvalCase(workspaceId, caseId);
     if (!existing) return undefined;
@@ -308,6 +330,11 @@ export class SkillsRepository {
       expected_finding_count: patch.expectedFindingCount ?? existingExpected['expected_finding_count'] ?? 1,
       category: patch.category !== undefined ? (patch.category || null) : (existingExpected['category'] ?? null),
       severity: patch.severity !== undefined ? (patch.severity || null) : (existingExpected['severity'] ?? null),
+      kind: patch.kind !== undefined ? patch.kind : (existingExpected['kind'] ?? null),
+      file: patch.file !== undefined ? (patch.file || null) : (existingExpected['file'] ?? null),
+      start_line: patch.startLine !== undefined ? patch.startLine : (existingExpected['start_line'] ?? null),
+      end_line: patch.endLine !== undefined ? patch.endLine : (existingExpected['end_line'] ?? null),
+      title: patch.title !== undefined ? (patch.title || null) : (existingExpected['title'] ?? null),
     };
 
     const [row] = await this.db

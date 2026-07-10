@@ -12,5 +12,20 @@
   },
   "enabledPlugins": {
     "github@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse-commit-gate.mjs\"",
+            "timeout": 180,
+            "statusMessage": "Running tests before commit…"
+          }
+        ]
+      }
+    ]
   }
 }

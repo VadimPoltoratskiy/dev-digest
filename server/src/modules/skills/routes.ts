@@ -106,6 +106,13 @@ const CreateEvalCaseBody = z.object({
   expected_finding_count: z.number().int().min(0).optional(),
   category: z.string().optional(),
   severity: z.string().optional(),
+  // Optional richer per-finding expectation — when all four are set, runEvalCase scores by
+  // file+line-range match instead of by expected_finding_count.
+  kind: z.enum(['must_find', 'must_not_flag']).optional(),
+  file: z.string().optional(),
+  start_line: z.number().int().optional(),
+  end_line: z.number().int().optional(),
+  title: z.string().optional(),
 });
 
 const UpdateEvalCaseBody = z.object({
@@ -115,6 +122,11 @@ const UpdateEvalCaseBody = z.object({
   expected_finding_count: z.number().int().min(0).optional(),
   category: z.string().optional(),
   severity: z.string().optional(),
+  kind: z.enum(['must_find', 'must_not_flag']).optional(),
+  file: z.string().optional(),
+  start_line: z.number().int().optional(),
+  end_line: z.number().int().optional(),
+  title: z.string().optional(),
 });
 
 const CommunitySearchQuery = z.object({
@@ -265,7 +277,8 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, body: CreateEvalCaseBody } },
     async (req, reply) => {
       const { workspaceId } = await getContext(app.container, req);
-      const { name, notes, input_diff, expected_finding_count, category, severity } = req.body;
+      const { name, notes, input_diff, expected_finding_count, category, severity, kind, file, start_line, end_line, title } =
+        req.body;
       const evalCase = await service.createEvalCase(workspaceId, req.params.id, {
         name,
         notes,
@@ -273,6 +286,11 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
         expectedFindingCount: expected_finding_count,
         category,
         severity,
+        kind,
+        file,
+        startLine: start_line,
+        endLine: end_line,
+        title,
       });
       reply.status(201);
       return evalCase;
@@ -284,7 +302,8 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { params: EvalCaseParams, body: UpdateEvalCaseBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const { name, notes, input_diff, expected_finding_count, category, severity } = req.body;
+      const { name, notes, input_diff, expected_finding_count, category, severity, kind, file, start_line, end_line, title } =
+        req.body;
       const evalCase = await service.updateEvalCase(workspaceId, req.params.caseId, {
         name,
         notes,
@@ -292,6 +311,11 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
         expectedFindingCount: expected_finding_count,
         category,
         severity,
+        kind,
+        file,
+        startLine: start_line,
+        endLine: end_line,
+        title,
       });
       if (!evalCase) throw new NotFoundError('Eval case not found');
       return evalCase;
