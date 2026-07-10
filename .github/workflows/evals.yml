@@ -22,6 +22,10 @@
 # they queue instead of racing each other — evals/README.md documents that concurrent OpenRouter
 # calls under one API key can get throttled and degrade responses to truncated single-turn output.
 # Each still gates on its own `if` (via `always()`, so an upstream skip/failure doesn't skip it).
+#
+# `skills` runs `fail-fast: false` — one flaky/broken skill case must not cancel every other
+# skill's matrix job mid-run (GitHub's default fail-fast did exactly this once, cancelling an
+# already-passing sibling job before it could report success).
 name: evals
 
 on:
@@ -109,6 +113,7 @@ jobs:
       run:
         working-directory: evals
     strategy:
+      fail-fast: false
       matrix:
         skill: ${{ fromJSON(needs.detect.outputs.skills) }}
     steps:

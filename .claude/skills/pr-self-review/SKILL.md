@@ -62,7 +62,7 @@ Classify every changed file into one or more surfaces using its path prefix:
 
 A single PR may activate multiple surfaces. Flag any changes to `reviewer-core/src/grounding.ts`, `prompt.ts`, or `run.ts` explicitly — these are high-risk files.
 
-"Do not apply rules" for `client/src/vendor/` and `server/src/vendor/` means: skip companion-skill checks (ui-architecture, onion-architecture, etc.) on their content. It does **not** exempt a direct edit to either vendor directory from Step 4's CRITICAL check below — vendor directories are do-not-touch zones (see root `CLAUDE.md`), and any modification to a file under them is always CRITICAL regardless of what the change contains.
+`client/src/vendor/` is a hard do-not-touch zone (see root `CLAUDE.md`) — "note presence only; do not apply companion-skill rules" means skip ui-architecture/react-best-practices checks on its content, but it does **not** exempt a direct edit to a file under `client/src/vendor/` from Step 4's CRITICAL check below; any such edit is always CRITICAL regardless of what the change contains. `server/src/vendor/` is different: it is the canonical, editable source of the shared Zod contracts (`@devdigest/shared`) and routes normally as "Backend — Shared Contracts" — editing it is expected, not a violation, as long as changes stay backward-compatible.
 
 ---
 
