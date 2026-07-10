@@ -28,13 +28,21 @@ export interface Verdict {
 /**
  * Extract the JSON object from a judge response. Cheap models sometimes wrap the reply in
  * markdown fences or leave stray braces in surrounding prose, which breaks naive
- * indexOf("{")/lastIndexOf("}") slicing (grabs the wrong span, or an unterminated one). Strip
- * fences first, then walk forward from the first "{" tracking brace depth (string/escape aware)
- * to find its true matching close.
+ * indexOf("{")/lastIndexOf("}") slicing (grabs the wrong span, or an unterminated one). Strip a
+ * fence ONLY when it wraps the entire reply (starts at position 0) — a verbatim evidence quote
+ * can itself contain a ```mermaid (or other) fence from the reviewed OUTPUT, and matching that
+ * as if it were the outer wrapper strips away the real JSON entirely. Then walk forward from the
+ * first "{" tracking brace depth (string/escape aware) to find its true matching close.
  */
 function extractJson(text: string): string {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fenced ? fenced[1] : text;
+  const trimmed = text.trim();
+  let body = trimmed;
+  if (trimmed.startsWith("```")) {
+    const firstNewline = trimmed.indexOf("\n");
+    const contentStart = firstNewline === -1 ? trimmed.length : firstNewline + 1;
+    const closeFence = trimmed.lastIndexOf("```");
+    body = trimmed.slice(contentStart, closeFence > contentStart ? closeFence : trimmed.length);
+  }
   const start = body.indexOf("{");
   if (start === -1) throw new Error(`judge returned no JSON: ${text.slice(0, 200)}`);
 
