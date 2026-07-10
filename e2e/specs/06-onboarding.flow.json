@@ -1,10 +1,10 @@
 {
-  "name": "Onboarding add-repository screen renders",
-  "description": "Loads /onboarding and confirms the add-repository form renders (heading + Repository URL field). Exercises the onboarding route and its extracted AddRepoView. Read-only: does not submit (no real clone/import, no backend mutation).",
+  "name": "Onboarding generate-tour screen renders",
+  "description": "Loads /onboarding and confirms the generate-tour empty state renders for the seeded repo (no cached tour yet). Exercises the onboarding route and OnboardingView's 404 branch (AC-6). The add-repository form lives in AddRepoModal, not this route (see onboarding/page.tsx). Read-only: does not click Generate (no real LLM call, no backend mutation).",
   "steps": [
     { "cmd": ["open", "{BASE}/onboarding"], "label": "load the onboarding screen" },
     { "cmd": ["wait", "--url", "/onboarding"], "label": "onboarding route reached" },
-    { "cmd": ["wait", "--text", "Add a repository"], "label": "the add-repository heading renders" },
-    { "cmd": ["wait", "--text", "Repository URL"], "label": "the repository URL field renders" }
+    { "cmd": ["wait", "--load", "networkidle"], "label": "onboarding tour fetch settles" },
+    { "cmd": ["wait", "--text", "Generate onboarding tour"], "label": "the generate-tour heading renders" }
   ]
 }
