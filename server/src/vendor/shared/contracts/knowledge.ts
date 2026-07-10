@@ -83,6 +83,93 @@ export const EvalCase = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
+export const AgentEvalExpectedFinding = z.object({
+  file: z.string(),
+  start_line: z.number().int(),
+  end_line: z.number().int(),
+  title: z.string(),
+  severity: z.string(),
+  category: z.string(),
+});
+export type AgentEvalExpectedFinding = z.infer<typeof AgentEvalExpectedFinding>;
+
+export const AgentEvalExpectedOutput = z.object({
+  kind: z.enum(['must_find', 'must_not_flag']),
+  finding: AgentEvalExpectedFinding,
+});
+export type AgentEvalExpectedOutput = z.infer<typeof AgentEvalExpectedOutput>;
+
+export const AgentEvalLatestRun = z.object({
+  pass: z.boolean().nullable(),
+  ran_at: z.string(),
+});
+export type AgentEvalLatestRun = z.infer<typeof AgentEvalLatestRun>;
+
+export const AgentEvalCase = z.object({
+  id: z.string(),
+  agent_id: z.string(),
+  name: z.string(),
+  notes: z.string().nullish(),
+  input_diff: z.string(),
+  expected_output: AgentEvalExpectedOutput,
+  latest_run: AgentEvalLatestRun.nullish(),
+});
+export type AgentEvalCase = z.infer<typeof AgentEvalCase>;
+
+export const AgentEvalPerTrace = z.object({
+  case_id: z.string(),
+  case_name: z.string(),
+  kind: z.enum(['must_find', 'must_not_flag']),
+  pass: z.boolean(),
+  expected_output: AgentEvalExpectedOutput,
+  actual_findings: z.array(z.unknown()),
+  error: z.string().nullish(),
+});
+export type AgentEvalPerTrace = z.infer<typeof AgentEvalPerTrace>;
+
+export const AgentEvalBatchResult = z.object({
+  ran_at: z.string(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  traces_passed: z.number().int(),
+  traces_total: z.number().int(),
+  duration_ms: z.number().int(),
+  cost_usd: z.number().nullable(),
+  per_trace: z.array(AgentEvalPerTrace),
+});
+export type AgentEvalBatchResult = z.infer<typeof AgentEvalBatchResult>;
+
+export const AgentEvalCompareRun = z.object({
+  ran_at: z.string(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type AgentEvalCompareRun = z.infer<typeof AgentEvalCompareRun>;
+
+export const AgentEvalFlip = z.object({
+  case_id: z.string(),
+  case_name: z.string(),
+  from_pass: z.boolean(),
+  to_pass: z.boolean(),
+});
+export type AgentEvalFlip = z.infer<typeof AgentEvalFlip>;
+
+export const AgentEvalCompare = z.object({
+  run_a: AgentEvalCompareRun,
+  run_b: AgentEvalCompareRun,
+  deltas: z.object({
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
+    cost_usd: z.number().nullable(),
+  }),
+  flips: z.array(AgentEvalFlip),
+});
+export type AgentEvalCompare = z.infer<typeof AgentEvalCompare>;
+
 // ---- Memory ----
 export const MemoryScope = z.enum(['repo', 'global', 'team']);
 export type MemoryScope = z.infer<typeof MemoryScope>;

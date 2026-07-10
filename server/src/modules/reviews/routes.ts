@@ -163,4 +163,16 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
       return result;
     });
   }
+
+  // ---- Turn a finding into an agent eval case -----------------------------
+  app.post(
+    '/findings/:id/eval-case',
+    { schema: { params: IdParams } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(container, req);
+      const evalCase = await service.createFindingEvalCase(workspaceId, req.params.id);
+      reply.status(201);
+      return evalCase;
+    },
+  );
 }

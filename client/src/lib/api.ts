@@ -2,7 +2,18 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
-import type { Brief, BriefTimeline, Onboarding, PriorPrList, WhyTimeline } from "@devdigest/shared";
+import type {
+  AgentEvalBatchResult,
+  AgentEvalCase,
+  AgentEvalCompare,
+  Brief,
+  BriefTimeline,
+  EvalDashboard,
+  EvalRunRecord,
+  Onboarding,
+  PriorPrList,
+  WhyTimeline,
+} from "@devdigest/shared";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
@@ -120,5 +131,55 @@ export function fetchWhyTimeline(prId: string, file: string, line: number, ref?:
 export function fetchPriorPrs(prId: string, path: string): Promise<PriorPrList> {
   return apiFetch<PriorPrList>(
     `/pulls/${prId}/files/prior-prs?path=${encodeURIComponent(path)}`,
+  );
+}
+
+// ---- Agent Eval API functions ----
+
+/** Turn an accepted or dismissed finding into an agent eval case. */
+export function postFindingEvalCase(findingId: string): Promise<AgentEvalCase> {
+  return api.post<AgentEvalCase>(`/findings/${findingId}/eval-case`);
+}
+
+/** List all eval cases for an agent (each includes latest_run if ever run). */
+export function getAgentEvalCases(agentId: string): Promise<AgentEvalCase[]> {
+  return api.get<AgentEvalCase[]>(`/agents/${agentId}/eval-cases`);
+}
+
+/** Delete an eval case for an agent. */
+export function deleteAgentEvalCase(agentId: string, caseId: string): Promise<void> {
+  return api.del<void>(`/agents/${agentId}/eval-cases/${caseId}`);
+}
+
+/**
+ * Run all eval cases for an agent as a batch. This can take a while as it
+ * calls reviewPullRequest sequentially for every case — no short timeout is
+ * applied (same pattern as runAllEvalCases / generateOnboardingTour which also
+ * use apiFetch with no AbortSignal).
+ */
+export function postAgentEvalRuns(agentId: string): Promise<AgentEvalBatchResult> {
+  return api.post<AgentEvalBatchResult>(`/agents/${agentId}/eval-runs`);
+}
+
+/** List all persisted eval run records for an agent (client groups by ran_at). */
+export function getAgentEvalRuns(agentId: string): Promise<EvalRunRecord[]> {
+  return api.get<EvalRunRecord[]>(`/agents/${agentId}/eval-runs`);
+}
+
+/** Compare two batch runs by their ran_at timestamps (ISO strings). */
+export function getAgentEvalRunsCompare(
+  agentId: string,
+  a: string,
+  b: string,
+): Promise<AgentEvalCompare> {
+  return api.get<AgentEvalCompare>(
+    `/agents/${agentId}/eval-runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+  );
+}
+
+/** Fetch the workspace-level eval dashboard (or filter by a specific agent). */
+export function getEvalsDashboard(ownerId?: string): Promise<EvalDashboard> {
+  return api.get<EvalDashboard>(
+    `/evals/dashboard${ownerId ? `?owner_id=${ownerId}` : ""}`,
   );
 }

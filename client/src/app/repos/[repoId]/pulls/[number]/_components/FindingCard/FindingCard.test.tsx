@@ -58,3 +58,34 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("dismiss");
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC-19/20: "Turn into eval case" button visibility
+// ---------------------------------------------------------------------------
+
+describe("FindingCard — eval case button (AC-19/20)", () => {
+  it("AC-19: shows 'Turn into eval case' button when finding is accepted", () => {
+    const accepted: FindingRecord = { ...FINDING, accepted_at: "2026-07-01T00:00:00.000Z", dismissed_at: null };
+    renderWithIntl(<FindingCard f={accepted} defaultExpanded />);
+    expect(screen.getByText("Turn into eval case")).toBeInTheDocument();
+  });
+
+  it("AC-19: shows 'Turn into eval case' button when finding is dismissed", () => {
+    const dismissed: FindingRecord = { ...FINDING, accepted_at: null, dismissed_at: "2026-07-01T00:00:00.000Z" };
+    renderWithIntl(<FindingCard f={dismissed} defaultExpanded />);
+    expect(screen.getByText("Turn into eval case")).toBeInTheDocument();
+  });
+
+  it("AC-20: does not show 'Turn into eval case' button when finding is neither accepted nor dismissed", () => {
+    renderWithIntl(<FindingCard f={FINDING} defaultExpanded />);
+    expect(screen.queryByText("Turn into eval case")).not.toBeInTheDocument();
+  });
+
+  it("calls onCreateEvalCase when the button is clicked", () => {
+    const onCreateEvalCase = vi.fn();
+    const accepted: FindingRecord = { ...FINDING, accepted_at: "2026-07-01T00:00:00.000Z", dismissed_at: null };
+    renderWithIntl(<FindingCard f={accepted} defaultExpanded onCreateEvalCase={onCreateEvalCase} />);
+    fireEvent.click(screen.getByText("Turn into eval case"));
+    expect(onCreateEvalCase).toHaveBeenCalledOnce();
+  });
+});

@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
-import { AppError, NotFoundError } from '../../platform/errors.js';
+import type { AgentEvalCase } from '@devdigest/shared';
+import { AppError, NotFoundError, ValidationError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import type { IntentRecord } from './repository.js';
@@ -9,6 +10,7 @@ import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 import { IntentClassifier } from './intent-classifier.js';
+import { getPrFilePatch, insertFindingEvalCase } from './repository/eval-case.repo.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -164,6 +166,89 @@ export class ReviewService {
     action: FindingActionKind,
   ): Promise<{ finding: ReviewDtoFinding }> {
     return actOnFindingImpl(this.repo, workspaceId, findingId, action);
+  }
+
+  /**
+   * Create an agent eval case from an accepted or dismissed finding.
+   * The finding's file patch becomes the `input_diff`; the accepted/dismissed
+   * state determines `kind` ('must_find' | 'must_not_flag').
+   */
+  async createFindingEvalCase(
+    workspaceId: string,
+    findingId: string,
+  ): Promise<AgentEvalCase> {
+    // 1. Resolve finding → review → pull
+    const ctx = await this.repo.findingContext(findingId);
+    if (!ctx) throw new NotFoundError('Finding not found');
+
+    const { finding, review, pull } = ctx;
+
+    // 2. Workspace scope guard
+    if (pull.workspaceId !== workspaceId) throw new NotFoundError('Finding not found');
+
+    // 3. State guards
+    if (finding.acceptedAt !== null && finding.dismissedAt !== null) {
+      throw new ValidationError(
+        'Finding has both accepted_at and dismissed_at set — state is ambiguous (AC-3b)',
+      );
+    }
+    if (finding.acceptedAt === null && finding.dismissedAt === null) {
+      throw new ValidationError(
+        'Finding must be accepted or dismissed before creating an eval case',
+      );
+    }
+
+    // 4. Agent guard
+    if (review.agentId === null) {
+      throw new ValidationError(
+        "The finding's parent review has no linked agent (AC-3)",
+      );
+    }
+
+    // 5. Get the file patch from pr_files
+    const patch = await getPrFilePatch(this.container.db, pull.id, finding.file);
+    if (patch === undefined || patch === null) {
+      throw new ValidationError(
+        'No diff patch is available for this file — cannot create a case with empty input_diff (AC-3a)',
+      );
+    }
+
+    // 6. Determine kind and build expected output
+    const kind: 'must_find' | 'must_not_flag' =
+      finding.acceptedAt !== null ? 'must_find' : 'must_not_flag';
+
+    const name = finding.title.slice(0, 80);
+
+    const expectedOutput = {
+      kind,
+      finding: {
+        file: finding.file,
+        start_line: finding.startLine,
+        end_line: finding.endLine,
+        title: finding.title,
+        severity: finding.severity,
+        category: finding.category,
+      },
+    };
+
+    // 7. Insert the eval case
+    const row = await insertFindingEvalCase(this.container.db, {
+      workspaceId,
+      agentId: review.agentId,
+      name,
+      inputDiff: patch,
+      expectedOutput,
+    });
+
+    return {
+      id: row.id,
+      agent_id: row.ownerId,
+      name: row.name,
+      notes: row.notes ?? null,
+      input_diff: row.inputDiff ?? '',
+      expected_output: row.expectedOutput as AgentEvalCase['expected_output'],
+      latest_run: null,
+    };
   }
 
   // ===========================================================================

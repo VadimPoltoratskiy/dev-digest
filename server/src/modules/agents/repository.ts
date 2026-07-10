@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -252,5 +252,185 @@ export class AgentsRepository {
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
       .returning();
     return row;
+  }
+
+  // ---- Agent eval cases + eval runs (owner_kind='agent') ------------------
+
+  /**
+   * All eval cases for an agent (workspace + owner-scoped), ordered by name.
+   * Each case gets the latest eval_run row attached as `latestRun`.
+   */
+  async listAgentEvalCases(
+    workspaceId: string,
+    agentId: string,
+  ): Promise<(typeof t.evalCases.$inferSelect & { latestRun: typeof t.evalRuns.$inferSelect | null })[]> {
+    const cases = await this.db
+      .select()
+      .from(t.evalCases)
+      .where(
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.ownerKind, 'agent'),
+          eq(t.evalCases.ownerId, agentId),
+        ),
+      )
+      .orderBy(asc(t.evalCases.name));
+
+    const result: (typeof t.evalCases.$inferSelect & {
+      latestRun: typeof t.evalRuns.$inferSelect | null;
+    })[] = [];
+    for (const c of cases) {
+      const [latestRun] = await this.db
+        .select()
+        .from(t.evalRuns)
+        .where(eq(t.evalRuns.caseId, c.id))
+        .orderBy(desc(t.evalRuns.ranAt))
+        .limit(1);
+      result.push({ ...c, latestRun: latestRun ?? null });
+    }
+    return result;
+  }
+
+  /** A single eval case scoped to workspace + ownerKind='agent'. */
+  async getAgentEvalCase(
+    workspaceId: string,
+    caseId: string,
+  ): Promise<typeof t.evalCases.$inferSelect | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.evalCases)
+      .where(
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.id, caseId),
+          eq(t.evalCases.ownerKind, 'agent'),
+        ),
+      );
+    return row;
+  }
+
+  /**
+   * Delete an agent eval case. Returns false when no row was deleted.
+   */
+  async deleteAgentEvalCase(
+    workspaceId: string,
+    agentId: string,
+    caseId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .delete(t.evalCases)
+      .where(
+        and(
+          eq(t.evalCases.workspaceId, workspaceId),
+          eq(t.evalCases.id, caseId),
+          eq(t.evalCases.ownerKind, 'agent'),
+          eq(t.evalCases.ownerId, agentId),
+        ),
+      )
+      .returning({ id: t.evalCases.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Insert one eval_run row for an agent eval case.
+   * `recall/precision/citationAccuracy` start as null and are patched later
+   * by `updateBatchMetrics` once all cases in the batch have completed.
+   */
+  async insertEvalRun(values: {
+    caseId: string;
+    pass: boolean;
+    ranAt: Date;
+    actualOutput: unknown;
+    durationMs?: number;
+    costUsd?: number | null;
+  }): Promise<typeof t.evalRuns.$inferSelect> {
+    const [row] = await this.db
+      .insert(t.evalRuns)
+      .values({
+        caseId: values.caseId,
+        ranAt: values.ranAt,
+        pass: values.pass,
+        actualOutput: values.actualOutput as object,
+        durationMs: values.durationMs,
+        costUsd: values.costUsd ?? null,
+        // recall/precision/citationAccuracy are set by updateBatchMetrics
+        recall: null,
+        precision: null,
+        citationAccuracy: null,
+      })
+      .returning();
+    return row!;
+  }
+
+  /**
+   * Denormalize batch-level metrics back onto all eval_run rows that share
+   * the same `ranAt` within the given case set.
+   */
+  async updateBatchMetrics(
+    caseIds: string[],
+    ranAt: Date,
+    metrics: {
+      recall: number | null;
+      precision: number | null;
+      citationAccuracy: number | null;
+    },
+  ): Promise<void> {
+    if (caseIds.length === 0) return;
+    await this.db
+      .update(t.evalRuns)
+      .set({
+        recall: metrics.recall,
+        precision: metrics.precision,
+        citationAccuracy: metrics.citationAccuracy,
+      })
+      .where(
+        and(inArray(t.evalRuns.caseId, caseIds), eq(t.evalRuns.ranAt, ranAt)),
+      );
+  }
+
+  /**
+   * All eval_run rows for the given case IDs, newest first.
+   * Returns [] when `caseIds` is empty to avoid Drizzle's `inArray([])` error.
+   */
+  async listEvalRunsByCaseIds(
+    caseIds: string[],
+  ): Promise<(typeof t.evalRuns.$inferSelect)[]> {
+    if (caseIds.length === 0) return [];
+    return this.db
+      .select()
+      .from(t.evalRuns)
+      .where(inArray(t.evalRuns.caseId, caseIds))
+      .orderBy(desc(t.evalRuns.ranAt));
+  }
+
+  /**
+   * Eval_run rows for a specific batch (identified by `ranAt`) within the
+   * given case set; includes the case name from the joined eval_cases row.
+   */
+  async listEvalRunsByRanAt(
+    caseIds: string[],
+    ranAt: Date,
+  ): Promise<(typeof t.evalRuns.$inferSelect & { caseName: string })[]> {
+    if (caseIds.length === 0) return [];
+    const rows = await this.db
+      .select({
+        id: t.evalRuns.id,
+        caseId: t.evalRuns.caseId,
+        ranAt: t.evalRuns.ranAt,
+        actualOutput: t.evalRuns.actualOutput,
+        pass: t.evalRuns.pass,
+        recall: t.evalRuns.recall,
+        precision: t.evalRuns.precision,
+        citationAccuracy: t.evalRuns.citationAccuracy,
+        durationMs: t.evalRuns.durationMs,
+        costUsd: t.evalRuns.costUsd,
+        caseName: t.evalCases.name,
+      })
+      .from(t.evalRuns)
+      .innerJoin(t.evalCases, eq(t.evalRuns.caseId, t.evalCases.id))
+      .where(
+        and(inArray(t.evalRuns.caseId, caseIds), eq(t.evalRuns.ranAt, ranAt)),
+      );
+    return rows;
   }
 }

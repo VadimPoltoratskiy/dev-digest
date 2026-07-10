@@ -5,6 +5,10 @@ import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
+
+// ---- Eval-specific param/query schemas ----
+const EvalCaseParams = z.object({ id: z.string().uuid(), caseId: z.string().uuid() });
+const CompareQuery = z.object({ a: z.string(), b: z.string() });
 import { AgentsService } from './service.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
@@ -206,4 +210,54 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
   });
+
+  // ---- Agent eval routes --------------------------------------------------
+  // IMPORTANT: /eval-runs/compare must be registered BEFORE /eval-runs to
+  // prevent Fastify from absorbing the literal segment 'compare' as a run-id.
+
+  app.get(
+    '/agents/:id/eval-runs/compare',
+    { schema: { params: IdParams, querystring: CompareQuery } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.compareAgentEvalRuns(workspaceId, req.params.id, req.query.a, req.query.b);
+    },
+  );
+
+  app.post(
+    '/agents/:id/eval-runs',
+    { schema: { params: IdParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.runAgentEvalBatch(workspaceId, req.params.id);
+    },
+  );
+
+  app.get(
+    '/agents/:id/eval-runs',
+    { schema: { params: IdParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.listAgentEvalRuns(workspaceId, req.params.id);
+    },
+  );
+
+  app.get(
+    '/agents/:id/eval-cases',
+    { schema: { params: IdParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.listAgentEvalCases(workspaceId, req.params.id);
+    },
+  );
+
+  app.delete(
+    '/agents/:id/eval-cases/:caseId',
+    { schema: { params: EvalCaseParams } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      await service.deleteAgentEvalCase(workspaceId, req.params.id, req.params.caseId);
+      reply.status(204);
+    },
+  );
 }
