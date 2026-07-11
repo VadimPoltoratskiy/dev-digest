@@ -26,7 +26,7 @@ export function useAgentEvalCases(agentId: string | null | undefined) {
 }
 
 /**
- * Mutation: turn an accepted or dismissed finding into an agent eval case.
+ * Mutation: turn a finding into an agent eval case with a caller-chosen kind.
  * Invalidates the created case's agent's case list and shows a success toast.
  * Errors surface via the app-wide MutationCache.onError (providers.tsx) — no
  * local onError here, or the failure would toast twice.
@@ -34,7 +34,11 @@ export function useAgentEvalCases(agentId: string | null | undefined) {
 export function useTurnFindingIntoEvalCase() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (findingId: string) => postFindingEvalCase(findingId),
+    mutationFn: (input: {
+      findingId: string;
+      kind: "must_find" | "must_not_flag";
+      name: string;
+    }) => postFindingEvalCase(input.findingId, { kind: input.kind, name: input.name }),
     onSuccess: (evalCase) => {
       qc.invalidateQueries({ queryKey: ["agent-eval-cases", evalCase.agent_id] });
       notify.success(`Eval case "${evalCase.name}" created`);

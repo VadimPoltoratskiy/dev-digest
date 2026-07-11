@@ -137,9 +137,12 @@ export function fetchPriorPrs(prId: string, path: string): Promise<PriorPrList> 
 
 // ---- Agent Eval API functions ----
 
-/** Turn an accepted or dismissed finding into an agent eval case. */
-export function postFindingEvalCase(findingId: string): Promise<AgentEvalCase> {
-  return api.post<AgentEvalCase>(`/findings/${findingId}/eval-case`);
+/** Turn a finding into an agent eval case with the given kind (+ optional name). */
+export function postFindingEvalCase(
+  findingId: string,
+  body: { kind: "must_find" | "must_not_flag"; name?: string },
+): Promise<AgentEvalCase> {
+  return api.post<AgentEvalCase>(`/findings/${findingId}/eval-case`, body);
 }
 
 /** List all eval cases for an agent (each includes latest_run if ever run). */

@@ -70,8 +70,8 @@ export function FindingsPanel({
               evalCasePending={createEvalCase.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
-              onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
-              onCreateEvalCase={() => createEvalCase.mutate(f.id)}
+              onAction={(act, reply) => action.mutate({ findingId: f.id, action: act, reply, prId })}
+              onCreateEvalCase={(kind, name) => createEvalCase.mutate({ findingId: f.id, kind, name })}
             />
           ))
         )}

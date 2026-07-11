@@ -132,6 +132,17 @@
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
   },
+  "findingEvalModal": {
+    "title": "Turn into eval case",
+    "nameLabel": "Name",
+    "kindLabel": "Expected outcome",
+    "kindMustFind": "Must find",
+    "kindMustNotFlag": "Must not flag",
+    "locationLabel": "Location",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
   "agentEval": {
     "subtitle": "Regression harness · {runs} runs on the gold set",
     "switchAgent": "Switch agent",

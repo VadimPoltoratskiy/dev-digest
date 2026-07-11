@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest } from '@devdigest/shared';
+import { RunRequest, CreateFindingEvalCaseBody, FindingReplyBody } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -14,6 +14,8 @@ import { ReviewService } from './service.js';
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
+ *   POST   /findings/:id/eval-case  {kind, name?}       → turn finding into agent eval case
+ *   POST   /findings/:id/reply      {reply}             → post a GitHub PR review comment
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
 export default async function reviewsRoutes(appBase: FastifyInstance) {
@@ -167,12 +169,27 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   // ---- Turn a finding into an agent eval case -----------------------------
   app.post(
     '/findings/:id/eval-case',
-    { schema: { params: IdParams } },
+    { schema: { params: IdParams, body: CreateFindingEvalCaseBody } },
     async (req, reply) => {
       const { workspaceId } = await getContext(container, req);
-      const evalCase = await service.createFindingEvalCase(workspaceId, req.params.id);
+      const evalCase = await service.createFindingEvalCase(
+        workspaceId,
+        req.params.id,
+        req.body.kind,
+        req.body.name,
+      );
       reply.status(201);
       return evalCase;
+    },
+  );
+
+  // ---- Reply to the author: post a GitHub PR review comment ---------------
+  app.post(
+    '/findings/:id/reply',
+    { schema: { params: IdParams, body: FindingReplyBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.replyToFinding(workspaceId, req.params.id, req.body.reply);
     },
   );
 }

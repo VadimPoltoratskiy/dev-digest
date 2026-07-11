@@ -87,3 +87,15 @@ export const FindingAction = z.object({
   reply: z.string().optional(),
 });
 export type FindingAction = z.infer<typeof FindingAction>;
+
+/** Body for POST /findings/:id/eval-case — the caller must state the kind
+    explicitly since it can no longer be inferred from accept/dismiss state. */
+export const CreateFindingEvalCaseBody = z.object({
+  kind: z.enum(['must_find', 'must_not_flag']),
+  name: z.string().min(1).max(80).optional(),
+});
+export type CreateFindingEvalCaseBody = z.infer<typeof CreateFindingEvalCaseBody>;
+
+/** Body for POST /findings/:id/reply. */
+export const FindingReplyBody = z.object({ reply: z.string().min(1) });
+export type FindingReplyBody = z.infer<typeof FindingReplyBody>;
