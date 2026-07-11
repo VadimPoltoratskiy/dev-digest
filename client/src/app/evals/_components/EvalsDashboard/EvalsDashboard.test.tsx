@@ -1,18 +1,29 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { EvalDashboard, EvalRunRecord, EvalTrendPoint } from "@devdigest/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { EvalDashboard, EvalDashboardAgentSummary, EvalRunRecord, EvalTrendPoint } from "@devdigest/shared";
 import messages from "../../../../../messages/en/eval.json";
 
 vi.mock("../../../../lib/hooks/agents-eval", () => ({
   useEvalsDashboard: vi.fn(),
+  useEvalsDashboardAgents: vi.fn(),
+}));
+
+vi.mock("../../../../lib/api", () => ({
+  postAgentEvalRuns: vi.fn(),
 }));
 
 vi.mock("../../../../components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-import { useEvalsDashboard } from "../../../../lib/hooks/agents-eval";
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+import { useEvalsDashboard, useEvalsDashboardAgents } from "../../../../lib/hooks/agents-eval";
+import { postAgentEvalRuns } from "../../../../lib/api";
 import { EvalsDashboard } from "./EvalsDashboard";
 
 afterEach(cleanup);
@@ -22,12 +33,23 @@ afterEach(cleanup);
 // ---------------------------------------------------------------------------
 
 function renderWithIntl(ui: React.ReactElement) {
+  const qc = new QueryClient();
   return render(
-    <NextIntlClientProvider locale="en" messages={{ eval: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={qc}>
+      <NextIntlClientProvider locale="en" messages={{ eval: messages }}>
+        {ui}
+      </NextIntlClientProvider>
+    </QueryClientProvider>,
   );
 }
+
+/** Default: no agents in the list — most dashboard tests don't care about it. */
+function setupDefaultAgentsMock() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.mocked(useEvalsDashboardAgents).mockReturnValue({ data: [], isLoading: false, isError: false } as any);
+}
+
+beforeEach(setupDefaultAgentsMock);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -84,6 +106,31 @@ const DASHBOARD_DATA: EvalDashboard = {
   alert: null,
 };
 
+const AGENT_SUMMARIES: EvalDashboardAgentSummary[] = [
+  {
+    agent_id: "ag1",
+    agent_name: "Security Reviewer",
+    provider: "openai",
+    model: "gpt-4.1",
+    version: 7,
+    cases_total: 20,
+    last_ran_at: "2026-05-29T09:14:00.000Z",
+    current: { recall: 0.82, precision: 0.91, citation_accuracy: 0.95 },
+    trend: [0.7, 0.75, 0.8, 0.82],
+  },
+  {
+    agent_id: "ag2",
+    agent_name: "Performance Reviewer",
+    provider: "openai",
+    model: "gpt-4o",
+    version: 4,
+    cases_total: 18,
+    last_ran_at: null,
+    current: null,
+    trend: [],
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -119,28 +166,10 @@ describe("EvalsDashboard — with data", () => {
     expect(screen.getByText("PRECISION")).toBeInTheDocument();
     expect(screen.getByText("CITATION ACCURACY")).toBeInTheDocument();
 
-    // Metric values rendered as large text (fmtPct)
-    // recall=0.75 → "75.0%", precision=0.88 → "88.0%", citation=0.95 → "95.0%"
-    const metricValues = screen.getAllByText("75.0%");
-    expect(metricValues.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("88.0%").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("95.0%").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders delta values with sign in the metric cards", () => {
-    vi.mocked(useEvalsDashboard).mockReturnValue({
-      data: DASHBOARD_DATA,
-      isLoading: false,
-      isError: false,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any);
-
-    renderWithIntl(<EvalsDashboard />);
-
-    // delta.recall=0.1 → "+10.0%"
-    expect(screen.getByText("+10.0%")).toBeInTheDocument();
-    // delta.precision=-0.05 → "-5.0%"
-    expect(screen.getByText("-5.0%")).toBeInTheDocument();
+    // Metric values rendered as large text (EvalMetricCards passes the number, no % suffix text node)
+    expect(screen.getAllByText("75.0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("88.0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("95.0").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders a metric trend chart with a legend when trend has points", () => {
@@ -218,5 +247,56 @@ describe("EvalsDashboard — empty state", () => {
 
     // Metric cards should NOT be shown when there are no runs
     expect(screen.queryByText("RECALL")).not.toBeInTheDocument();
+  });
+});
+
+describe("EvalsDashboard — agents list", () => {
+  beforeEach(() => {
+    vi.mocked(useEvalsDashboard).mockReturnValue({
+      data: DASHBOARD_DATA,
+      isLoading: false,
+      isError: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+  });
+
+  it("renders one row per agent with name, model badge, and metrics", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useEvalsDashboardAgents).mockReturnValue({ data: AGENT_SUMMARIES, isLoading: false, isError: false } as any);
+
+    renderWithIntl(<EvalsDashboard />);
+
+    expect(screen.getByText("Security Reviewer")).toBeInTheDocument();
+    expect(screen.getByText("openai/gpt-4.1")).toBeInTheDocument();
+    expect(screen.getByText("Performance Reviewer")).toBeInTheDocument();
+    expect(screen.getByText(/never run/)).toBeInTheDocument();
+  });
+
+  it("shows the empty-agents message when there are no agents", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useEvalsDashboardAgents).mockReturnValue({ data: [], isLoading: false, isError: false } as any);
+
+    renderWithIntl(<EvalsDashboard />);
+
+    expect(screen.getByText("No agents yet.")).toBeInTheDocument();
+  });
+
+  it("fans out a run request per agent on 'Run all agents' and shows a running state", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useEvalsDashboardAgents).mockReturnValue({ data: AGENT_SUMMARIES, isLoading: false, isError: false } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(postAgentEvalRuns).mockResolvedValue({} as any);
+
+    renderWithIntl(<EvalsDashboard />);
+
+    fireEvent.click(screen.getByText("Run all agents"));
+
+    expect(postAgentEvalRuns).toHaveBeenCalledWith("ag1");
+    expect(postAgentEvalRuns).toHaveBeenCalledWith("ag2");
+    expect(postAgentEvalRuns).toHaveBeenCalledTimes(2);
+
+    await waitFor(() => {
+      expect(screen.getByText("Run all agents")).not.toBeDisabled();
+    });
   });
 });

@@ -6,7 +6,8 @@ import { EvalsService } from './service.js';
 
 /**
  * Evals module — global dashboard.
- *   GET /evals/dashboard   → EvalDashboard (workspace-scoped, optional owner_id filter)
+ *   GET /evals/dashboard          → EvalDashboard (workspace-scoped, optional owner_id filter)
+ *   GET /evals/dashboard/agents   → EvalDashboardAgentSummary[] (one row per agent)
  */
 
 const DashboardQuery = z.object({
@@ -25,4 +26,9 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
       return service.getDashboard(workspaceId, req.query.owner_id);
     },
   );
+
+  app.get('/evals/dashboard/agents', async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    return service.getDashboardAgentsSummary(workspaceId);
+  });
 }

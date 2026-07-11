@@ -9,6 +9,7 @@ import type {
   Brief,
   BriefTimeline,
   EvalDashboard,
+  EvalDashboardAgentSummary,
   EvalRunRecord,
   Onboarding,
   PriorPrList,
@@ -182,4 +183,9 @@ export function getEvalsDashboard(ownerId?: string): Promise<EvalDashboard> {
   return api.get<EvalDashboard>(
     `/evals/dashboard${ownerId ? `?owner_id=${ownerId}` : ""}`,
   );
+}
+
+/** Fetch per-agent eval summaries (one row per agent) for the dashboard's agent list. */
+export function getEvalsDashboardAgents(): Promise<EvalDashboardAgentSummary[]> {
+  return api.get<EvalDashboardAgentSummary[]>("/evals/dashboard/agents");
 }

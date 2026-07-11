@@ -9,6 +9,7 @@ import {
   getAgentEvalRuns,
   getAgentEvalRunsCompare,
   getEvalsDashboard,
+  getEvalsDashboardAgents,
   getAgentEvalCases,
   postAgentEvalRuns,
   postFindingEvalCase,
@@ -95,5 +96,13 @@ export function useEvalsDashboard(ownerId?: string) {
   return useQuery({
     queryKey: ["evals-dashboard", ownerId],
     queryFn: () => getEvalsDashboard(ownerId),
+  });
+}
+
+/** Fetch per-agent eval summaries for the workspace dashboard's agent list. */
+export function useEvalsDashboardAgents() {
+  return useQuery({
+    queryKey: ["evals-dashboard-agents"],
+    queryFn: () => getEvalsDashboardAgents(),
   });
 }

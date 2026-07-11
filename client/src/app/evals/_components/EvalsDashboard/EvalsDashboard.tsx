@@ -1,77 +1,129 @@
 /* EvalsDashboard — workspace-level eval metrics page.
    Shows total case count, current batch metrics, delta vs prior batch,
-   trend, and recent run records. */
+   trend, recent run records, and the list of agents (each with its own
+   eval summary) with a "Run all agents" bulk action. Clicking an agent
+   row drills into /evals/[agentId] for that agent's full dashboard. */
 "use client";
 
+import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Skeleton, ErrorState, LineChart } from "@devdigest/ui";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge, Skeleton, ErrorState, LineChart, Sparkline, Button, Icon } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useEvalsDashboard } from "../../../../lib/hooks";
+import { useEvalsDashboard, useEvalsDashboardAgents } from "../../../../lib/hooks";
+import { postAgentEvalRuns } from "../../../../lib/api";
+import { EvalMetricCards } from "../../../../components/EvalMetricCards";
+import { fmtMetric } from "../../../../lib/eval-format";
 
 // --------------------------------------------------------------------------
-// Helpers
+// Agents list section
 // --------------------------------------------------------------------------
 
-function fmtPct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
-}
+type RunProgress = "idle" | "running" | "done" | "error";
 
-function fmtDelta(v: number): string {
-  const pct = (v * 100).toFixed(1);
-  return v >= 0 ? `+${pct}%` : `${pct}%`;
-}
+function AgentsListSection() {
+  const t = useTranslations("eval");
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { data: summaries, isLoading, isError } = useEvalsDashboardAgents();
+  const [progress, setProgress] = React.useState<Record<string, RunProgress>>({});
+  const [runningAll, setRunningAll] = React.useState(false);
 
-function fmtCost(v: number | null | undefined, empty: string): string {
-  if (v == null) return empty;
-  return `$${v.toFixed(4)}`;
-}
+  const handleRunAll = async () => {
+    if (!summaries || summaries.length === 0) return;
+    setRunningAll(true);
+    setProgress(Object.fromEntries(summaries.map((s) => [s.agent_id, "running" as RunProgress])));
 
-// --------------------------------------------------------------------------
-// Metric card
-// --------------------------------------------------------------------------
+    await Promise.allSettled(
+      summaries.map((s) =>
+        postAgentEvalRuns(s.agent_id)
+          .then(() => setProgress((prev) => ({ ...prev, [s.agent_id]: "done" })))
+          .catch(() => setProgress((prev) => ({ ...prev, [s.agent_id]: "error" }))),
+      ),
+    );
 
-function MetricCard({
-  label,
-  value,
-  delta,
-}: {
-  label: string;
-  value: string;
-  delta?: string;
-}) {
+    setRunningAll(false);
+    qc.invalidateQueries({ queryKey: ["evals-dashboard-agents"] });
+    qc.invalidateQueries({ queryKey: ["evals-dashboard"] });
+  };
+
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "14px 16px",
-        background: "var(--bg-elevated)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase" as const,
-          letterSpacing: "0.06em",
-          color: "var(--text-muted)",
-        }}
-      >
-        {label}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{t("dashboard.agentsHeading")}</span>
+        <Button kind="primary" size="sm" icon="Play" disabled={runningAll} onClick={handleRunAll}>
+          {runningAll ? t("dashboard.runningAll") : t("dashboard.runAllAgents")}
+        </Button>
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>
-      {delta != null && (
-        <div
-          style={{
-            fontSize: 12,
-            color:
-              delta.startsWith("+") ? "var(--ok)" : delta.startsWith("-") ? "var(--crit)" : "var(--text-muted)",
-          }}
-        >
-          {delta}
+
+      {isLoading && <Skeleton height={80} />}
+      {isError && <ErrorState body={t("dashboard.errorAgents")} />}
+
+      {summaries && summaries.length === 0 && (
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("dashboard.noAgents")}</p>
+      )}
+
+      {summaries && summaries.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {summaries.map((s) => {
+            const state = progress[s.agent_id];
+            return (
+              <div
+                key={s.agent_id}
+                onClick={() => router.push(`/evals/${s.agent_id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/evals/${s.agent_id}`);
+                  }
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "10px 14px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 7,
+                  background: "var(--bg-elevated)",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{s.agent_name}</span>
+                    <Badge color="var(--text-secondary)" mono>
+                      {s.provider}/{s.model}
+                    </Badge>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                    {t("dashboard.versionLabel", { version: s.version })}
+                    {" · "}
+                    {s.last_ran_at
+                      ? new Date(s.last_ran_at).toLocaleString()
+                      : t("dashboard.neverRun")}
+                    {state === "running" && ` · ${t("dashboard.agentRunning")}`}
+                    {state === "error" && ` · ${t("dashboard.runFailed")}`}
+                  </div>
+                </div>
+
+                {s.trend.length > 0 && <Sparkline data={s.trend} color="var(--accent, #4f46e5)" w={64} h={22} />}
+
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("dashboard.table.recall")}</span>
+                  <Badge>{fmtMetric(s.current?.recall, t("evalsTab.na"))}</Badge>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("dashboard.table.precision")}</span>
+                  <Badge>{fmtMetric(s.current?.precision, t("evalsTab.na"))}</Badge>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("dashboard.table.citation")}</span>
+                  <Badge>{fmtMetric(s.current?.citation_accuracy, t("evalsTab.na"))}</Badge>
+                </div>
+
+                <Icon.ChevronRight size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -135,6 +187,8 @@ export function EvalsDashboard() {
         </p>
       </div>
 
+      <AgentsListSection />
+
       {!hasRuns ? (
         <p style={{ fontSize: 14, color: "var(--text-muted)" }}>
           {t("dashboard.noRuns")}
@@ -143,29 +197,7 @@ export function EvalsDashboard() {
         <>
           {/* Current batch metrics */}
           <div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 12,
-              }}
-            >
-              <MetricCard
-                label={t("dashboard.metrics.recall")}
-                value={fmtPct(data.current.recall)}
-                delta={fmtDelta(data.delta.recall)}
-              />
-              <MetricCard
-                label={t("dashboard.metrics.precision")}
-                value={fmtPct(data.current.precision)}
-                delta={fmtDelta(data.delta.precision)}
-              />
-              <MetricCard
-                label={t("dashboard.metrics.citationAccuracy")}
-                value={fmtPct(data.current.citation_accuracy)}
-                delta={fmtDelta(data.delta.citation_accuracy)}
-              />
-            </div>
+            <EvalMetricCards current={data.current} delta={data.delta} />
             {/* Supplemental metrics row */}
             <div
               style={{
@@ -182,7 +214,7 @@ export function EvalsDashboard() {
                 {data.current.traces_total}
               </span>
               <span>
-                {t("dashboard.table.cost")}: {fmtCost(data.current.cost_usd, t("evalsTab.costEmpty"))}
+                {t("dashboard.table.cost")}: {data.current.cost_usd != null ? `$${data.current.cost_usd.toFixed(4)}` : t("evalsTab.costEmpty")}
               </span>
             </div>
           </div>
@@ -300,23 +332,15 @@ export function EvalsDashboard() {
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t("dashboard.table.recall")}
                     </span>
-                    <Badge>
-                      {run.recall != null ? fmtPct(run.recall) : t("evalsTab.na")}
-                    </Badge>
+                    <Badge>{fmtMetric(run.recall, t("evalsTab.na"))}</Badge>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t("dashboard.table.precision")}
                     </span>
-                    <Badge>
-                      {run.precision != null ? fmtPct(run.precision) : t("evalsTab.na")}
-                    </Badge>
+                    <Badge>{fmtMetric(run.precision, t("evalsTab.na"))}</Badge>
                     <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {t("dashboard.table.citation")}
                     </span>
-                    <Badge>
-                      {run.citation_accuracy != null
-                        ? fmtPct(run.citation_accuracy)
-                        : t("evalsTab.na")}
-                    </Badge>
+                    <Badge>{fmtMetric(run.citation_accuracy, t("evalsTab.na"))}</Badge>
                   </div>
                   {run.pass != null && (
                     <Badge
