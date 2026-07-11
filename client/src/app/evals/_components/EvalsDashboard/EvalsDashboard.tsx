@@ -5,6 +5,7 @@
 
 import { useTranslations } from "next-intl";
 import { Badge, Skeleton, ErrorState, LineChart } from "@devdigest/ui";
+import { AppShell } from "../../../../components/app-shell";
 import { useEvalsDashboard } from "../../../../lib/hooks";
 
 // --------------------------------------------------------------------------
@@ -84,20 +85,25 @@ function MetricCard({
 export function EvalsDashboard() {
   const t = useTranslations("eval");
   const { data, isLoading, isError } = useEvalsDashboard();
+  const crumb = [{ label: t("page.crumbSkillsLab") }, { label: t("page.crumbEvalDashboard") }];
 
   if (isLoading) {
     return (
-      <div style={{ padding: 32 }}>
-        <Skeleton height={300} />
-      </div>
+      <AppShell crumb={crumb}>
+        <div style={{ padding: 32 }}>
+          <Skeleton height={300} />
+        </div>
+      </AppShell>
     );
   }
 
   if (isError) {
     return (
-      <div style={{ padding: 32 }}>
-        <ErrorState body={t("dashboard.loading")} />
-      </div>
+      <AppShell crumb={crumb}>
+        <div style={{ padding: 32 }}>
+          <ErrorState body={t("dashboard.loading")} />
+        </div>
+      </AppShell>
     );
   }
 
@@ -106,6 +112,7 @@ export function EvalsDashboard() {
   const hasRuns = data.recent_runs.length > 0;
 
   return (
+    <AppShell crumb={crumb}>
     <div
       style={{
         padding: 28,
@@ -325,5 +332,6 @@ export function EvalsDashboard() {
         </>
       )}
     </div>
+    </AppShell>
   );
 }

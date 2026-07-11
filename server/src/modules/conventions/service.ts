@@ -175,16 +175,22 @@ export class ConventionsService {
 
     const repoName = repoBasics.name;
     const body = buildSkillBody(repoName, accepted);
+    const name = `${repoName}-conventions`;
+    const description = `Auto-extracted coding conventions for the ${repoName} repository.`;
 
-    const row = await this.skillsRepo.insert({
-      workspaceId,
-      name: `${repoName}-conventions`,
-      description: `Auto-extracted coding conventions for the ${repoName} repository.`,
-      type: 'convention',
-      source: 'extracted',
-      body,
-      enabled: true,
-    });
+    const existing = await this.skillsRepo.getByName(workspaceId, name);
+    const row = existing
+      ? await this.skillsRepo.update(workspaceId, existing.id, { description, body })
+      : await this.skillsRepo.insert({
+          workspaceId,
+          name,
+          description,
+          type: 'convention',
+          source: 'extracted',
+          body,
+          enabled: true,
+        });
+    if (!row) throw new NotFoundError('Skill not found');
 
     return {
       id: row.id,

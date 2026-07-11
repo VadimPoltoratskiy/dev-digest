@@ -45,6 +45,14 @@ export class SkillsRepository {
     return row;
   }
 
+  async getByName(workspaceId: string, name: string): Promise<SkillRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, name)));
+    return row;
+  }
+
   /** Insert a skill and snapshot its initial body as version 1. */
   async insert(values: InsertSkill): Promise<SkillRow> {
     const [row] = await this.db

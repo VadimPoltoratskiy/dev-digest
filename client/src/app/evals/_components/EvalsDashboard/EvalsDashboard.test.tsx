@@ -8,6 +8,10 @@ vi.mock("../../../../lib/hooks/agents-eval", () => ({
   useEvalsDashboard: vi.fn(),
 }));
 
+vi.mock("../../../../components/app-shell", () => ({
+  AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 import { useEvalsDashboard } from "../../../../lib/hooks/agents-eval";
 import { EvalsDashboard } from "./EvalsDashboard";
 
