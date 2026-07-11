@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Finding, Review, UnifiedDiff } from '@devdigest/shared';
-import { toReviewPayload, gateTriggered, countBlockers } from '../src/index.js';
+import { toReviewPayload, gateTriggered, countBlockers } from '../src/output/to-review.js';
 
 /**
  * The review EVENT is computed deterministically from finding severities + the
@@ -151,6 +151,21 @@ describe('toReviewPayload — inline comment line anchoring', () => {
     const r = review([findingRange('src/x.ts', 10, 30)]);
     const p = toReviewPayload(r, { failOn: 'critical' });
     expect(p.comments).toEqual([expect.objectContaining({ line: 30 })]);
+  });
+
+  it('picks the closest of several in-range diff lines, regardless of encounter order', () => {
+    // range 10-30, end_line 30 is not itself in the diff, so resolution falls
+    // to the nearest-candidate loop over every line in range. 28 is genuinely
+    // closest to end_line (30), but it's neither the first nor the last line
+    // Stryker's Set iterates — a test with only one candidate, or candidates
+    // in already-nearest-last order, can't tell a real "closest wins" search
+    // apart from "first wins" / "last wins" / a broken distance formula.
+    const r = review([findingRange('src/x.ts', 10, 30)]);
+    const p = toReviewPayload(r, {
+      failOn: 'critical',
+      diff: diffWith('src/x.ts', [20, 28, 12]),
+    });
+    expect(p.comments).toEqual([expect.objectContaining({ path: 'src/x.ts', line: 28 })]);
   });
 });
 

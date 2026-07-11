@@ -4,8 +4,9 @@ Pure review engine: **diff → prompt → LLM → grounded findings**. No DB, no
 
 ## Commands
 ```sh
-pnpm test        # vitest hermetic units (stubbed LLMProvider — no keys, no network)
-pnpm typecheck   # also acts as build (this package never emits JS)
+pnpm test           # vitest hermetic units (stubbed LLMProvider — no keys, no network)
+pnpm typecheck      # also acts as build (this package never emits JS)
+pnpm mutation-test  # Stryker mutation testing, scoped to src/output/to-review.ts
 ```
 
 ## Structure

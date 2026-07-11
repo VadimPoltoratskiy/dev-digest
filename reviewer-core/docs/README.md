@@ -57,3 +57,7 @@ Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
 assembly, the grounding gate, `toReview` selection, and a full `run`. No keys,
 no network. `npm run typecheck` doubles as the build. See
 [`../TESTING.md`](../../TESTING.md).
+
+`pnpm mutation-test` (Stryker, scoped to `src/output/to-review.ts`) checks
+whether the tests would actually catch a logic bug, not just run the code —
+see [`mutation-testing.md`](./mutation-testing.md).
