@@ -26,6 +26,7 @@ import { searchCatalog } from './community-catalog.js';
  *   DELETE /skills/:id/eval-cases/:caseId       → delete eval case
  *   POST   /skills/:id/eval-cases/:caseId/run   → run single eval case
  *   POST   /skills/:id/eval-cases/run-all       → run all eval cases
+ *   POST   /skills/:id/eval-cases/generate      → LLM-draft a case from the rubric (not persisted)
  *   POST   /skills/import                       → preview parsed markdown WITHOUT saving
  *   POST   /skills/import/save                  → save previewed skill (source: imported_url | community)
  */
@@ -113,6 +114,11 @@ const CreateEvalCaseBody = z.object({
   start_line: z.number().int().optional(),
   end_line: z.number().int().optional(),
   title: z.string().optional(),
+});
+
+const GenerateEvalCaseBody = z.object({
+  kind_mode: z.enum(['count', 'must_find', 'must_not_flag']).default('count'),
+  hint: z.string().max(500).optional(),
 });
 
 const UpdateEvalCaseBody = z.object({
@@ -266,6 +272,21 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.runAllEvalCases(workspaceId, req.params.id);
   });
+
+  app.post(
+    '/skills/:id/eval-cases/generate',
+    {
+      schema: { params: IdParams, body: GenerateEvalCaseBody },
+      config: { rateLimit: { max: 15, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.generateEvalCase(workspaceId, req.params.id, {
+        kindMode: req.body.kind_mode,
+        hint: req.body.hint,
+      });
+    },
+  );
 
   app.get('/skills/:id/eval-cases', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

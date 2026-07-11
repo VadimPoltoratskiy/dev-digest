@@ -81,7 +81,11 @@
     "categoryPlaceholder": "security",
     "severityLabel": "Severity",
     "severityPlaceholder": "CRITICAL",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "generateButton": "Generate with AI",
+    "generating": "Generating…",
+    "generateError": "Failed to generate a case. Try again.",
+    "generateNoLlmKey": "No model key is configured for eval case generation. Add your API key in Settings → API Keys."
   },
   "evalsTab": {
     "metricsTitle": "Eval metrics",

@@ -245,6 +245,23 @@ export const SkillEvalExpected = z.object({
 });
 export type SkillEvalExpected = z.infer<typeof SkillEvalExpected>;
 
+/** LLM-drafted eval case — never persisted directly; the client pre-fills the create form with
+    this and the user reviews/edits before submitting the normal CreateEvalCaseBody. */
+export const GeneratedEvalCase = z.object({
+  name: z.string(),
+  notes: z.string().nullish(),
+  input_diff: z.string(),
+  expected_finding_count: z.number().int().nullish(),
+  category: z.string().nullish(),
+  severity: z.string().nullish(),
+  kind: z.enum(['must_find', 'must_not_flag']).nullish(),
+  file: z.string().nullish(),
+  start_line: z.number().int().nullish(),
+  end_line: z.number().int().nullish(),
+  title: z.string().nullish(),
+});
+export type GeneratedEvalCase = z.infer<typeof GeneratedEvalCase>;
+
 export const SkillEvalLatestRun = z.object({
   passed: z.boolean(),
   actual_finding_count: z.number().int(),

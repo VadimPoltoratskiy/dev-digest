@@ -46,4 +46,11 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     defaultProvider: "openai",
     defaultModel: "gpt-5.4",
   },
+  {
+    id: "eval_case_generation",
+    label: "Eval Case Generation",
+    description: "Drafts a synthetic diff + expected output for a skill eval case.",
+    defaultProvider: "anthropic",
+    defaultModel: "claude-haiku-4-5-20251001",
+  },
 ];

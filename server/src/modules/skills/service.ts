@@ -1,9 +1,20 @@
-import type { Skill, SkillEvalCase, SkillEvalRunResult, SkillStats, SkillVersionEntry } from '@devdigest/shared';
+import { GeneratedEvalCase } from '@devdigest/shared';
+import type {
+  LLMProvider,
+  Skill,
+  SkillEvalCase,
+  SkillEvalRunResult,
+  SkillStats,
+  SkillVersionEntry,
+} from '@devdigest/shared';
 import { reviewPullRequest } from '@devdigest/reviewer-core';
 import type { Container } from '../../platform/container.js';
+import { AppError, ConfigError, NotFoundError } from '../../platform/errors.js';
+import { resolveFeatureModel } from '../settings/feature-models.js';
 import { SkillsRepository } from './repository.js';
 import { toSkillDto, parseUnifiedDiff } from './helpers.js';
 import { scoreSkillEvalCase, type SkillEvalExpectedRaw } from './eval-case-scoring.js';
+import { buildGenerationPrompt, validateGeneratedCase, type GenerationKindMode } from './eval-case-generation.js';
 
 /** A1 — skills service. Thin delegation to repository with workspace-scope enforcement. */
 export class SkillsService {
@@ -138,6 +149,61 @@ export class SkillsService {
       title: input.title,
     });
     return toEvalCaseDto({ ...row, latestRun: null });
+  }
+
+  /**
+   * Drafts a synthetic eval case (diff + expected output) from a skill's rubric via LLM.
+   * Never persisted — the client pre-fills the create form and the user reviews/edits before
+   * calling createEvalCase.
+   */
+  async generateEvalCase(
+    workspaceId: string,
+    skillId: string,
+    input: { kindMode: GenerationKindMode; hint?: string },
+  ): Promise<GeneratedEvalCase> {
+    const skill = await this.repo.getById(workspaceId, skillId);
+    if (!skill) throw new NotFoundError('Skill not found');
+
+    const { provider, model } = await resolveFeatureModel(this.container, workspaceId, 'eval_case_generation');
+
+    let llm: LLMProvider;
+    try {
+      llm = await this.container.llm(provider as Parameters<typeof this.container.llm>[0]);
+    } catch (err) {
+      if (err instanceof ConfigError || (err as { code?: string }).code === 'config_error') {
+        throw new AppError(
+          'no_llm_key',
+          'No model key is configured for the Eval Case Generation feature. Add your API key in Settings → API Keys.',
+          503,
+        );
+      }
+      throw err;
+    }
+
+    const { system, user } = await buildGenerationPrompt({
+      kindMode: input.kindMode,
+      hint: input.hint,
+      skill: { name: skill.name, description: skill.description, type: skill.type, body: skill.body },
+    });
+
+    const result = await llm.completeStructured({
+      model,
+      schemaName: 'GeneratedEvalCase',
+      schema: GeneratedEvalCase,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      maxRetries: 1,
+      temperature: 0.5,
+    });
+
+    const validationError = validateGeneratedCase(input.kindMode, result.data);
+    if (validationError) {
+      throw new AppError('invalid_generation', validationError, 422);
+    }
+
+    return result.data;
   }
 
   async updateEvalCase(

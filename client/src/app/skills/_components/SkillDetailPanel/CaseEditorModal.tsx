@@ -11,10 +11,16 @@ import type { PrFile, SkillEvalCase } from "@devdigest/shared";
 import {
   useCreateEvalCase,
   useUpdateEvalCase,
+  useGenerateEvalCase,
   type CreateEvalCaseInput,
 } from "../../../../lib/hooks/skills";
+import { ApiError } from "../../../../lib/api";
 
 type KindMode = "count" | "must_find" | "must_not_flag";
+
+function isApiError(e: unknown): e is ApiError {
+  return e instanceof ApiError;
+}
 
 /** Splits a pasted diff (single-file plain patch or multi-file `diff --git`) into PrFile-shaped
     chunks for DiffViewer, which only reads `.path`/`.additions`/`.deletions`/`.patch`. */
@@ -56,6 +62,7 @@ export function CaseEditorModal({
   const t = useTranslations("eval");
   const createCase = useCreateEvalCase(skillId);
   const updateCase = useUpdateEvalCase(skillId);
+  const generateCase = useGenerateEvalCase(skillId);
 
   const [activeTab, setActiveTab] = React.useState<"diff" | "preview">("diff");
   const [name, setName] = React.useState(initialCase?.name ?? "");
@@ -82,6 +89,35 @@ export function CaseEditorModal({
     name.trim().length > 0 &&
     diff.trim().length > 0 &&
     (kindMode === "count" || file.trim().length > 0);
+
+  const isNoLlmKey =
+    generateCase.isError &&
+    isApiError(generateCase.error) &&
+    generateCase.error.code === "no_llm_key";
+
+  const generate = () => {
+    generateCase.mutate(
+      { kind_mode: kindMode },
+      {
+        onSuccess: (draft) => {
+          setName(draft.name);
+          setDiff(draft.input_diff);
+          setCategory(draft.category ?? "");
+          setSeverity(draft.severity ?? "");
+          setActiveTab("diff");
+          if (draft.kind) {
+            setKindMode(draft.kind);
+            setFile(draft.file ?? "");
+            setStartLine(draft.start_line != null ? String(draft.start_line) : "");
+            setEndLine(draft.end_line != null ? String(draft.end_line) : "");
+            setFindingTitle(draft.title ?? "");
+          } else {
+            setCount(String(draft.expected_finding_count ?? 1));
+          }
+        },
+      },
+    );
+  };
 
   const submit = () => {
     if (!canSave) return;
@@ -128,6 +164,22 @@ export function CaseEditorModal({
         <FormField label={t("caseEditor.nameLabel")} required>
           <TextInput value={name} onChange={setName} placeholder={t("caseEditor.namePlaceholder")} />
         </FormField>
+
+        {mode === "create" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
+            <Button kind="secondary" size="sm" icon="Sparkles" onClick={generate} disabled={generateCase.isPending}>
+              {generateCase.isPending ? t("caseEditor.generating") : t("caseEditor.generateButton")}
+            </Button>
+            {isNoLlmKey && (
+              <p style={{ fontSize: 12, color: "var(--warn, #eab308)" }}>{t("caseEditor.generateNoLlmKey")}</p>
+            )}
+            {generateCase.isError && !isNoLlmKey && (
+              <p style={{ fontSize: 12, color: "var(--danger, #ef4444)" }}>
+                {generateCase.error instanceof Error ? generateCase.error.message : t("caseEditor.generateError")}
+              </p>
+            )}
+          </div>
+        )}
 
         <FormField label={t("caseEditor.inputLabel")} required>
           <Tabs
