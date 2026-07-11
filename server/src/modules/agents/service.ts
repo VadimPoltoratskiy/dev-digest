@@ -322,6 +322,9 @@ export class AgentsService {
           actualOutput: { error: `Invalid expected_output: ${parseResult.error.message}` },
         });
         insertedCaseIds.push(caseRow.id);
+        // Kind is unknown/unreliable when expected_output fails validation — record the
+        // failure for visibility but exclude it from metricsInputs so it can't skew
+        // recall/precision under a guessed kind (AC-5/AC-6 define those over known kinds).
         perTrace.push({
           case_id: caseRow.id,
           case_name: caseRow.name,
@@ -331,7 +334,6 @@ export class AgentsService {
           actual_findings: [],
           error: `Invalid expected_output: ${parseResult.error.message}`,
         });
-        metricsInputs.push({ kind: 'must_find', pass: false, candidatesKept: 0, candidatesDropped: 0 });
         continue;
       }
 

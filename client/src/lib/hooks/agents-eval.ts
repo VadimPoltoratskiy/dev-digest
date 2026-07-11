@@ -13,6 +13,7 @@ import {
   postAgentEvalRuns,
   postFindingEvalCase,
 } from "../api";
+import { notify } from "../toast";
 
 /** List all eval cases for an agent, including latest_run when available. */
 export function useAgentEvalCases(agentId: string | null | undefined) {
@@ -25,12 +26,18 @@ export function useAgentEvalCases(agentId: string | null | undefined) {
 
 /**
  * Mutation: turn an accepted or dismissed finding into an agent eval case.
- * No automatic invalidation — the caller decides which query to refresh
- * (typically ["agent-eval-cases", agentId] for the relevant agent).
+ * Invalidates the created case's agent's case list and shows a success toast.
+ * Errors surface via the app-wide MutationCache.onError (providers.tsx) — no
+ * local onError here, or the failure would toast twice.
  */
 export function useTurnFindingIntoEvalCase() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (findingId: string) => postFindingEvalCase(findingId),
+    onSuccess: (evalCase) => {
+      qc.invalidateQueries({ queryKey: ["agent-eval-cases", evalCase.agent_id] });
+      notify.success(`Eval case "${evalCase.name}" created`);
+    },
   });
 }
 

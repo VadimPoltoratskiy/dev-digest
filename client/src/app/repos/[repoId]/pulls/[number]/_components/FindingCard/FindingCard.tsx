@@ -30,6 +30,7 @@ export function FindingCard({
   onAction,
   onCreateEvalCase,
   pending,
+  evalCasePending,
   repoFullName,
   headSha,
 }: {
@@ -39,6 +40,7 @@ export function FindingCard({
   onAction?: (action: FindingActionKind, reply?: string) => void;
   onCreateEvalCase?: () => void;
   pending?: boolean;
+  evalCasePending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
@@ -116,7 +118,7 @@ export function FindingCard({
                 kind="ghost"
                 size="sm"
                 icon="FlaskConical"
-                disabled={pending}
+                disabled={evalCasePending}
                 onClick={() => onCreateEvalCase?.()}
                 aria-label={t("finding.createEvalCase")}
               >
