@@ -118,16 +118,18 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
-            <Button
-              kind="ghost"
-              size="sm"
-              icon="FlaskConical"
-              disabled={evalCasePending}
-              onClick={() => setEvalModalOpen(true)}
-              aria-label={t("finding.createEvalCase")}
-            >
-              {t("finding.createEvalCase")}
-            </Button>
+            {muted && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="FlaskConical"
+                disabled={evalCasePending}
+                onClick={() => setEvalModalOpen(true)}
+                aria-label={t("finding.createEvalCase")}
+              >
+                {t("finding.createEvalCase")}
+              </Button>
+            )}
             <Button
               kind="ghost"
               size="sm"

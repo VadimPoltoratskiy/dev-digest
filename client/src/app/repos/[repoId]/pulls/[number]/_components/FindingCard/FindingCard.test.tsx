@@ -61,24 +61,32 @@ describe("FindingCard (smoke, both themes)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// "Turn into eval case" — always visible, opens a kind-selection modal
+// "Turn into eval case" — only rendered for accepted/dismissed findings
+// (SPEC-02 AC-19, AC-20), opens a kind-selection modal
 // ---------------------------------------------------------------------------
 
 describe("FindingCard — eval case button", () => {
-  it("shows 'Turn into eval case' even when the finding is neither accepted nor dismissed", () => {
+  it("does not show 'Turn into eval case' when the finding is neither accepted nor dismissed (AC-20)", () => {
     renderWithIntl(<FindingCard f={FINDING} defaultExpanded />);
-    expect(screen.getByText("Turn into eval case")).toBeInTheDocument();
+    expect(screen.queryByText("Turn into eval case")).not.toBeInTheDocument();
   });
 
-  it("shows 'Turn into eval case' when the finding is accepted", () => {
+  it("shows 'Turn into eval case' when the finding is accepted (AC-19)", () => {
     const accepted: FindingRecord = { ...FINDING, accepted_at: "2026-07-01T00:00:00.000Z", dismissed_at: null };
     renderWithIntl(<FindingCard f={accepted} defaultExpanded />);
     expect(screen.getByText("Turn into eval case")).toBeInTheDocument();
   });
 
+  it("shows 'Turn into eval case' when the finding is dismissed (AC-19)", () => {
+    const dismissed: FindingRecord = { ...FINDING, accepted_at: null, dismissed_at: "2026-07-01T00:00:00.000Z" };
+    renderWithIntl(<FindingCard f={dismissed} defaultExpanded />);
+    expect(screen.getByText("Turn into eval case")).toBeInTheDocument();
+  });
+
   it("opens a modal on click, and calls onCreateEvalCase(kind, name) on save", () => {
     const onCreateEvalCase = vi.fn();
-    renderWithIntl(<FindingCard f={FINDING} defaultExpanded onCreateEvalCase={onCreateEvalCase} />);
+    const accepted: FindingRecord = { ...FINDING, accepted_at: "2026-07-01T00:00:00.000Z", dismissed_at: null };
+    renderWithIntl(<FindingCard f={accepted} defaultExpanded onCreateEvalCase={onCreateEvalCase} />);
     fireEvent.click(screen.getByText("Turn into eval case"));
     expect(screen.getByText("Must find")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Save"));
