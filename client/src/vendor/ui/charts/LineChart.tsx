@@ -7,6 +7,7 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
+  Tooltip,
 } from "recharts";
 
 export interface ChartSeries {
@@ -21,12 +22,18 @@ export function LineChart({
   h = 200,
   yMin = 0.6,
   yMax = 1.0,
+  dots = false,
+  /** Per-point label (e.g. a formatted run timestamp) shown in the tooltip. Also enables the
+      tooltip — omit for the old label-less sparkline-style chart. */
+  xLabels,
 }: {
   series: ChartSeries[];
   w?: number;
   h?: number;
   yMin?: number;
   yMax?: number;
+  dots?: boolean;
+  xLabels?: string[];
 }) {
   const n = series[0]?.data.length ?? 0;
   const rows = Array.from({ length: n }, (_, i) => {
@@ -50,6 +57,18 @@ export function LineChart({
             tickLine={false}
             width={38}
           />
+          {xLabels && (
+            <Tooltip
+              labelFormatter={(i: number) => xLabels[i] ?? ""}
+              formatter={(value: number, name: string) => [`${(value * 100).toFixed(1)}%`, name]}
+              contentStyle={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                fontSize: 12,
+              }}
+            />
+          )}
           {series.map((s) => (
             <Line
               key={s.name}
@@ -57,7 +76,8 @@ export function LineChart({
               dataKey={s.name}
               stroke={s.color}
               strokeWidth={2}
-              dot={false}
+              dot={dots ? { r: 3, fill: s.color, strokeWidth: 0 } : false}
+              activeDot={dots ? { r: 5 } : undefined}
               isAnimationActive={false}
             />
           ))}

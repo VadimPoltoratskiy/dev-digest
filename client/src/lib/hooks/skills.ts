@@ -13,6 +13,7 @@ import type {
   SkillEvalRunResult,
   SkillStats,
   CommunitySkillEntry,
+  GeneratedEvalCase,
 } from "@devdigest/shared";
 
 // ---- Skills CRUD ----
@@ -236,6 +237,13 @@ export interface CreateEvalCaseInput {
   expected_finding_count?: number;
   category?: string;
   severity?: string;
+  // Optional richer per-finding expectation — when all four are set, the run is scored by
+  // file+line-range match instead of by expected_finding_count.
+  kind?: "must_find" | "must_not_flag";
+  file?: string;
+  start_line?: number;
+  end_line?: number;
+  title?: string;
 }
 
 export function useCreateEvalCase(skillId: string) {
@@ -246,6 +254,20 @@ export function useCreateEvalCase(skillId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["skill-eval-cases", skillId] });
     },
+  });
+}
+
+export interface GenerateEvalCaseInput {
+  kind_mode: "count" | "must_find" | "must_not_flag";
+  hint?: string;
+}
+
+/** Drafts a case via LLM from the skill's rubric — never persisted, just returns a
+    form-fill payload for the caller to review/edit before calling useCreateEvalCase. */
+export function useGenerateEvalCase(skillId: string) {
+  return useMutation({
+    mutationFn: (input: GenerateEvalCaseInput) =>
+      api.post<GeneratedEvalCase>(`/skills/${skillId}/eval-cases/generate`, input),
   });
 }
 

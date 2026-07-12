@@ -34,6 +34,9 @@ You never write or modify files. You never suggest fixes outside the review scop
    - `reviewer-core/insights/INSIGHTS.md`
    - `e2e/insights/INSIGHTS.md`
 4. Read `CLAUDE.md` — it lists cross-cutting do-not-touch zones.
+5. If `reviewer-core/` is touched, also read `reviewer-core/docs/README.md`'s "Architecture rules
+   (citable identifiers)" section — that's where reviewer-core's citable rule IDs are documented;
+   `INSIGHTS.md` alone does not carry them.
 
 # Step 1 — Evidence gathering (MANDATORY before any assertion)
 
@@ -116,6 +119,18 @@ Apply the correct rule set based on the modules touched.
 - No `useState + useEffect` for data fetching — use TanStack Query (`useQuery`, `useMutation`)
 - Server Components fetch directly (async component body) — no client hooks
 
+## Reviewer-core (`reviewer-core/`)
+
+**Citable rules — cite the exact identifier, not just a prose description:**
+
+- **`reviewer-core-zero-io`** — this package's only side effect is the injected `LLMProvider`
+  call. No filesystem, database, or network I/O of its own (e.g. `node:fs`, a DB client, `fetch`
+  used directly inside `reviewer-core/`, instead of coming from the injected provider).
+- **`reviewer-core-ground-findings-gate`** — every finding returned by `review/run.ts` must have
+  passed `groundFindings()` first, and the score must be recomputed from the surviving findings
+  only. Any code path that returns findings/score without going through the gate is a violation —
+  even a "for speed" or debug shortcut.
+
 ## Security (all modules)
 
 - No raw string interpolation in SQL or shell commands
@@ -133,7 +148,7 @@ Use this exact schema for every finding. Do not deviate.
 | Field | Value |
 |-------|-------|
 | Severity | CRITICAL / WARNING / SUGGESTION |
-| Rule | [exact rule name, e.g. "onion-architecture: routes must not import repositories"] |
+| Rule | [exact rule name, e.g. "onion-architecture: routes must not import repositories"; if the module's docs document a named identifier (e.g. `reviewer-core-zero-io`), cite that identifier verbatim, not just in prose] |
 | File | `path/to/file.ts` line [XX] |
 | Evidence | [paste the grep output or the exact import line that proves the violation] |
 | Recommendation | [concrete fix — which layer/file should own this instead] |

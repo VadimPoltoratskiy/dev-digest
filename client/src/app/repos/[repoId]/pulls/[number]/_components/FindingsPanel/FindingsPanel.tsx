@@ -8,6 +8,7 @@ import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useTurnFindingIntoEvalCase } from "../../../../../../../lib/hooks/agents-eval";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -25,6 +26,7 @@ export function FindingsPanel({
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  const createEvalCase = useTurnFindingIntoEvalCase();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
@@ -65,9 +67,11 @@ export function FindingsPanel({
               focused={i === focusIdx}
               defaultExpanded={i === 0}
               pending={action.isPending}
+              evalCasePending={createEvalCase.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
-              onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onAction={(act, reply) => action.mutate({ findingId: f.id, action: act, reply, prId })}
+              onCreateEvalCase={(kind, name) => createEvalCase.mutate({ findingId: f.id, kind, name })}
             />
           ))
         )}

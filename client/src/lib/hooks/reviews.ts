@@ -183,12 +183,13 @@ export function useFindingAction() {
       reply?: string;
       prId?: string;
     }) =>
-      api.post<{ finding: ReviewRecord["findings"][number]; memoryId?: string }>(
-        `/findings/${findingId}/${action}`,
-        reply ? { reply } : undefined,
-      ),
-    onSuccess: (_d, { prId }) => {
+      api.post<
+        | { finding: ReviewRecord["findings"][number]; memoryId?: string }
+        | { comment: PrReviewComment }
+      >(`/findings/${findingId}/${action}`, reply ? { reply } : undefined),
+    onSuccess: (_d, { prId, action: act }) => {
       if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId && act === "reply") qc.invalidateQueries({ queryKey: ["pr-comments", prId] });
     },
   });
 }

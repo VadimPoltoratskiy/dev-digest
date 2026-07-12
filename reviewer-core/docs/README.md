@@ -34,6 +34,15 @@ feeding it — `skills` (L02), `memory` (L07), `specs` (L05), `callers` — plus
 In the starter the server passes only the diff, system prompt, and repo map; the
 extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
 
+## Architecture rules (citable identifiers)
+
+- **`reviewer-core-zero-io`** — this package's only side effect is the injected `LLMProvider` call.
+  No filesystem, database, or network I/O of its own (see "Pure review logic" above and
+  `reviewer-core/CLAUDE.md`'s "`LLMProvider` is injected" rule).
+- **`reviewer-core-ground-findings-gate`** — every finding returned by `review/run.ts` must have
+  passed `groundFindings()` first. A finding that doesn't cite a real diff line is dropped, and the
+  score is recomputed from the surviving findings only — never the model's self-reported score.
+
 ## Public API
 
 Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
@@ -48,3 +57,7 @@ Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
 assembly, the grounding gate, `toReview` selection, and a full `run`. No keys,
 no network. `npm run typecheck` doubles as the build. See
 [`../TESTING.md`](../../TESTING.md).
+
+`pnpm mutation-test` (Stryker, scoped to `src/output/to-review.ts`) checks
+whether the tests would actually catch a logic bug, not just run the code —
+see [`mutation-testing.md`](./mutation-testing.md).

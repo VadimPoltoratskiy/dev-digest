@@ -1,0 +1,7 @@
+# Agent-evals CI configuration.
+#
+# excluded_agents: agent names excluded from the CI `agents` job even when their eval directory
+# changes — still runnable locally via `pnpm vitest run agents/<name>`. Read by
+# scripts/ci-detect.mjs. Edit this list directly; no code changes needed.
+excluded_agents:
+  - architecture-reviewer

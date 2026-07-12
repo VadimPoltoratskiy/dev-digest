@@ -100,5 +100,5 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `03-agents` | agents list renders the seeded reviewer agents |
 | `04-pr-findings` | PR #482 → Agent runs tab → seeded run verdict + findings; expand → FindingCard |
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
-| `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
+| `06-onboarding` | `/onboarding` → generate-tour empty state renders for the seeded repo (no cached tour yet) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |

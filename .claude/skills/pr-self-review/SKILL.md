@@ -51,7 +51,7 @@ Classify every changed file into one or more surfaces using its path prefix:
 | `client/src/lib/api.ts` | Frontend — API Entry Point |
 | `client/src/**/*.test.tsx` | Frontend — Component Tests |
 | `client/src/lib/*.ts` | Frontend — Utilities |
-| `client/src/vendor/` | Vendor — note presence only; do not apply rules |
+| `client/src/vendor/` | Vendor — note presence only; do not apply companion-skill rules |
 | `server/src/modules/` | Backend — Feature Modules |
 | `server/src/adapters/` | Backend — Adapters |
 | `server/src/db/schema/` | Backend — DB Schema |
@@ -61,6 +61,8 @@ Classify every changed file into one or more surfaces using its path prefix:
 | `reviewer-core/src/` | Reviewer Core — inspect manually (no surface routing) |
 
 A single PR may activate multiple surfaces. Flag any changes to `reviewer-core/src/grounding.ts`, `prompt.ts`, or `run.ts` explicitly — these are high-risk files.
+
+`client/src/vendor/` is a hard do-not-touch zone (see root `CLAUDE.md`) — "note presence only; do not apply companion-skill rules" means skip ui-architecture/react-best-practices checks on its content, but it does **not** exempt a direct edit to a file under `client/src/vendor/` from Step 4's CRITICAL check below; any such edit is always CRITICAL regardless of what the change contains. `server/src/vendor/` is different: it is the canonical, editable source of the shared Zod contracts (`@devdigest/shared`) and routes normally as "Backend — Shared Contracts" — editing it is expected, not a violation, as long as changes stay backward-compatible.
 
 ---
 

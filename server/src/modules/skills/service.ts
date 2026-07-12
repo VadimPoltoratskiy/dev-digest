@@ -1,8 +1,20 @@
-import type { Skill, SkillEvalCase, SkillEvalRunResult, SkillStats, SkillVersionEntry } from '@devdigest/shared';
+import { GeneratedEvalCase } from '@devdigest/shared';
+import type {
+  LLMProvider,
+  Skill,
+  SkillEvalCase,
+  SkillEvalRunResult,
+  SkillStats,
+  SkillVersionEntry,
+} from '@devdigest/shared';
 import { reviewPullRequest } from '@devdigest/reviewer-core';
 import type { Container } from '../../platform/container.js';
+import { AppError, ConfigError, NotFoundError } from '../../platform/errors.js';
+import { resolveFeatureModel } from '../settings/feature-models.js';
 import { SkillsRepository } from './repository.js';
 import { toSkillDto, parseUnifiedDiff } from './helpers.js';
+import { scoreSkillEvalCase, type SkillEvalExpectedRaw } from './eval-case-scoring.js';
+import { buildGenerationPrompt, validateGeneratedCase, type GenerationKindMode } from './eval-case-generation.js';
 
 /** A1 — skills service. Thin delegation to repository with workspace-scope enforcement. */
 export class SkillsService {
@@ -107,7 +119,19 @@ export class SkillsService {
   async createEvalCase(
     workspaceId: string,
     skillId: string,
-    input: { name: string; notes?: string; inputDiff: string; expectedFindingCount?: number; category?: string; severity?: string },
+    input: {
+      name: string;
+      notes?: string;
+      inputDiff: string;
+      expectedFindingCount?: number;
+      category?: string;
+      severity?: string;
+      kind?: 'must_find' | 'must_not_flag';
+      file?: string;
+      startLine?: number;
+      endLine?: number;
+      title?: string;
+    },
   ): Promise<SkillEvalCase> {
     const row = await this.repo.insertEvalCase({
       workspaceId,
@@ -118,14 +142,86 @@ export class SkillsService {
       expectedFindingCount: input.expectedFindingCount ?? 1,
       category: input.category,
       severity: input.severity,
+      kind: input.kind,
+      file: input.file,
+      startLine: input.startLine,
+      endLine: input.endLine,
+      title: input.title,
     });
     return toEvalCaseDto({ ...row, latestRun: null });
+  }
+
+  /**
+   * Drafts a synthetic eval case (diff + expected output) from a skill's rubric via LLM.
+   * Never persisted — the client pre-fills the create form and the user reviews/edits before
+   * calling createEvalCase.
+   */
+  async generateEvalCase(
+    workspaceId: string,
+    skillId: string,
+    input: { kindMode: GenerationKindMode; hint?: string },
+  ): Promise<GeneratedEvalCase> {
+    const skill = await this.repo.getById(workspaceId, skillId);
+    if (!skill) throw new NotFoundError('Skill not found');
+
+    const { provider, model } = await resolveFeatureModel(this.container, workspaceId, 'eval_case_generation');
+
+    let llm: LLMProvider;
+    try {
+      llm = await this.container.llm(provider as Parameters<typeof this.container.llm>[0]);
+    } catch (err) {
+      if (err instanceof ConfigError || (err as { code?: string }).code === 'config_error') {
+        throw new AppError(
+          'no_llm_key',
+          'No model key is configured for the Eval Case Generation feature. Add your API key in Settings → API Keys.',
+          503,
+        );
+      }
+      throw err;
+    }
+
+    const { system, user } = await buildGenerationPrompt({
+      kindMode: input.kindMode,
+      hint: input.hint,
+      skill: { name: skill.name, description: skill.description, type: skill.type, body: skill.body },
+    });
+
+    const result = await llm.completeStructured({
+      model,
+      schemaName: 'GeneratedEvalCase',
+      schema: GeneratedEvalCase,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      maxRetries: 1,
+      temperature: 0.5,
+    });
+
+    const validationError = validateGeneratedCase(input.kindMode, result.data);
+    if (validationError) {
+      throw new AppError('invalid_generation', validationError, 422);
+    }
+
+    return result.data;
   }
 
   async updateEvalCase(
     workspaceId: string,
     caseId: string,
-    patch: { name?: string; notes?: string; inputDiff?: string; expectedFindingCount?: number; category?: string; severity?: string },
+    patch: {
+      name?: string;
+      notes?: string;
+      inputDiff?: string;
+      expectedFindingCount?: number;
+      category?: string;
+      severity?: string;
+      kind?: 'must_find' | 'must_not_flag';
+      file?: string;
+      startLine?: number;
+      endLine?: number;
+      title?: string;
+    },
   ): Promise<SkillEvalCase | undefined> {
     const row = await this.repo.updateEvalCase(workspaceId, caseId, patch);
     if (!row) return undefined;
@@ -159,8 +255,7 @@ export class SkillsService {
     const evalCase = await this.repo.getEvalCase(workspaceId, caseId);
     if (!evalCase) throw new Error('Eval case not found');
 
-    const expected = (evalCase.expectedOutput ?? {}) as { expected_finding_count?: number };
-    const expectedCount = expected.expected_finding_count ?? 1;
+    const expected = (evalCase.expectedOutput ?? {}) as SkillEvalExpectedRaw;
 
     const llm = await this.container.llm('anthropic').catch(async () => this.container.llm('openai'));
     const parsedDiff = parseUnifiedDiff(evalCase.inputDiff ?? '');
@@ -177,7 +272,7 @@ export class SkillsService {
     const durationMs = Date.now() - start;
 
     const actualCount = outcome.review.findings.length;
-    const passed = actualCount === expectedCount;
+    const passed = scoreSkillEvalCase(expected, outcome.review.findings);
 
     await this.repo.insertEvalRun({
       caseId,
@@ -199,6 +294,11 @@ function toEvalCaseDto(row: EvalCaseRow): SkillEvalCase {
     expected_finding_count?: number;
     category?: string | null;
     severity?: string | null;
+    kind?: 'must_find' | 'must_not_flag' | null;
+    file?: string | null;
+    start_line?: number | null;
+    end_line?: number | null;
+    title?: string | null;
   };
   const latestRun = row.latestRun
     ? {
@@ -218,6 +318,11 @@ function toEvalCaseDto(row: EvalCaseRow): SkillEvalCase {
       expected_finding_count: expected.expected_finding_count ?? 1,
       category: expected.category ?? null,
       severity: expected.severity ?? null,
+      kind: expected.kind ?? null,
+      file: expected.file ?? null,
+      start_line: expected.start_line ?? null,
+      end_line: expected.end_line ?? null,
+      title: expected.title ?? null,
     },
     latest_run: latestRun,
   };

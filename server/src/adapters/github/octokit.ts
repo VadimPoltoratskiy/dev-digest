@@ -76,7 +76,9 @@ export class OctokitGitHubClient implements GitHubClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
+          // paginate: PRs with >100 changed files would otherwise silently lose
+          // every file past the first page from pr_files.
+          const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,

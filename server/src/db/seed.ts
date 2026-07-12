@@ -754,6 +754,214 @@ Focus exclusively on API contract integrity. Do not comment on code style, perfo
     }
   }
 
+  // ---- demo eval cases for the Security Reviewer agent (agent eval pipeline, SPEC-02) ----
+  // Mix of must_find (should be caught) and must_not_flag (safe patterns that must
+  // not trip a false positive) so both recall and precision are computable (AC-5/AC-6).
+  if (secAgent) {
+    const configDiff = `diff --git a/src/config.ts b/src/config.ts
+index 0000000..4444444 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -0,0 +1,7 @@
++export const config = {
++  port: Number(process.env.PORT ?? 3000),
++  stripeKey: "sk_live_51H8xq2Ka9Vn3PqLm7Rd0bZ4Xc",
++  redisUrl: process.env.REDIS_URL,
++  jwtSecret: process.env.JWT_SECRET,
++  env: process.env.NODE_ENV ?? "development",
++};`;
+
+    const queriesDiff = `diff --git a/src/db/queries.ts b/src/db/queries.ts
+index 0000000..6666666 100644
+--- a/src/db/queries.ts
++++ b/src/db/queries.ts
+@@ -0,0 +1,11 @@
++import { pool } from './pool';
++
++export async function findUserByEmail(email: string) {
++  const query = "SELECT * FROM users WHERE email = '" + email + "'";
++  const result = await pool.query(query);
++  return result.rows[0] ?? null;
++}
++
++export async function findUserById(id: string) {
++  return pool.query('SELECT * FROM users WHERE id = $1', [id]);
++}`;
+
+    const secAgentCases: Array<{
+      name: string;
+      notes: string;
+      inputDiff: string;
+      expectedOutput: { kind: 'must_find' | 'must_not_flag'; finding: Record<string, unknown> };
+    }> = [
+      {
+        name: 'Hardcoded Stripe secret key',
+        notes: 'PR commits a literal live Stripe secret key in config.ts.',
+        inputDiff: configDiff,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/config.ts', start_line: 3, end_line: 3, title: 'Hardcoded Stripe secret key', severity: 'CRITICAL', category: 'security' },
+        },
+      },
+      {
+        name: 'SSRF via unvalidated webhook forward target',
+        notes: 'Webhook forwarder fetches a caller-supplied targetUrl with no allowlist/validation.',
+        inputDiff: `diff --git a/src/api/public/webhooks.ts b/src/api/public/webhooks.ts
+index 0000000..5555555 100644
+--- a/src/api/public/webhooks.ts
++++ b/src/api/public/webhooks.ts
+@@ -0,0 +1,14 @@
++import { FastifyInstance } from 'fastify';
++
++export async function webhookRoutes(app: FastifyInstance) {
++  app.post('/webhooks/forward', async (req, reply) => {
++    const { targetUrl, payload } = req.body as { targetUrl: string; payload: unknown };
++    const res = await fetch(targetUrl, {
++      method: 'POST',
++      body: JSON.stringify(payload),
++      headers: { 'content-type': 'application/json' },
++    });
++    const text = await res.text();
++    return reply.send({ forwarded: true, upstream: text });
++  });
++}`,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/api/public/webhooks.ts', start_line: 5, end_line: 6, title: 'SSRF via unvalidated webhook forward target', severity: 'CRITICAL', category: 'security' },
+        },
+      },
+      {
+        name: 'SQL injection via string concatenation',
+        notes: 'User-supplied email is concatenated directly into a raw SQL string.',
+        inputDiff: queriesDiff,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/db/queries.ts', start_line: 4, end_line: 4, title: 'SQL injection via string concatenation', severity: 'CRITICAL', category: 'security' },
+        },
+      },
+      {
+        name: 'Missing auth check on admin delete route',
+        notes: 'Admin user-delete route has no authentication/authorization guard.',
+        inputDiff: `diff --git a/src/routes/admin.ts b/src/routes/admin.ts
+index 0000000..7777777 100644
+--- a/src/routes/admin.ts
++++ b/src/routes/admin.ts
+@@ -0,0 +1,9 @@
++import { FastifyInstance } from 'fastify';
++
++export async function adminRoutes(app: FastifyInstance) {
++  app.delete('/admin/users/:id', async (req, reply) => {
++    const { id } = req.params as { id: string };
++    await db.users.delete(id);
++    return reply.status(204).send();
++  });
++}`,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/routes/admin.ts', start_line: 4, end_line: 8, title: 'Missing auth check on admin delete route', severity: 'CRITICAL', category: 'security' },
+        },
+      },
+      {
+        name: 'Path traversal via unsanitized filename',
+        notes: 'Uploaded-file GET route interpolates a caller-supplied filename directly into a filesystem path.',
+        inputDiff: `diff --git a/src/api/uploads.ts b/src/api/uploads.ts
+index 0000000..8888888 100644
+--- a/src/api/uploads.ts
++++ b/src/api/uploads.ts
+@@ -0,0 +1,10 @@
++import { readFile } from 'fs/promises';
++import { FastifyInstance } from 'fastify';
++
++export async function uploadRoutes(app: FastifyInstance) {
++  app.get('/uploads/:filename', async (req, reply) => {
++    const { filename } = req.params as { filename: string };
++    const contents = await readFile(\`./uploads/\${filename}\`);
++    return reply.send(contents);
++  });
++}`,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/api/uploads.ts', start_line: 7, end_line: 7, title: 'Path traversal via unsanitized filename', severity: 'CRITICAL', category: 'security' },
+        },
+      },
+      {
+        name: 'Open redirect via unchecked next query param',
+        notes: 'Auth callback redirects to a caller-supplied next param with no allowlist check.',
+        inputDiff: `diff --git a/src/routes/auth.ts b/src/routes/auth.ts
+index 0000000..9999999 100644
+--- a/src/routes/auth.ts
++++ b/src/routes/auth.ts
+@@ -0,0 +1,8 @@
++import { FastifyInstance } from 'fastify';
++
++export async function authRoutes(app: FastifyInstance) {
++  app.get('/auth/callback', async (req, reply) => {
++    const { next } = req.query as { next?: string };
++    return reply.redirect(next ?? '/dashboard');
++  });
++}`,
+        expectedOutput: {
+          kind: 'must_find',
+          finding: { file: 'src/routes/auth.ts', start_line: 6, end_line: 6, title: 'Open redirect via unchecked next query param', severity: 'WARNING', category: 'security' },
+        },
+      },
+      {
+        name: 'Redis URL read from environment variable — not a secret leak',
+        notes: 'Same config.ts diff as the Stripe-key case, but pointed at the redisUrl line, which is sourced from process.env and must not be flagged.',
+        inputDiff: configDiff,
+        expectedOutput: {
+          kind: 'must_not_flag',
+          finding: { file: 'src/config.ts', start_line: 4, end_line: 4, title: 'Redis URL read from environment variable', severity: 'WARNING', category: 'security' },
+        },
+      },
+      {
+        name: 'Parameterized query — not injectable',
+        notes: 'Same queries.ts diff as the SQLi case, but pointed at the parameterized findUserById query, which must not be flagged.',
+        inputDiff: queriesDiff,
+        expectedOutput: {
+          kind: 'must_not_flag',
+          finding: { file: 'src/db/queries.ts', start_line: 10, end_line: 10, title: 'Parameterized query using placeholder', severity: 'WARNING', category: 'security' },
+        },
+      },
+      {
+        name: 'Clean currency formatting helper — no security surface',
+        notes: 'Pure formatting utility with no I/O, no user input reaching a sink — a false-positive control case.',
+        inputDiff: `diff --git a/src/utils/format-currency.ts b/src/utils/format-currency.ts
+index 0000000..aaaaaaa 100644
+--- a/src/utils/format-currency.ts
++++ b/src/utils/format-currency.ts
+@@ -0,0 +1,5 @@
++/** Formats integer cents as a localized currency string. */
++export function formatCurrency(cents: number, currency: string = 'USD'): string {
++  const amount = cents / 100;
++  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
++}`,
+        expectedOutput: {
+          kind: 'must_not_flag',
+          finding: { file: 'src/utils/format-currency.ts', start_line: 2, end_line: 5, title: 'Clean currency formatting helper', severity: 'SUGGESTION', category: 'security' },
+        },
+      },
+    ];
+
+    for (const c of secAgentCases) {
+      const [ex] = await db
+        .select()
+        .from(t.evalCases)
+        .where(and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.ownerId, secAgent.id), eq(t.evalCases.name, c.name)));
+      if (!ex) {
+        await db.insert(t.evalCases).values({
+          workspaceId,
+          ownerKind: 'agent',
+          ownerId: secAgent.id,
+          name: c.name,
+          notes: c.notes,
+          inputDiff: c.inputDiff,
+          expectedOutput: c.expectedOutput,
+        });
+      }
+    }
+  }
+
   // ---- demo eval cases for the control experiment ----
   // Skill 0: test-coverage-nudge — happy-path-only test (no error branch)
   const tcnSkillId = skillIds[0];

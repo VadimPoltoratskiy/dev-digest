@@ -1,0 +1,48 @@
+diff --git a/server/src/modules/blast/service.ts b/server/src/modules/blast/service.ts
+index 1111111..2222222 100644
+--- a/server/src/modules/blast/service.ts
++++ b/server/src/modules/blast/service.ts
+@@ -6,6 +6,8 @@ import { RepoRepository } from '../repos/repository.js';
+ import { BlastExplainer } from './explainer.js';
+ import { toBlastRadius } from './helpers.js';
+ import { getBlastExplanation, upsertBlastExplanation } from './repository.js';
++import type { FastifyReply } from 'fastify';
++import { OctokitGitHubClient } from '../../adapters/github/octokit.js';
+
+ interface Logger {
+   info(obj: object, msg: string): void;
+@@ -37,8 +39,13 @@ export class BlastService {
+   }
+
+   /** Cached AI explanation for a PR, or null if none has been generated. */
+-  async getExplanation(workspaceId: string, prId: string): Promise<BlastExplanation | null> {
++  async getExplanation(
++    workspaceId: string,
++    prId: string,
++    reply?: FastifyReply,
++  ): Promise<BlastExplanation | null> {
+     await this.loadPull(workspaceId, prId); // 404 guard + workspace scope
++    reply?.header('x-blast-cache', 'checked');
+     return getBlastExplanation(this.container.db, prId);
+   }
+
+@@ -49,7 +56,7 @@ export class BlastService {
+   async explainBlast(
+     workspaceId: string,
+     prId: string,
+-    opts: { logger?: Logger } = {},
++    opts: { logger?: Logger; githubToken?: string } = {},
+   ): Promise<BlastExplanation> {
+     const blast = await this.buildForPull(workspaceId, prId); // 404 guard inside
+     const result = await new BlastExplainer(this.container).explain(workspaceId, blast, opts);
+@@ -60,6 +67,10 @@ export class BlastService {
+       tokensOut: result.tokensOut,
+       costUsd: result.costUsd,
+     });
++    if (opts.githubToken) {
++      const github = new OctokitGitHubClient(opts.githubToken);
++      await github.getPullRequest({ owner: workspaceId, repo: 'unknown' }, Number(prId));
++    }
+     const saved = await getBlastExplanation(this.container.db, prId);
+     return saved!;
+   }

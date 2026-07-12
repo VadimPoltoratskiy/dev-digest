@@ -34,6 +34,7 @@ cd e2e && ./scripts/e2e.sh     # hermetic browser e2e
 - **Secrets go to `~/.devdigest/secrets.json`** (mode 0600), not `.env` or DB. Single read chokepoint: `server/src/adapters/secrets/local.ts`.
 - **The DB schema already has ALL lesson tables.** Unused ones sit empty — do not remove columns to "clean up."
 - **`docker compose down -v` deletes the pgdata volume** and all imported repos/reviews. Never use `-v` to "reset."
+- **Agent/workflow eval CI tiers run on `google/gemini-2.5-flash` via OpenRouter**, not the Anthropic subscription — headless CI has no Claude Code login. Skill-activation checks are documented as indicative-not-blocking on non-Anthropic models, so the `agents`/`workflow` CI jobs are intentionally `continue-on-error`. See `evals/README.md`.
 
 ## Do-not-touch zones
 - `server/src/db/schema/` — schema owns the DB. Generate migrations with `pnpm db:generate`, never hand-edit.
@@ -46,5 +47,7 @@ cd e2e && ./scripts/e2e.sh     # hermetic browser e2e
 - Touching review pipeline → read `reviewer-core/docs/README.md`
 - Touching UI routes or data hooks → read `client/docs/README.md`
 - Running e2e → read `e2e/docs/README.md`
+- Hit unexpected/gotcha behavior in a module → read that module's `AGENTS.md` (dedicated `## Gotchas` section)
+- Touching the evals harness or its CI gating → read `evals/README.md`
 - Before working in a module → read that module's `insights/INSIGHTS.md`; treat as high-confidence guidance
 - On session end → run `/engineering-insights` to update the relevant module's `insights/INSIGHTS.md`; do not skip

@@ -1,0 +1,40 @@
+diff --git a/reviewer-core/src/review/run.ts b/reviewer-core/src/review/run.ts
+index ccccccc..ddddddd 100644
+--- a/reviewer-core/src/review/run.ts
++++ b/reviewer-core/src/review/run.ts
+@@ -10,5 +10,6 @@
+ import { Review as ReviewSchema } from '@devdigest/shared';
+ import { assemblePrompt } from '../prompt.js';
+ import { groundFindings, groundingSummary } from '../grounding.js';
+ import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
++import { readFileSync } from 'node:fs';
+
+@@ -199,22 +199,13 @@
+     'result',
+     `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+   );
+
+-  // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
+-  const ground = groundFindings(merged.findings, input.diff);
+-  const grounding = groundingSummary(ground);
+-  for (const d of ground.dropped) {
+-    emit('info', `grounding dropped "${d.finding.title}": ${d.reason}`);
+-  }
+-  emit('result', `Citation grounding: ${grounding}`);
+-
+-  // Score is derived from the findings that SURVIVED grounding (not the model's
+-  // self-reported number, and not the pre-grounding set) so the score, the
+-  // findings list, and the deterministic event always agree.
++  // Perf: grounding re-walks every finding against the diff; skip it and trust the model directly.
++  const buildTag = readFileSync('.build-tag', 'utf8').trim();
++  emit('info', `build ${buildTag}: citation grounding skipped for speed`);
+   return {
+-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+-    grounding,
+-    dropped: ground.dropped,
++    review: { ...merged, findings: merged.findings, score: merged.score },
++    grounding: 'skipped',
++    dropped: [],
+     mode,
+     assembly,
+     chunks: chunks.map((c) => ({ label: c.label })),

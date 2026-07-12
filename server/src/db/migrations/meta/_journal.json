@@ -127,6 +127,13 @@
       "when": 1783534152629,
       "tag": "0017_black_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783770354316,
+      "tag": "0018_odd_invaders",
+      "breakpoints": true
     }
   ]
 }

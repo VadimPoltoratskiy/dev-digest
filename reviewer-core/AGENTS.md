@@ -4,8 +4,9 @@ Pure review engine: **diff → prompt → LLM → grounded findings**. No DB, no
 
 ## Commands
 ```sh
-pnpm test        # vitest hermetic units (stubbed LLMProvider — no keys, no network)
-pnpm typecheck   # also acts as build (this package never emits JS)
+pnpm test           # vitest hermetic units (stubbed LLMProvider — no keys, no network)
+pnpm typecheck      # also acts as build (this package never emits JS)
+pnpm mutation-test  # Stryker mutation testing, scoped to src/output/to-review.ts
 ```
 
 ## Structure
@@ -27,11 +28,11 @@ src/
 `assemblePrompt` → `wrapUntrusted` + `INJECTION_GUARD` → `LLMProvider` → `parseWithRepair` → `groundFindings` → `Review`
 
 ## Non-obvious rules — the ones that trip devs
-- **Grounding is mandatory and irreversible.** A finding dropped by `groundFindings` is gone. The score is then recomputed from surviving findings only — the model's self-reported score is thrown away.
+- **`reviewer-core-ground-findings-gate`: grounding is mandatory and irreversible.** A finding dropped by `groundFindings` is gone. The score is then recomputed from surviving findings only — the model's self-reported score is thrown away. Any code path that returns findings without going through `groundFindings` first violates this rule, even a conditional/debug one.
 - **This package is consumed as TypeScript source only.** The server imports it via tsconfig path alias. Never run `tsc --build` expecting a `dist/`.
 - **`INJECTION_GUARD` is always appended** to the system prompt by `assemblePrompt`. Do NOT add keyword-scanning of diff text as an alternative — it only catches one phrasing.
 - **Extra prompt slots** (`skills`, `memory`, `specs`, `callers`) are accepted by `assemblePrompt` but unused in the starter. When omitted, those sections are simply left out of the prompt.
-- **`LLMProvider` is injected** — never instantiate `OpenRouterLLMProvider` directly inside this package. Tests pass a stub.
+- **`reviewer-core-zero-io`: `LLMProvider` is injected** — never instantiate `OpenRouterLLMProvider` directly inside this package, and no filesystem/database/network I/O of this package's own. Tests pass a stub.
 
 ## Gotchas
 - `parseWithRepair` handles malformed JSON from the model — don't replace it with `JSON.parse`.

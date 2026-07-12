@@ -3,6 +3,7 @@
    or from a domain file directly (e.g. "@/lib/hooks/reviews") — both resolve here. */
 export * from "./core";
 export * from "./agents";
+export * from "./agents-eval";
 export * from "./reviews";
 export * from "./trace";
 export * from "./repo-intel";

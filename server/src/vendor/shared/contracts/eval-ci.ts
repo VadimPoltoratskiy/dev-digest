@@ -88,6 +88,31 @@ export const EvalDashboard = z.object({
 });
 export type EvalDashboard = z.infer<typeof EvalDashboard>;
 
+/**
+ * Per-agent eval summary row for the workspace eval-dashboard's agent list
+ * (`GET /evals/dashboard/agents`). One row per agent, `current`/`trend` are
+ * null/empty when the agent has never had an eval batch run.
+ */
+export const EvalDashboardAgentSummary = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  provider: Provider,
+  model: z.string(),
+  version: z.number().int(),
+  cases_total: z.number().int(),
+  last_ran_at: z.string().nullable(),
+  current: z
+    .object({
+      recall: z.number(),
+      precision: z.number(),
+      citation_accuracy: z.number(),
+    })
+    .nullable(),
+  /** Recall values, oldest→newest, for the agent-list sparkline (≤8 points). */
+  trend: z.array(z.number()),
+});
+export type EvalDashboardAgentSummary = z.infer<typeof EvalDashboardAgentSummary>;
+
 // ===========================================================================
 // Compose Review
 // ===========================================================================

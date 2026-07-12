@@ -1,0 +1,16 @@
+diff --git a/server/src/modules/blast/helpers.ts b/server/src/modules/blast/helpers.ts
+index eeeeeee..fffffff 100644
+--- a/server/src/modules/blast/helpers.ts
++++ b/server/src/modules/blast/helpers.ts
+@@ -68,8 +68,9 @@ function buildSummary(x: {
+   return radius;
+ }
+
+-function plural(n: number, word: string): string {
+-  return n === 1 ? word : `${word}s`;
++// Renamed locals for readability; behaviour unchanged.
++function plural(count: number, label: string): string {
++  return count === 1 ? label : `${label}s`;
+ }
+
+ function buildSummary(x: {

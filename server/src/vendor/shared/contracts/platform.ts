@@ -18,6 +18,7 @@ export const FeatureModelId = z.enum([
   'conformance',
   'conventions',
   'blast_explain',
+  'eval_case_generation',
 ]);
 export type FeatureModelId = z.infer<typeof FeatureModelId>;
 
@@ -81,6 +82,13 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'blast_explain',
     label: 'Blast · Explain',
     description: "Explains a PR's blast radius in one paragraph, on demand. Uses a fast flash-class model.",
+    defaultProvider: 'anthropic',
+    defaultModel: 'claude-haiku-4-5-20251001',
+  },
+  {
+    id: 'eval_case_generation',
+    label: 'Eval Case Generation',
+    description: 'Drafts a synthetic diff + expected output for a skill eval case. Uses a fast flash-class model.',
     defaultProvider: 'anthropic',
     defaultModel: 'claude-haiku-4-5-20251001',
   },

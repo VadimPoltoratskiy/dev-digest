@@ -13,6 +13,7 @@ import {
   MonoLink,
   ConfidenceNum,
   Button,
+  Textarea,
   Markdown,
   type Severity,
   type Category,
@@ -21,6 +22,7 @@ import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
 import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { CreateEvalCaseModal } from "./CreateEvalCaseModal";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -28,7 +30,9 @@ export function FindingCard({
   focused,
   defaultExpanded,
   onAction,
+  onCreateEvalCase,
   pending,
+  evalCasePending,
   repoFullName,
   headSha,
 }: {
@@ -36,12 +40,17 @@ export function FindingCard({
   focused?: boolean;
   defaultExpanded?: boolean;
   onAction?: (action: FindingActionKind, reply?: string) => void;
+  onCreateEvalCase?: (kind: "must_find" | "must_not_flag", name: string) => void;
   pending?: boolean;
+  evalCasePending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const [evalModalOpen, setEvalModalOpen] = React.useState(false);
+  const [replying, setReplying] = React.useState(false);
+  const [replyText, setReplyText] = React.useState("");
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const fileHref =
     repoFullName && headSha
@@ -109,8 +118,78 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {muted && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="FlaskConical"
+                disabled={evalCasePending}
+                onClick={() => setEvalModalOpen(true)}
+                aria-label={t("finding.createEvalCase")}
+              >
+                {t("finding.createEvalCase")}
+              </Button>
+            )}
+            <Button
+              kind="ghost"
+              size="sm"
+              icon="MessageSquare"
+              disabled={pending}
+              active={replying}
+              onClick={() => setReplying((r) => !r)}
+              aria-label={t("finding.replyToAuthor")}
+            >
+              {t("finding.replyToAuthor")}
+            </Button>
           </div>
+
+          {replying && (
+            <div style={s.composer}>
+              <Textarea
+                value={replyText}
+                onChange={setReplyText}
+                rows={3}
+                placeholder={t("finding.replyPlaceholder")}
+              />
+              <div style={s.composerActions}>
+                <Button
+                  kind="primary"
+                  size="sm"
+                  icon="MessageSquare"
+                  loading={pending}
+                  disabled={pending || !replyText.trim()}
+                  onClick={() => {
+                    onAction?.("reply", replyText.trim());
+                    setReplyText("");
+                    setReplying(false);
+                  }}
+                >
+                  {t("finding.sendReply")}
+                </Button>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => setReplying(false)}
+                >
+                  {t("finding.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {evalModalOpen && (
+        <CreateEvalCaseModal
+          f={f}
+          pending={evalCasePending}
+          onClose={() => setEvalModalOpen(false)}
+          onSubmit={(kind, name) => {
+            onCreateEvalCase?.(kind, name);
+            setEvalModalOpen(false);
+          }}
+        />
       )}
     </div>
   );
