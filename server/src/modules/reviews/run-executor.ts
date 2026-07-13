@@ -120,34 +120,22 @@ export class ReviewRunExecutor {
       runLog.info(`Plan/spec extracted: ${planContent.length} chars — will inject into all agent prompts`);
     }
 
-    for (const { agent, runId } of jobs) {
-      const agentStart = Date.now();
-      logger?.info(
-        { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
-        `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
-      );
-      try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, planContent, agent, runId, runLog);
+    await Promise.allSettled(
+      jobs.map(async ({ agent, runId }) => {
+        const agentStart = Date.now();
         logger?.info(
-          {
-            runId,
-            agent: agent.name,
-            findings: outcome.findings.length,
-            grounding: outcome.grounding,
-            durationMs: Date.now() - agentStart,
-          },
+          { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
+          `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
+        );
+        const outcome = await this.runOneAgent(
+          workspaceId, pull, repo, diff, planContent, agent, runId, runLog,
+        );
+        logger?.info(
+          { runId, agent: agent.name, findings: outcome.findings.length, grounding: outcome.grounding, durationMs: Date.now() - agentStart },
           `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
         );
-      } catch (err) {
-        // runOneAgent already persisted the failure/cancel (status + error +
-        // trace) and completed the bus; here we only log at the run level.
-        const cancelled = err instanceof RunCancelledError;
-        logger?.[cancelled ? 'info' : 'error'](
-          { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
-          `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
-        );
-      }
-    }
+      }),
+    );
   }
 
   /** Execute a single agent's review against a PR, streaming progress. */

@@ -38,7 +38,11 @@
     "running": "Running…",
     "runReview": "Run Review",
     "mergedWarning": "Already merged — review is informational",
-    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code."
+    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code.",
+    "runMultiAgentReview": "Run multi-agent review ({count} selected)",
+    "noHistoryYet": "no history yet",
+    "estimateLabel": "≈ {duration}s · ${cost}",
+    "estimatesLoading": "Loading…"
   },
   "runStatus": {
     "elapsed": "Running · {count} agent(s)",

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Severity } from './findings.js';
+import { FindingRecord } from './review-api.js';
 
 /**
  * A5 — Observability / Multi-agent contracts (L07).
@@ -138,3 +139,82 @@ export const CuratorResult = z.object({
   dry_run: z.boolean(),
 });
 export type CuratorResult = z.infer<typeof CuratorResult>;
+
+// ---------------------------------------------------------------------------
+// Multi-Run (SPEC-03) contracts
+// ---------------------------------------------------------------------------
+
+/** Body for POST /pulls/:id/multi-review. */
+export const MultiReviewRequest = z.object({
+  agentIds: z.array(z.string().uuid()).min(1),
+});
+export type MultiReviewRequest = z.infer<typeof MultiReviewRequest>;
+
+/** Per-agent status entry within a multi-run result. */
+export const AgentRunSummary = z.object({
+  run_id: z.string(),
+  agent_id: z.string().nullable(),
+  agent_name: z.string().nullable(),
+  status: z.enum(['running', 'done', 'failed', 'cancelled']),
+  score: z.number().int().nullable(),
+  finding_count: z.number().int().nullable(),
+  /** .nullish() — rows written before cost tracking was added lack this field. */
+  cost_usd: z.number().nullish(),
+  duration_ms: z.number().int().nullish(),
+  error: z.string().nullable(),
+});
+export type AgentRunSummary = z.infer<typeof AgentRunSummary>;
+
+/** Aggregate response for GET /multi-runs/:id. */
+export const MultiRunRecord = z.object({
+  id: z.string(),
+  pr_id: z.string(),
+  /** Joined from pulls table; nullish for forward compat. */
+  pr_number: z.number().int().nullish(),
+  ran_at: z.string(),
+  agents: z.array(AgentRunSummary),
+  /** .nullable() — service always computes this from summing agent rows. */
+  total_cost_usd: z.number().nullable(),
+  total_duration_ms: z.number().int().nullable(),
+});
+export type MultiRunRecord = z.infer<typeof MultiRunRecord>;
+
+/** Per-agent estimate for the Configure Run page. */
+export const AgentEstimate = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  estimated_duration_ms: z.number().int().nullable(),
+  estimated_cost_usd: z.number().nullable(),
+  last_finding_summary: z.string().nullable(),
+  has_historical_data: z.boolean(),
+});
+export type AgentEstimate = z.infer<typeof AgentEstimate>;
+
+/** One cross-agent finding group (file + overlapping line range). */
+export const FindingGroup = z.object({
+  file: z.string(),
+  start_line: z.number().int(),
+  end_line: z.number().int(),
+  agent_verdicts: z.array(
+    z.object({
+      agent_id: z.string().nullable(),
+      agent_name: z.string().nullable(),
+      /** null = "did not flag" */
+      finding: FindingRecord.nullable(),
+    }),
+  ),
+});
+export type FindingGroup = z.infer<typeof FindingGroup>;
+
+/** Response for GET /multi-runs/:id/findings. */
+export const MultiRunFindings = z.object({
+  agents: z.array(
+    z.object({
+      agent_id: z.string().nullable(),
+      agent_name: z.string().nullable(),
+      findings: z.array(FindingRecord),
+    }),
+  ),
+  groups: z.array(FindingGroup),
+});
+export type MultiRunFindings = z.infer<typeof MultiRunFindings>;
