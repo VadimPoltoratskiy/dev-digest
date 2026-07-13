@@ -30,14 +30,20 @@ import {
  * imports here.
  */
 export class CiService {
-  /**
-   * agent-runner binary singleton — read once at construction, reused on every
-   * export call (Recommendation 3 from the plan). Null when the build artifact
-   * is absent (the runner file in the bundle will be empty).
-   */
-  private readonly runnerBinary: Buffer | null;
+  constructor(private readonly container: Container) {}
 
-  constructor(private readonly container: Container) {
+  /**
+   * Read the ncc-compiled agent-runner binary fresh on every export call —
+   * NOT cached at construction. `CiService` is instantiated once at plugin
+   * registration (server startup) and lives for the process lifetime, so a
+   * constructor-time read would keep serving whatever `dist/index.js`
+   * happened to exist at boot even after `cd agent-runner && pnpm build`
+   * regenerates it — every export until the next server restart would embed
+   * a stale runner (this exact staleness shipped a pre-fix bundle to a
+   * target repo once already). Rereading a ~1.5MB file per export is cheap
+   * and this is not a hot path.
+   */
+  private readRunnerBinary(): Buffer | null {
     // Resolve the ncc-compiled agent-runner relative to this source file.
     // 5 `..` segments navigate from service.ts up through:
     //   ci/ → modules/ → src/ → server/ → repo-root → agent-runner/dist/index.js
@@ -46,7 +52,7 @@ export class CiService {
       '../../../../../agent-runner/dist/index.js',
     );
     try {
-      this.runnerBinary = readFileSync(binaryPath);
+      return readFileSync(binaryPath);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {
@@ -55,10 +61,9 @@ export class CiService {
           binaryPath,
           '— runner file in bundle will be empty. Build with `cd agent-runner && pnpm build`.',
         );
-        this.runnerBinary = null;
-      } else {
-        throw err;
+        return null;
       }
+      throw err;
     }
   }
 
@@ -103,7 +108,7 @@ export class CiService {
       manifestYaml,
       skills: skills.map((s) => ({ slug: agentSlug(s.name), body: s.body })),
       workflowYaml,
-      runnerBinary: this.runnerBinary,
+      runnerBinary: this.readRunnerBinary(),
     });
 
     // 7. "files" action — return bundle without any DB writes or GitHub calls

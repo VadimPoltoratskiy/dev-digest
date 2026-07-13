@@ -36,7 +36,7 @@ vi.mock('./repository.js', () => {
 import * as jsYaml from 'js-yaml';
 import { AgentManifest } from '@devdigest/shared';
 import type { WorkflowRun } from '@devdigest/shared';
-import { agentSlug, buildWorkflowYaml, manifestToYaml } from './helpers.js';
+import { agentSlug, buildCiBundle, buildWorkflowYaml, manifestToYaml } from './helpers.js';
 import { CiRepository } from './repository.js';
 import { CiService } from './service.js';
 import { MockGitHubClient } from '../../adapters/mocks.js';
@@ -291,6 +291,30 @@ describe('manifestToYaml() YAML round-trip', () => {
     expect(typeof yaml).toBe('string');
     expect(yaml.length).toBeGreaterThan(0);
     expect(yaml).toContain('exit_code_only');
+  });
+});
+
+describe('buildCiBundle() — runner binary encoding', () => {
+  it('round-trips a runner binary containing non-ASCII bytes exactly (regression: latin1 decode corrupted the ncc bundle on export)', () => {
+    // A real ncc bundle is valid UTF-8 text but not ASCII-only (~500 non-ASCII
+    // bytes from vendored deps). Simulate that with a buffer containing a
+    // multi-byte UTF-8 sequence alongside plain ASCII source.
+    const runnerBinary = Buffer.from('const x = "café — em dash"; // ASCII too', 'utf8');
+    expect(runnerBinary.some((b) => b >= 0x80)).toBe(true);
+
+    const files = buildCiBundle({
+      slug: 'agent',
+      manifestYaml: 'name: Agent\n',
+      skills: [],
+      workflowYaml: null,
+      runnerBinary,
+    });
+
+    const runnerFile = files.find((f) => f.path === '.devdigest/runner/index.js');
+    expect(runnerFile).toBeDefined();
+    // The committed string must re-encode (via UTF-8, matching GitHub's tree
+    // API assumption) back to the exact original bytes.
+    expect(Buffer.from(runnerFile!.contents, 'utf8')).toEqual(runnerBinary);
   });
 });
 

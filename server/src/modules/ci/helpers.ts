@@ -166,9 +166,17 @@ export function buildCiBundle(params: {
     { path: '.devdigest/memory.jsonl', contents: '', editable: false },
     {
       path: '.devdigest/runner/index.js',
-      // Buffer.toString('binary') is latin1; the ncc bundle is ASCII-safe text.
+      // The ncc bundle is NOT ASCII-only — it carries ~500 non-ASCII bytes
+      // (unicode chars pulled in from deps). It IS valid UTF-8 (ncc emits a
+      // normal JS source file), so 'utf8' round-trips it exactly. 'binary'
+      // (latin1) does NOT: it decodes each UTF-8 multi-byte sequence as
+      // separate Latin-1 chars, which GitHub's tree API then re-encodes as
+      // UTF-8 again on commit — corrupting the bundle on every export (every
+      // non-ASCII byte silently balloons to 2 bytes) without ever throwing,
+      // so the shipped runner silently misbehaves in ways that don't obviously
+      // point back to this line (e.g. surfacing as a bare OpenRouter 401).
       // Falls back to empty string when the build artifact is absent.
-      contents: runnerBinary?.toString('binary') ?? '',
+      contents: runnerBinary?.toString('utf8') ?? '',
       editable: false,
     },
   ];
