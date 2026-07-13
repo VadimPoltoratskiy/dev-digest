@@ -32,7 +32,7 @@ import { RunnerError } from './errors.js';
  * grounded review" produces NOTHING (no synthetic review skeleton).
  */
 
-export type PostAs = 'github_review' | 'pr_comment' | 'none';
+export type PostAs = 'github_review' | 'pr_comment' | 'exit_code_only';
 
 export interface RunCiDeps {
   /** Directory containing `agents/` and `skills/` (checked-in `.devdigest/`). */
@@ -40,7 +40,7 @@ export interface RunCiDeps {
   env: CiEnv;
   /** Injected LLM provider — `OpenRouterProvider` in production, a stub in tests. */
   llm: LLMProvider;
-  /** How to post the result — `'github_review' | 'pr_comment' | 'none'` (AC-24). */
+  /** How to post the result — `'github_review' | 'pr_comment' | 'exit_code_only'` (AC-24). */
   postAs: PostAs;
   /** Absolute path to write the `CiResultArtifact` JSON to. */
   resultPath: string;
@@ -97,7 +97,7 @@ export async function runCi(deps: RunCiDeps): Promise<RunCiResult> {
     const ctx = resolvePrContext(deps.env, readFile);
 
     const githubToken = deps.env.GITHUB_TOKEN;
-    if (deps.postAs !== 'none' && !githubToken) {
+    if (deps.postAs !== 'exit_code_only' && !githubToken) {
       throw new RunnerError(`GITHUB_TOKEN is required to post as '${deps.postAs}'`);
     }
 
@@ -154,7 +154,7 @@ export async function runCi(deps: RunCiDeps): Promise<RunCiResult> {
     } else if (deps.postAs === 'pr_comment') {
       await postPrComment(ctx, githubToken as string, payload.body, fetchImpl);
     }
-    // 'none' → post nothing (exit-code only).
+    // 'exit_code_only' → post nothing.
 
     // 8. Exit non-zero IFF the gate triggered REQUEST_CHANGES (AC-25).
     return {

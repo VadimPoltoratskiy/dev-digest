@@ -286,11 +286,16 @@ describe('runCi (T8 agent-runner orchestrator)', () => {
     expect(calls[0]!.method).toBe('POST');
   });
 
-  it('AC-24 + AC-25: post_as="none" posts nothing but still exits 0 on a clean (non-triggering) review', async () => {
+  it('AC-24 + AC-25: post_as="exit_code_only" posts nothing but still exits 0 on a clean (non-triggering) review', async () => {
     const stub = makeStubLlm(ALL_HALLUCINATED_REVIEW); // grounds to zero findings → no gate trigger
     const { fetchImpl, calls } = makeFetchRecorder();
     const result = await runCi(
-      baseDeps({ llm: stub.llm, fetchDiff: async () => FIXTURE_DIFF_RAW, fetchImpl, postAs: 'none' }),
+      baseDeps({
+        llm: stub.llm,
+        fetchDiff: async () => FIXTURE_DIFF_RAW,
+        fetchImpl,
+        postAs: 'exit_code_only',
+      }),
     );
 
     expect(calls).toHaveLength(0);
