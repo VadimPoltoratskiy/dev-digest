@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Verdict, Finding } from './findings.js';
-import { EvalRun, EvalOwnerKind, Conformance, Provider } from './knowledge.js';
+import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowledge.js';
 
 /**
  * A4 — Eval / CI / Compose / Conformance API contracts (L06).
@@ -166,13 +166,47 @@ export const CiFile = z.object({
 });
 export type CiFile = z.infer<typeof CiFile>;
 
+/**
+ * AgentManifest — the agent contract shared by the studio and the CI runner.
+ *
+ * The studio (`CiService.agentYaml`) WRITES this shape to
+ * `.devdigest/agents/<slug>.yaml`; the agent-runner READS it. Keeping one Zod
+ * schema for both ends guarantees the formats never drift. `skills` are slugs
+ * resolved to `.devdigest/skills/<slug>.md`.
+ */
+export const AgentManifest = z.object({
+  name: z.string().min(1),
+  provider: Provider.default('openrouter'),
+  model: z.string().min(1),
+  system_prompt: z.string(),
+  // Tolerate both a missing key and an explicit `null` (YAML `skills:` with no
+  // value parses to null, which `.default([])` does NOT catch) — normalize both
+  // to an empty array so manifests without skills validate cleanly.
+  skills: z
+    .array(z.string())
+    .nullish()
+    .transform((v) => v ?? []),
+  strategy: z.enum(['auto', 'single-pass', 'map-reduce']).default('auto'),
+  // CI gate policy (see CiFailOn) — when the posted review should BLOCK
+  // (REQUEST_CHANGES + fail the check) vs just comment. Default: block on critical.
+  ci_fail_on: CiFailOn.default('critical'),
+  // How the CI runner posts its result to the PR. Default: GitHub review (can REQUEST_CHANGES).
+  post_as: z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
+});
+export type AgentManifest = z.infer<typeof AgentManifest>;
+/** Caller-facing input type — `.default()` fields stay optional. */
+export type AgentManifestInput = z.input<typeof AgentManifest>;
+
 /** Request body for `POST /agents/:id/export-ci`. */
 export const CiExportInput = z.object({
-  repo: z.string().min(1), // "owner/name"
+  repo: z.string().min(1).regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, 'repo must be owner/name format'),
   target: CiTarget.default('gha'),
   /** "open_pr" opens a PR with the files; "files" just returns/persists them. */
   action: z.enum(['open_pr', 'files']).default('open_pr'),
-  post_as: z.enum(['github_review', 'pr_comment', 'none']).default('github_review'),
+  post_as: z.preprocess(
+    (v) => (v === 'none' ? 'exit_code_only' : v),
+    z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
+  ),
   triggers: z.array(z.string()).default(['opened', 'synchronize', 'reopened']),
   base: z.string().default('main'),
 });
@@ -214,6 +248,7 @@ export const CiRun = z.object({
   source: z.string().nullable(),
   agent: z.string().nullish(),
   duration_s: z.number().nullish(),
+  repo: z.string().nullish(),
 });
 export type CiRun = z.infer<typeof CiRun>;
 

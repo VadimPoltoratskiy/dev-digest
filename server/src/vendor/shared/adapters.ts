@@ -100,6 +100,13 @@ export interface RepoRef {
   name: string;
 }
 
+export interface WorkflowRun {
+  id: number;
+  html_url: string;
+  created_at: string;
+  status: string | null;
+}
+
 export interface GitHubReviewPayload {
   body: string;
   event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
@@ -164,6 +171,12 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /** List recent GitHub Actions workflow runs for a specific workflow file. */
+  listWorkflowRuns(repo: RepoRef, workflowFile: string): Promise<WorkflowRun[]>;
+  /** Download a named artifact from a GHA run. Returns the raw JSON string, or null if not found. */
+  downloadArtifact(repo: RepoRef, runId: number, artifactName: string): Promise<string | null>;
+  /** Check if the authenticated token has push (write) access to the repo. */
+  checkWriteAccess(repo: RepoRef): Promise<boolean>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

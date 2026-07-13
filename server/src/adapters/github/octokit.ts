@@ -1,7 +1,9 @@
 import { Octokit } from 'octokit';
+import AdmZip from 'adm-zip';
 import type {
   GitHubClient,
   RepoRef,
+  WorkflowRun,
   PrMeta,
   PrDetail,
   PrStatus,
@@ -370,5 +372,90 @@ export class OctokitGitHubClient implements GitHubClient {
       withTimeout(this.octokit.rest.users.getAuthenticated(), TIMEOUT),
     );
     return res.data.login;
+  }
+
+  async listWorkflowRuns(repo: RepoRef, workflowFile: string): Promise<WorkflowRun[]> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const res = await this.octokit.rest.actions.listWorkflowRuns({
+            owner: repo.owner,
+            repo: repo.name,
+            workflow_id: workflowFile,
+            per_page: 30,
+          });
+          return res.data.workflow_runs.map((run) => ({
+            id: run.id,
+            html_url: run.html_url,
+            created_at: run.created_at,
+            status: run.status ?? null,
+          }));
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async downloadArtifact(
+    repo: RepoRef,
+    runId: number,
+    artifactName: string,
+  ): Promise<string | null> {
+    try {
+      return await withTimeout(
+        (async () => {
+          // Find the artifact in the run's artifact list.
+          const listRes = await this.octokit.rest.actions.listWorkflowRunArtifacts({
+            owner: repo.owner,
+            repo: repo.name,
+            run_id: runId,
+          });
+          const artifact = listRes.data.artifacts.find((a) => a.name === artifactName);
+          if (!artifact) return null;
+
+          // GitHub returns a redirect to a ZIP archive. Fetch the download URL.
+          const dlRes = await this.octokit.rest.actions.downloadArtifact({
+            owner: repo.owner,
+            repo: repo.name,
+            artifact_id: artifact.id,
+            archive_format: 'zip',
+          });
+
+          // dlRes.url is the redirect location — fetch it directly.
+          const downloadUrl = dlRes.url;
+          const response = await fetch(downloadUrl);
+          if (!response.ok) return null;
+
+          const arrayBuffer = await response.arrayBuffer();
+          const zip = new AdmZip(Buffer.from(arrayBuffer));
+          const entries = zip.getEntries();
+          if (entries.length === 0) return null;
+
+          // Return the text content of the first JSON file entry.
+          for (const entry of entries) {
+            if (entry.entryName.endsWith('.json')) {
+              return zip.readAsText(entry);
+            }
+          }
+          // Fall back to first entry if no JSON found.
+          return zip.readAsText(entries[0]!);
+        })(),
+        TIMEOUT,
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  async checkWriteAccess(repo: RepoRef): Promise<boolean> {
+    try {
+      const res = await withTimeout(
+        this.octokit.rest.repos.get({ owner: repo.owner, repo: repo.name }),
+        TIMEOUT,
+      );
+      return res.data.permissions?.push === true;
+    } catch {
+      return false;
+    }
   }
 }

@@ -9,6 +9,7 @@ import type {
   Embedder,
   GitHubClient,
   RepoRef,
+  WorkflowRun,
   PrMeta,
   PrDetail,
   GitHubReviewPayload,
@@ -236,6 +237,22 @@ export class MockGitHubClient implements GitHubClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listWorkflowRuns(_repo: RepoRef, _workflowFile: string): Promise<WorkflowRun[]> {
+    return [];
+  }
+
+  async downloadArtifact(
+    _repo: RepoRef,
+    _runId: number,
+    _artifactName: string,
+  ): Promise<string | null> {
+    return null;
+  }
+
+  async checkWriteAccess(_repo: RepoRef): Promise<boolean> {
+    return true;
   }
 }
 

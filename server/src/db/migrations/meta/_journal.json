@@ -134,6 +134,13 @@
       "when": 1783770354316,
       "tag": "0018_odd_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783941571384,
+      "tag": "0019_foamy_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }
