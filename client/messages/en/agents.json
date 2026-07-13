@@ -105,6 +105,7 @@
     "deploymentSummary": "Active in {count} repo(s)",
     "noInstallations": "No repositories configured yet.",
     "addRepo": "Add repository",
+    "addToCi": "Add to CI",
     "updateConfig": "Update CI config",
     "failOn": "Fail CI on",
     "failOnOptions": {

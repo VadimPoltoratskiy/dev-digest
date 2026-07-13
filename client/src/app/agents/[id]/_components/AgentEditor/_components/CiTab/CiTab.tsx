@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Button, Skeleton } from "@devdigest/ui";
 import type { CiFailOn } from "@devdigest/shared";
@@ -14,13 +15,15 @@ import { ExportWizard } from "../ExportWizard";
 export interface CiTabProps {
   agentId: string;
   ciFailOn: CiFailOn;
+  /** Portal target in the shared AgentEditor tabs bar for the "Add to CI" / "Update CI config" header actions. */
+  headerActionsEl?: HTMLDivElement | null;
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function CiTab({ agentId, ciFailOn }: CiTabProps) {
+export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
   const t = useTranslations("agents");
 
   const [wizardOpen, setWizardOpen] = React.useState(false);
@@ -51,17 +54,34 @@ export function CiTab({ agentId, ciFailOn }: CiTabProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* ---------------------------------------------------------------- */}
+      {/* Header-level "Add to CI" / "Update CI config" actions, portaled   */}
+      {/* into the shared AgentEditor tabs bar row.                        */}
+      {/* ---------------------------------------------------------------- */}
+      {headerActionsEl &&
+        createPortal(
+          <>
+            {installationCount > 0 && (
+              <Button
+                kind="secondary"
+                size="sm"
+                icon="RefreshCw"
+                onClick={() => openWizard(installations?.[0]?.repo)}
+              >
+                {t("ci.updateConfig")}
+              </Button>
+            )}
+            <Button kind="primary" size="sm" icon="Plus" onClick={() => openWizard()}>
+              {t("ci.addToCi")}
+            </Button>
+          </>,
+          headerActionsEl,
+        )}
+
+      {/* ---------------------------------------------------------------- */}
       {/* Deployment summary (AC-18)                                        */}
       {/* ---------------------------------------------------------------- */}
-      <div>
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
-          {t("ci.deploymentSummary", { count: installationCount })}
-        </div>
-
-        {/* Add repository button */}
-        <Button kind="primary" size="sm" icon="Plus" onClick={() => openWizard()}>
-          {t("ci.addRepo")}
-        </Button>
+      <div style={{ fontWeight: 600, fontSize: 14 }}>
+        {t("ci.deploymentSummary", { count: installationCount })}
       </div>
 
       {/* ---------------------------------------------------------------- */}
@@ -118,6 +138,28 @@ export function CiTab({ agentId, ciFailOn }: CiTabProps) {
             })}
           </div>
         )}
+
+        {/* Dashed "add another repository" affordance, always available */}
+        <button
+          type="button"
+          onClick={() => openWizard()}
+          style={{
+            display: "block",
+            width: "100%",
+            marginTop: installationCount > 0 ? 8 : 0,
+            padding: "12px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-secondary)",
+            background: "transparent",
+            border: "1px dashed var(--border)",
+            borderRadius: 8,
+            cursor: "pointer",
+            textAlign: "center",
+          }}
+        >
+          + {t("ci.addRepo")}
+        </button>
       </div>
 
       {/* ---------------------------------------------------------------- */}

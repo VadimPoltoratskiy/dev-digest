@@ -106,7 +106,7 @@ describe("CiTab — deployment summary", () => {
 });
 
 describe("CiTab — wizard opening", () => {
-  it("clicking 'Add repository' opens wizard (wizard open prop becomes true)", () => {
+  it("clicking the dashed 'Add repository' affordance opens wizard (wizard open prop becomes true)", () => {
     renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
 
     expect(screen.queryByTestId("export-wizard-open")).not.toBeInTheDocument();
@@ -116,12 +116,60 @@ describe("CiTab — wizard opening", () => {
     expect(screen.getByTestId("export-wizard-open")).toBeInTheDocument();
   });
 
-  it("clicking 'Update CI config' opens wizard", () => {
+  it("clicking per-repo 'Update CI config' opens wizard", () => {
     renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
 
     fireEvent.click(screen.getByRole("button", { name: /update ci config/i }));
 
     expect(screen.getByTestId("export-wizard-open")).toBeInTheDocument();
+  });
+});
+
+describe("CiTab — header actions portal", () => {
+  function withHeaderSlot() {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("portals 'Add to CI' and 'Update CI config' into the given headerActionsEl when installations exist", () => {
+    const el = withHeaderSlot();
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" headerActionsEl={el} />);
+
+    expect(screen.getByRole("button", { name: /add to ci/i })).toBeInTheDocument();
+    // Two "Update CI config" buttons now exist: the portaled header one and the per-repo row one.
+    expect(screen.getAllByRole("button", { name: /update ci config/i }).length).toBe(2);
+
+    document.body.removeChild(el);
+  });
+
+  it("omits the header 'Update CI config' button when there are no installations", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useCiInstallations).mockReturnValue({ data: [], isLoading: false, isError: false } as any);
+    const el = withHeaderSlot();
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" headerActionsEl={el} />);
+
+    expect(screen.getByRole("button", { name: /add to ci/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /update ci config/i })).not.toBeInTheDocument();
+
+    document.body.removeChild(el);
+  });
+
+  it("clicking the portaled 'Add to CI' button opens the wizard", () => {
+    const el = withHeaderSlot();
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" headerActionsEl={el} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /add to ci/i }));
+
+    expect(screen.getByTestId("export-wizard-open")).toBeInTheDocument();
+
+    document.body.removeChild(el);
+  });
+
+  it("renders no header actions when headerActionsEl is not provided", () => {
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    expect(screen.queryByRole("button", { name: /add to ci/i })).not.toBeInTheDocument();
   });
 });
 
