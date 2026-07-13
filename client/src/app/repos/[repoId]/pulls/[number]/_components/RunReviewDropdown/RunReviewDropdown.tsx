@@ -252,6 +252,45 @@ export function RunReviewDropdown({
             </>
           )}
 
+          {/* Multi-select section header: label + Clear (mirrors the Configure Run mockup). */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 10px 6px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+              }}
+            >
+              {t("runReview.pickAgents")}
+            </span>
+            {selectedAgentIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedAgentIds(new Set())}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                {t("runReview.clear")}
+              </button>
+            )}
+          </div>
+
           {/* Multi-select section: one checkbox row per agent (from estimates). */}
           {estimatesLoading ? (
             <div

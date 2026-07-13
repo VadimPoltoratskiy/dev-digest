@@ -42,7 +42,9 @@
     "runMultiAgentReview": "Run multi-agent review ({count} selected)",
     "noHistoryYet": "no history yet",
     "estimateLabel": "≈ {duration}s · ${cost}",
-    "estimatesLoading": "Loading…"
+    "estimatesLoading": "Loading…",
+    "pickAgents": "Pick agents to run",
+    "clear": "Clear"
   },
   "runStatus": {
     "elapsed": "Running · {count} agent(s)",
