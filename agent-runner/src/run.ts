@@ -101,6 +101,17 @@ export async function runCi(deps: RunCiDeps): Promise<RunCiResult> {
       throw new RunnerError(`GITHUB_TOKEN is required to post as '${deps.postAs}'`);
     }
 
+    // Fail with a clear, actionable message instead of letting an empty key
+    // reach the LLM provider — an empty OPENROUTER_API_KEY produces a cryptic
+    // downstream 401 ("Missing Authentication header") that gives no hint
+    // it's a missing repo secret, not a code or network problem.
+    if (!deps.env.OPENROUTER_API_KEY?.trim()) {
+      throw new RunnerError(
+        'OPENROUTER_API_KEY is not set. Add it in the target repository\'s ' +
+          'Settings -> Secrets and variables -> Actions -> New repository secret.',
+      );
+    }
+
     // 3. Assemble the diff from the CI context. Strip DevDigest's own exported
     //    artifacts (`.devdigest/**`, the generated workflow) BEFORE parse: the
     //    minified runner bundle would otherwise fail the whole review with a
