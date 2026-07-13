@@ -15,7 +15,7 @@ import { CiService } from './service.js';
  *   GET  /ci/runs                         → CiRun[] (workspace-scoped, optional agent_id filter)
  *   POST /ci/runs/refresh                 → { inserted, skipped } (ingest GHA artifacts)
  *   GET  /ci/runs/:id                     → CiRun (single run with workspace check)
- *   GET  /ci/preflight                    → { has_write_access: boolean } (AC-22)
+ *   GET  /ci/preflight                    → { has_write_access, secrets: { openrouter_api_key, github_token } } (AC-22)
  */
 
 const CiRunsQuery = z.object({
@@ -121,8 +121,11 @@ export default async function ciRoutes(appBase: FastifyInstance) {
     { schema: { querystring: CiPreflightQuery } },
     async (req) => {
       await getContext(app.container, req);
-      const hasWriteAccess = await service.checkWriteAccess(req.query.repo);
-      return { has_write_access: hasWriteAccess };
+      const [hasWriteAccess, secrets] = await Promise.all([
+        service.checkWriteAccess(req.query.repo),
+        service.checkSecrets(req.query.repo),
+      ]);
+      return { has_write_access: hasWriteAccess, secrets };
     },
   );
 }

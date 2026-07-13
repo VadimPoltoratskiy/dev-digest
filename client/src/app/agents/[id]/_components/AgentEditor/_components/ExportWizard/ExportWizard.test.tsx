@@ -11,7 +11,10 @@ import messages from "../../../../../../../../messages/en/agents.json";
 
 const mockExportMutateAsync = vi.fn();
 const mockExportMutate = vi.fn();
-const mockPreflightData = { has_write_access: false };
+const mockPreflightData = {
+  has_write_access: false,
+  secrets: { openrouter_api_key: false, github_token: true },
+};
 
 vi.mock("../../../../../../../lib/hooks/ci", () => ({
   useExportCi: vi.fn(),
@@ -172,6 +175,37 @@ describe("ExportWizard — Step 3: Configure", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Copy files as a ZIP").length).toBeGreaterThan(0);
     });
+  });
+
+  it("shows 'not set' for OPENROUTER_API_KEY and 'ready' for GITHUB_TOKEN when preflight reports the key missing", async () => {
+    await advanceToStep3();
+
+    expect(screen.getByText("not set")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
+  });
+
+  it("shows 'ready' for OPENROUTER_API_KEY when preflight reports it configured", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useCiPreflight).mockReturnValue({
+      data: { has_write_access: true, secrets: { openrouter_api_key: true, github_token: true } },
+      isLoading: false,
+      isError: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    await advanceToStep3();
+
+    expect(screen.queryByText("not set")).not.toBeInTheDocument();
+    expect(screen.getAllByText("ready").length).toBe(2);
+  });
+
+  it("shows 'checking…' while the preflight query is loading", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useCiPreflight).mockReturnValue({ data: undefined, isLoading: true, isError: false } as any);
+
+    await advanceToStep3();
+
+    expect(screen.getByText("checking…")).toBeInTheDocument();
   });
 });
 

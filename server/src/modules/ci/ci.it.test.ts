@@ -310,8 +310,9 @@ d('CI Routes — testcontainers integration', () => {
   // -------------------------------------------------------------------------
   // GET /ci/preflight (AC-22)
   // -------------------------------------------------------------------------
-  it('GET /ci/preflight?repo=owner/test-repo → 200, has_write_access: true', async () => {
-    // Default MockGitHubClient.checkWriteAccess() returns true
+  it('GET /ci/preflight?repo=owner/test-repo → 200, has_write_access: true, secrets status', async () => {
+    // Default MockGitHubClient.checkWriteAccess() returns true;
+    // listRepoSecretNames() returns ['OPENROUTER_API_KEY'].
     const app = await makeApp();
 
     const res = await app.inject({
@@ -320,7 +321,10 @@ d('CI Routes — testcontainers integration', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ has_write_access: true });
+    expect(res.json()).toEqual({
+      has_write_access: true,
+      secrets: { openrouter_api_key: true, github_token: true },
+    });
 
     await app.close();
   });

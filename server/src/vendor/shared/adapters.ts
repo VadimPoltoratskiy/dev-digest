@@ -177,6 +177,13 @@ export interface GitHubClient {
   downloadArtifact(repo: RepoRef, runId: number, artifactName: string): Promise<string | null>;
   /** Check if the authenticated token has push (write) access to the repo. */
   checkWriteAccess(repo: RepoRef): Promise<boolean>;
+  /**
+   * List the NAMES of GitHub Actions repository secrets (never values —
+   * GitHub's API does not expose secret values). Used to show "ready"/"not
+   * set" status for secrets the Export Wizard expects, without ever reading
+   * or logging the secret content itself.
+   */
+  listRepoSecretNames(repo: RepoRef): Promise<string[]>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

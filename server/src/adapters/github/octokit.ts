@@ -458,4 +458,23 @@ export class OctokitGitHubClient implements GitHubClient {
       return false;
     }
   }
+
+  async listRepoSecretNames(repo: RepoRef): Promise<string[]> {
+    try {
+      const res = await withTimeout(
+        this.octokit.rest.actions.listRepoSecrets({
+          owner: repo.owner,
+          repo: repo.name,
+          per_page: 100,
+        }),
+        TIMEOUT,
+      );
+      return res.data.secrets.map((s) => s.name);
+    } catch {
+      // Token lacks admin/secrets:read access, or the repo has no secrets
+      // endpoint reachable — treat as "can't confirm" rather than throwing;
+      // the caller renders this as "not set" (fail-closed on an unknown).
+      return [];
+    }
+  }
 }

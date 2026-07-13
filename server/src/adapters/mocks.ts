@@ -254,6 +254,10 @@ export class MockGitHubClient implements GitHubClient {
   async checkWriteAccess(_repo: RepoRef): Promise<boolean> {
     return true;
   }
+
+  async listRepoSecretNames(_repo: RepoRef): Promise<string[]> {
+    return ['OPENROUTER_API_KEY'];
+  }
 }
 
 // ---------- Mock Git ----------

@@ -225,7 +225,13 @@ export function fetchCiInstallations(agentId: string): Promise<CiInstallation[]>
   return api.get<CiInstallation[]>(`/agents/${agentId}/ci-installations`);
 }
 
-/** Preflight check: does the DevDigest token have write access to the given repo? */
-export function checkCiPreflight(repo: string): Promise<{ has_write_access: boolean }> {
-  return api.get<{ has_write_access: boolean }>(`/ci/preflight?repo=${encodeURIComponent(repo)}`);
+/** Preflight response: write access + readiness of the wizard's expected secrets. */
+export interface CiPreflightResult {
+  has_write_access: boolean;
+  secrets: { openrouter_api_key: boolean; github_token: boolean };
+}
+
+/** Preflight check: write access + secret readiness for the given repo. */
+export function checkCiPreflight(repo: string): Promise<CiPreflightResult> {
+  return api.get<CiPreflightResult>(`/ci/preflight?repo=${encodeURIComponent(repo)}`);
 }

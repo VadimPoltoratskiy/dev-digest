@@ -2,9 +2,10 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, Modal, ExportWizardSteps } from "@devdigest/ui";
+import { Button, Modal, ExportWizardSteps, Badge } from "@devdigest/ui";
 import type { CiFile, CiTarget } from "@devdigest/shared";
 import { useExportCi, useCiPreflight } from "../../../../../../../lib/hooks";
+import type { CiPreflightResult } from "../../../../../../../lib/api";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------------------
@@ -279,6 +280,36 @@ interface ConfigureStepProps {
   onBack: () => void;
   onNext: () => void;
   t: ReturnType<typeof useTranslations>;
+  secretStatus?: CiPreflightResult["secrets"];
+  secretStatusLoading: boolean;
+}
+
+/** Green "ready" / orange "not set" status pill for a secret. Loading = neutral, no premature red/orange flash. */
+function SecretStatusBadge({
+  ready,
+  loading,
+  t,
+}: {
+  ready: boolean | undefined;
+  loading: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (loading) {
+    return (
+      <Badge color="var(--text-muted)" bg="var(--bg-hover)" dot>
+        {t("ci.wizard.secretsPanel.checking")}
+      </Badge>
+    );
+  }
+  return ready ? (
+    <Badge color="var(--ok)" bg="var(--ok-bg)" dot>
+      {t("ci.wizard.secretsPanel.ready")}
+    </Badge>
+  ) : (
+    <Badge color="var(--warn)" bg="var(--warn-bg)" dot>
+      {t("ci.wizard.secretsPanel.notSet")}
+    </Badge>
+  );
 }
 
 function ConfigureStep({
@@ -289,6 +320,8 @@ function ConfigureStep({
   onBack,
   onNext,
   t,
+  secretStatus,
+  secretStatusLoading,
 }: ConfigureStepProps) {
   const triggerOptions = ["opened", "synchronize", "reopened"] as const;
   const postAsOptions: Array<{ value: PostAs; labelKey: string }> = [
@@ -372,21 +405,31 @@ function ConfigureStep({
           {t("ci.wizard.secretsPanel.title")}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div>
-            <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
-              {t("ci.wizard.secretsPanel.openrouterKey")}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
+                {t("ci.wizard.secretsPanel.openrouterKey")}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {t("ci.wizard.secretsPanel.openrouterKeyHint")}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {t("ci.wizard.secretsPanel.openrouterKeyHint")}
-            </div>
+            <SecretStatusBadge
+              ready={secretStatus?.openrouter_api_key}
+              loading={secretStatusLoading}
+              t={t}
+            />
           </div>
-          <div>
-            <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
-              {t("ci.wizard.secretsPanel.githubToken")}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
+                {t("ci.wizard.secretsPanel.githubToken")}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {t("ci.wizard.secretsPanel.githubTokenHint")}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {t("ci.wizard.secretsPanel.githubTokenHint")}
-            </div>
+            <SecretStatusBadge ready={secretStatus?.github_token ?? true} loading={false} t={t} />
           </div>
         </div>
       </div>
@@ -424,6 +467,8 @@ interface InstallStepProps {
   onBack: () => void;
   onClose: () => void;
   t: ReturnType<typeof useTranslations>;
+  preflightData: CiPreflightResult | undefined;
+  preflightLoading: boolean;
 }
 
 function InstallStep({
@@ -438,13 +483,13 @@ function InstallStep({
   onBack,
   onClose,
   t,
+  preflightData,
+  preflightLoading,
 }: InstallStepProps) {
-  const preflight = useCiPreflight(target === "gha" ? repo : null);
   const exportMutation = useExportCi(agentId);
   const [prUrl, setPrUrl] = React.useState<string | null>(null);
 
-  const hasWriteAccess = preflight.data?.has_write_access ?? false;
-  const preflightLoading = preflight.isLoading;
+  const hasWriteAccess = preflightData?.has_write_access ?? false;
   const isGha = target === "gha";
 
   // Build the files array substituting the edited workflow YAML
@@ -586,6 +631,9 @@ export function ExportWizard({ agentId, open, onClose, prefilledRepo }: ExportWi
   const [editedWorkflow, setEditedWorkflow] = React.useState("");
 
   const exportFiles = useExportCi(agentId);
+  // Owned here (not in ConfigureStep/InstallStep) so both steps share one
+  // query/cache entry instead of re-fetching independently.
+  const preflight = useCiPreflight(target === "gha" ? repo : null);
 
   // Reset when re-opened with a different prefilledRepo
   React.useEffect(() => {
@@ -672,6 +720,8 @@ export function ExportWizard({ agentId, open, onClose, prefilledRepo }: ExportWi
           onBack={() => setStep(2)}
           onNext={() => setStep(4)}
           t={t}
+          secretStatus={preflight.data?.secrets}
+          secretStatusLoading={preflight.isLoading}
         />
       )}
       {step === 4 && (
@@ -687,6 +737,8 @@ export function ExportWizard({ agentId, open, onClose, prefilledRepo }: ExportWi
           onBack={() => setStep(3)}
           onClose={onClose}
           t={t}
+          preflightData={preflight.data}
+          preflightLoading={preflight.isLoading}
         />
       )}
     </Modal>

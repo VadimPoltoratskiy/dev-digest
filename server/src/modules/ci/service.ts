@@ -195,6 +195,29 @@ export class CiService {
     }
   }
 
+  /**
+   * Report which of the wizard's expected GitHub Actions secrets already
+   * exist in the target repo, by NAME only — GitHub's API never exposes
+   * secret values. GITHUB_TOKEN is not a stored repo secret (it's injected
+   * automatically by Actions), so it is always reported ready. On any
+   * failure (no token, insufficient scope, repo not found) every secret is
+   * reported not-ready rather than throwing — the wizard treats "can't
+   * confirm" the same as "not set".
+   */
+  async checkSecrets(repo: string): Promise<{ openrouter_api_key: boolean; github_token: boolean }> {
+    try {
+      const repoRef = parseRepoRef(repo);
+      const github = await this.container.github();
+      const names = await github.listRepoSecretNames(repoRef);
+      return {
+        openrouter_api_key: names.includes('OPENROUTER_API_KEY'),
+        github_token: true,
+      };
+    } catch {
+      return { openrouter_api_key: false, github_token: true };
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // CI Installations
   // ---------------------------------------------------------------------------

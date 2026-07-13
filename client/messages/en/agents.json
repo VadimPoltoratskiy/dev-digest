@@ -136,7 +136,10 @@
         "openrouterKey": "OPENROUTER_API_KEY",
         "openrouterKeyHint": "Create this in your repository Settings → Secrets and variables → Actions",
         "githubToken": "GITHUB_TOKEN",
-        "githubTokenHint": "Auto-provided by GitHub Actions — no setup required"
+        "githubTokenHint": "Auto-provided by GitHub Actions — no setup required",
+        "ready": "ready",
+        "notSet": "not set",
+        "checking": "checking…"
       },
       "repoLabel": "Target repository",
       "repoPlaceholder": "owner/name",

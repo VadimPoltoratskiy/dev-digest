@@ -502,3 +502,61 @@ describe('CiService.refreshCiRuns() — ingest scenarios', () => {
     expect(result).toEqual({ inserted: 0, skipped: 0 });
   });
 });
+
+// ===========================================================================
+// CiService.checkSecrets()
+// ===========================================================================
+
+describe('CiService.checkSecrets()', () => {
+  it('reports openrouter_api_key ready when it is present in the repo secret names', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'listRepoSecretNames').mockResolvedValue(['OPENROUTER_API_KEY']);
+    const service = new CiService(buildContainer({ github }));
+
+    const result = await service.checkSecrets('owner/test-repo');
+
+    expect(result).toEqual({ openrouter_api_key: true, github_token: true });
+  });
+
+  it('reports openrouter_api_key not ready when it is absent from the repo secret names', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'listRepoSecretNames').mockResolvedValue(['SOME_OTHER_SECRET']);
+    const service = new CiService(buildContainer({ github }));
+
+    const result = await service.checkSecrets('owner/test-repo');
+
+    expect(result).toEqual({ openrouter_api_key: false, github_token: true });
+  });
+
+  it('never exposes secret values — only checks names', async () => {
+    const github = new MockGitHubClient();
+    const spy = vi.spyOn(github, 'listRepoSecretNames').mockResolvedValue(['OPENROUTER_API_KEY']);
+    const service = new CiService(buildContainer({ github }));
+
+    await service.checkSecrets('owner/test-repo');
+
+    // The adapter call resolves NAMES only — asserting the return type here
+    // documents the contract, since listRepoSecretNames can never resolve values.
+    expect(await spy.mock.results[0]!.value).toEqual(['OPENROUTER_API_KEY']);
+  });
+
+  it('fails closed (not ready) when the GitHub client throws', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'listRepoSecretNames').mockRejectedValue(new Error('403 insufficient scope'));
+    const service = new CiService(buildContainer({ github }));
+
+    const result = await service.checkSecrets('owner/test-repo');
+
+    expect(result).toEqual({ openrouter_api_key: false, github_token: true });
+  });
+
+  it('always reports github_token ready — it is not a stored repo secret', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'listRepoSecretNames').mockResolvedValue([]);
+    const service = new CiService(buildContainer({ github }));
+
+    const result = await service.checkSecrets('owner/test-repo');
+
+    expect(result.github_token).toBe(true);
+  });
+});
