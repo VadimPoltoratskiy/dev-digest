@@ -146,7 +146,7 @@ export type CuratorResult = z.infer<typeof CuratorResult>;
 
 /** Body for POST /pulls/:id/multi-review. */
 export const MultiReviewRequest = z.object({
-  agentIds: z.array(z.string().uuid()).min(1),
+  agentIds: z.array(z.string().uuid()).min(1).max(20),
 });
 export type MultiReviewRequest = z.infer<typeof MultiReviewRequest>;
 

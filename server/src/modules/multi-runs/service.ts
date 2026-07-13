@@ -46,13 +46,17 @@ export class MultiRunsService {
     agentIds: string[],
     logger?: Logger,
   ): Promise<{ multi_run_id: string; runs: { run_id: string; agent_id: string; agent_name: string }[] }> {
+    // Deduplicate agentIds before resolution to prevent the same agent from
+    // being run multiple times in one batch (cost/compute DoS mitigation).
+    const uniqueAgentIds = [...new Set(agentIds)];
+
     // Step 1: Validate PR (use ReviewRepository exposed via container)
     const pull = await this.container.reviewRepo.getPull(workspaceId, prId);
     if (!pull) throw new NotFoundError('Pull request not found');
 
     // Step 2: Resolve agents (workspace-scoped)
     const agentResults = await Promise.all(
-      agentIds.map((id) => this.container.agentsRepo.getById(workspaceId, id)),
+      uniqueAgentIds.map((id) => this.container.agentsRepo.getById(workspaceId, id)),
     );
     if (agentResults.some((a) => a === undefined)) {
       throw new AppError('agent_not_found', 'One or more agent IDs not found in this workspace', 422);
