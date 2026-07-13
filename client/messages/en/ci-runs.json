@@ -1,0 +1,17 @@
+{
+  "title": "CI Runs",
+  "refresh": "Refresh",
+  "refreshing": "Refreshing…",
+  "table": {
+    "pr": "PR",
+    "repo": "Repository",
+    "agent": "Agent",
+    "status": "Status",
+    "findings": "Findings",
+    "cost": "Cost (USD)",
+    "duration": "Duration",
+    "job": "Job",
+    "jobNone": "—"
+  },
+  "empty": "No CI runs yet. Configure an agent's CI tab and run the export wizard to get started."
+}

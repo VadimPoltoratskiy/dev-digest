@@ -1,0 +1,53 @@
+/* hooks/ci.ts — React Query hooks for CI Runs, CI Installations, Export Wizard, and Preflight. */
+"use client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CiExportInputBody } from "@devdigest/shared";
+import {
+  fetchCiRuns,
+  fetchCiInstallations,
+  refreshCiRuns,
+  exportCi,
+  checkCiPreflight,
+} from "../api";
+
+/** Fetch all CI runs, optionally filtered by agent. */
+export function useCiRuns(agentId?: string) {
+  return useQuery({
+    queryKey: ["ci-runs", agentId ?? null],
+    queryFn: () => fetchCiRuns(agentId),
+  });
+}
+
+/** Fetch CI installations for a specific agent. */
+export function useCiInstallations(agentId: string) {
+  return useQuery({
+    queryKey: ["ci-installations", agentId],
+    queryFn: () => fetchCiInstallations(agentId),
+  });
+}
+
+/** Mutation: trigger a workspace-level CI run refresh from GitHub Actions. */
+export function useRefreshCiRuns() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: refreshCiRuns,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ci-runs"] }),
+  });
+}
+
+/** Mutation: export CI files for an agent (open PR or return file bundle). */
+export function useExportCi(agentId: string) {
+  return useMutation({
+    mutationFn: (input: CiExportInputBody) => exportCi(agentId, input),
+  });
+}
+
+/** Query: preflight check for write access to a target repository. */
+export function useCiPreflight(repo: string | null) {
+  return useQuery({
+    queryKey: ["ci-preflight", repo],
+    queryFn: () => checkCiPreflight(repo!),
+    enabled: !!repo,
+  });
+}

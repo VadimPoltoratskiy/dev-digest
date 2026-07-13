@@ -8,6 +8,10 @@ import type {
   AgentEvalCompare,
   Brief,
   BriefTimeline,
+  CiExport,
+  CiExportInputBody,
+  CiInstallation,
+  CiRun,
   EvalDashboard,
   EvalDashboardAgentSummary,
   EvalRunRecord,
@@ -191,4 +195,37 @@ export function getEvalsDashboard(ownerId?: string): Promise<EvalDashboard> {
 /** Fetch per-agent eval summaries (one row per agent) for the dashboard's agent list. */
 export function getEvalsDashboardAgents(): Promise<EvalDashboardAgentSummary[]> {
   return api.get<EvalDashboardAgentSummary[]>("/evals/dashboard/agents");
+}
+
+// ---- CI API functions ----
+
+/** List all CI runs (optionally filtered by agentId). */
+export function fetchCiRuns(agentId?: string): Promise<CiRun[]> {
+  const q = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : "";
+  return api.get<CiRun[]>(`/ci/runs${q}`);
+}
+
+/** Fetch a single CI run by id. */
+export function fetchCiRun(id: string): Promise<CiRun> {
+  return api.get<CiRun>(`/ci/runs/${id}`);
+}
+
+/** Trigger a refresh of CI runs (ingests new GHA artifacts). */
+export function refreshCiRuns(): Promise<{ inserted: number; skipped: number }> {
+  return api.post<{ inserted: number; skipped: number }>("/ci/runs/refresh");
+}
+
+/** Export CI files for an agent (open PR or return files bundle). */
+export function exportCi(agentId: string, input: CiExportInputBody): Promise<CiExport> {
+  return api.post<CiExport>(`/agents/${agentId}/export-ci`, input);
+}
+
+/** List CI installations for an agent. */
+export function fetchCiInstallations(agentId: string): Promise<CiInstallation[]> {
+  return api.get<CiInstallation[]>(`/agents/${agentId}/ci-installations`);
+}
+
+/** Preflight check: does the DevDigest token have write access to the given repo? */
+export function checkCiPreflight(repo: string): Promise<{ has_write_access: boolean }> {
+  return api.get<{ has_write_access: boolean }>(`/ci/preflight?repo=${encodeURIComponent(repo)}`);
 }

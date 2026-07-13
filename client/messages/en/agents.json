@@ -100,5 +100,62 @@
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "ci": {
+    "deploymentSummary": "Active in {count} repo(s)",
+    "noInstallations": "No repositories configured yet.",
+    "addRepo": "Add repository",
+    "updateConfig": "Update CI config",
+    "failOn": "Fail CI on",
+    "failOnOptions": {
+      "never": "Never",
+      "critical": "Critical findings",
+      "warning": "Warning findings",
+      "any": "Any findings"
+    },
+    "runHistory": "CI Run History",
+    "wizard": {
+      "title": "Export to CI",
+      "step1": "Target",
+      "step2": "Preview",
+      "step3": "Configure",
+      "step4": "Install",
+      "openPr": "Open a PR with these files",
+      "copyZip": "Copy files as a ZIP",
+      "noWriteAccess": "The DevDigest GitHub token lacks write access to this repository. Only \"Copy files as a ZIP\" is available.",
+      "branchProtectionHint": "To block merges, you must also set \"Fail CI on\" in this agent's CI tab and add a required status check in your repository's branch protection settings — DevDigest cannot configure branch protection automatically.",
+      "postAs": {
+        "label": "Post results as",
+        "github_review": "GitHub review (recommended — can REQUEST_CHANGES)",
+        "pr_comment": "PR comment",
+        "exit_code_only": "Exit code only (posts nothing to the PR)"
+      },
+      "secretsPanel": {
+        "title": "Required GitHub Actions secrets",
+        "openrouterKey": "OPENROUTER_API_KEY",
+        "openrouterKeyHint": "Create this in your repository Settings → Secrets and variables → Actions",
+        "githubToken": "GITHUB_TOKEN",
+        "githubTokenHint": "Auto-provided by GitHub Actions — no setup required"
+      },
+      "repoLabel": "Target repository",
+      "repoPlaceholder": "owner/name",
+      "baseBranchLabel": "Base branch",
+      "triggersLabel": "Trigger events",
+      "filesTitle": "Files to create",
+      "workflowLabel": "Workflow YAML",
+      "prSuccess": "Pull request opened:",
+      "prView": "View PR",
+      "close": "Close",
+      "next": "Next",
+      "back": "Back",
+      "install": "Open a PR with these files",
+      "installing": "Opening PR…",
+      "ghaRecommended": "Recommended",
+      "comingSoon": "Coming soon",
+      "providerGha": "GitHub Actions",
+      "providerCircle": "CircleCI",
+      "providerJenkins": "Jenkins",
+      "providerCli": "Generic CLI"
+    }
   }
 }
