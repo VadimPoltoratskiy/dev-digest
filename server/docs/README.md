@@ -70,6 +70,7 @@ flowchart TB
   end
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
+    multiRuns["multi-runs<br/>POST /pulls/:id/multi-review<br/>GET /multi-runs/:id<br/>GET /pulls/:id/agents/estimates<br/>GET /multi-runs/:id/findings"]
   end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id"]
@@ -83,6 +84,9 @@ flowchart TB
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+See [`multi-runs.md`](./multi-runs.md) for the full request-flow diagram, endpoint
+reference, DB schema additions, and the cross-agent finding-grouping algorithm.
 
 ## Environment
 
