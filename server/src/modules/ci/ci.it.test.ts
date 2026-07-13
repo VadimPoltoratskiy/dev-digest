@@ -328,4 +328,108 @@ d('CI Routes — testcontainers integration', () => {
 
     await app.close();
   });
+
+  // -------------------------------------------------------------------------
+  // DELETE /agents/:id/ci-installations/:installationId ("Remove from CI")
+  // -------------------------------------------------------------------------
+  it('DELETE /agents/:id/ci-installations/:installationId → 204, row removed, then re-adding the same repo does not break', async () => {
+    const app = await makeApp();
+
+    // 1. Add the repo (action=open_pr against the mock GitHub client — no real network).
+    const exportRes1 = await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/export-ci`,
+      payload: {
+        repo: 'owner/removable-repo',
+        target: 'gha',
+        action: 'open_pr',
+        post_as: 'github_review',
+        triggers: ['opened', 'synchronize'],
+        base: 'main',
+      },
+    });
+    expect(exportRes1.statusCode).toBe(200);
+    const removableInstallationId = (exportRes1.json() as { installation: { id: string } })
+      .installation.id;
+    expect(removableInstallationId).toBeTruthy();
+
+    // 2. Confirm it shows up in the installations list.
+    const beforeDelete = await app.inject({
+      method: 'GET',
+      url: `/agents/${agentId}/ci-installations`,
+    });
+    expect(
+      (beforeDelete.json() as Array<{ id: string }>).some((i) => i.id === removableInstallationId),
+    ).toBe(true);
+
+    // 3. Remove it.
+    const deleteRes = await app.inject({
+      method: 'DELETE',
+      url: `/agents/${agentId}/ci-installations/${removableInstallationId}`,
+    });
+    expect(deleteRes.statusCode).toBe(204);
+
+    // 4. Confirm it's gone.
+    const afterDelete = await app.inject({
+      method: 'GET',
+      url: `/agents/${agentId}/ci-installations`,
+    });
+    expect(
+      (afterDelete.json() as Array<{ id: string }>).some((i) => i.id === removableInstallationId),
+    ).toBe(false);
+
+    // 5. Its ci_runs history (if any) is preserved with ci_installation_id set
+    //    to NULL, per the schema's ON DELETE SET NULL — never hard-deleted.
+    const orphanedRuns = await pg.handle.db
+      .select()
+      .from(t.ciRuns)
+      .where(eq(t.ciRuns.ciInstallationId, removableInstallationId));
+    expect(orphanedRuns).toHaveLength(0); // none seeded for this repo, but the query itself must not error
+
+    // 6. Re-adding the same repo afterward must succeed cleanly (upsert
+    //    re-inserts rather than colliding on a stale/duplicate row).
+    const exportRes2 = await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/export-ci`,
+      payload: {
+        repo: 'owner/removable-repo',
+        target: 'gha',
+        action: 'open_pr',
+        post_as: 'github_review',
+        triggers: ['opened', 'synchronize'],
+        base: 'main',
+      },
+    });
+    expect(exportRes2.statusCode).toBe(200);
+    const reAddedInstallationId = (exportRes2.json() as { installation: { id: string } })
+      .installation.id;
+    expect(reAddedInstallationId).toBeTruthy();
+    // A fresh row, not the deleted one.
+    expect(reAddedInstallationId).not.toBe(removableInstallationId);
+
+    await app.close();
+  });
+
+  it('DELETE /agents/:id/ci-installations/:installationId → 404 when the installation belongs to a different agent', async () => {
+    const app = await makeApp();
+
+    // installationId (from beforeAll) belongs to `agentId`; use a random different agent id.
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/agents/00000000-0000-0000-0000-000000000001/ci-installations/${installationId}`,
+    });
+
+    expect(res.statusCode).toBe(404);
+
+    // Confirm the row was NOT deleted.
+    const stillThere = await app.inject({
+      method: 'GET',
+      url: `/agents/${agentId}/ci-installations`,
+    });
+    expect(
+      (stillThere.json() as Array<{ id: string }>).some((i) => i.id === installationId),
+    ).toBe(true);
+
+    await app.close();
+  });
 });

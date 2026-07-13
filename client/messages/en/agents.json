@@ -107,6 +107,8 @@
     "addRepo": "Add repository",
     "addToCi": "Add to CI",
     "updateConfig": "Update CI config",
+    "remove": "Remove",
+    "removeConfirm": "Stop DevDigest from tracking CI for \"{repo}\"? This only removes DevDigest's record — the workflow file and secrets stay in the repo until you remove them there yourself.",
     "failOn": "Fail CI on",
     "failOnOptions": {
       "never": "Never",

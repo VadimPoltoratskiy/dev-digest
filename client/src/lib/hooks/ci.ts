@@ -6,6 +6,7 @@ import type { CiExportInputBody } from "@devdigest/shared";
 import {
   fetchCiRuns,
   fetchCiInstallations,
+  removeCiInstallation,
   refreshCiRuns,
   exportCi,
   checkCiPreflight,
@@ -24,6 +25,18 @@ export function useCiInstallations(agentId: string) {
   return useQuery({
     queryKey: ["ci-installations", agentId],
     queryFn: () => fetchCiInstallations(agentId),
+  });
+}
+
+/** Mutation: stop tracking a CI installation ("Remove from CI"). */
+export function useRemoveCiInstallation(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (installationId: string) => removeCiInstallation(agentId, installationId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ci-installations", agentId] });
+      qc.invalidateQueries({ queryKey: ["ci-runs"] });
+    },
   });
 }
 

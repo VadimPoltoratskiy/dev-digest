@@ -228,6 +228,31 @@ export class CiService {
     return rows.map(toCiInstallationDto);
   }
 
+  /**
+   * Stop tracking a CI installation ("Remove from CI"). This only removes
+   * DevDigest's own record — it does NOT touch the target repo's committed
+   * files or workflow, and does NOT revoke access. GitHub Actions will keep
+   * running the already-merged workflow until the user removes it there
+   * themselves; re-adding the same repo later (Add to CI / Update CI config)
+   * safely upserts a fresh installation row (CiRepository.upsertInstallation
+   * is SELECT-then-update-or-insert, never a duplicate).
+   */
+  async removeCiInstallation(agentId: string, installationId: string, workspaceId: string): Promise<void> {
+    const repo = new CiRepository(this.container.db);
+
+    const installation = await repo.findInstallationById(installationId);
+    if (!installation || installation.agentId !== agentId) {
+      throw new NotFoundError('CI installation not found');
+    }
+
+    const agent = await repo.findAgentById(agentId);
+    if (!agent || agent.workspaceId !== workspaceId) {
+      throw new NotFoundError('CI installation not found');
+    }
+
+    await repo.deleteInstallation(installationId);
+  }
+
   // ---------------------------------------------------------------------------
   // CI Runs
   // ---------------------------------------------------------------------------

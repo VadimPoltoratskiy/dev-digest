@@ -140,6 +140,20 @@ export class CiRepository {
     return inserted;
   }
 
+  /**
+   * Remove a ci_installations row. Its ci_runs rows are NOT deleted — the FK
+   * uses ON DELETE SET NULL (schema/ci.ts), preserving run history with
+   * ci_installation_id nulled rather than cascading the delete. Returns
+   * whether a row actually existed and was deleted.
+   */
+  async deleteInstallation(id: string): Promise<boolean> {
+    const deleted = await this.db
+      .delete(t.ciInstallations)
+      .where(eq(t.ciInstallations.id, id))
+      .returning({ id: t.ciInstallations.id });
+    return deleted.length > 0;
+  }
+
   // ---------------------------------------------------------------------------
   // ci_runs queries
   // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import { CiService } from './service.js';
  *
  *   POST /agents/:id/export-ci            → CiExport (generate + optionally commit bundle)
  *   GET  /agents/:id/ci-installations     → CiInstallation[]
+ *   DELETE /agents/:id/ci-installations/:installationId → 204 ("Remove from CI")
  *   GET  /ci/runs                         → CiRun[] (workspace-scoped, optional agent_id filter)
  *   POST /ci/runs/refresh                 → { inserted, skipped } (ingest GHA artifacts)
  *   GET  /ci/runs/:id                     → CiRun (single run with workspace check)
@@ -23,6 +24,11 @@ const CiRunsQuery = z.object({
 });
 
 const CiRunParams = z.object({ id: z.string().uuid() });
+
+const CiInstallationParams = z.object({
+  id: z.string().uuid(),
+  installationId: z.string().uuid(),
+});
 
 const CiPreflightQuery = z.object({
   repo: z
@@ -64,6 +70,19 @@ export default async function ciRoutes(appBase: FastifyInstance) {
       // Callers that need strict 404 for missing agents should use GET /agents/:id first.
       void workspaceId; // workspaceId extracted for auth side-effect
       return installations;
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // DELETE /agents/:id/ci-installations/:installationId
+  // -------------------------------------------------------------------------
+  app.delete(
+    '/agents/:id/ci-installations/:installationId',
+    { schema: { params: CiInstallationParams } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      await service.removeCiInstallation(req.params.id, req.params.installationId, workspaceId);
+      return reply.status(204).send();
     },
   );
 

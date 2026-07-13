@@ -24,6 +24,8 @@ vi.mock('./repository.js', () => {
   CiRepository.prototype.findInstallationsByWorkspace = vi.fn();
   CiRepository.prototype.findRunByInstallationAndUrl = vi.fn();
   CiRepository.prototype.insertRun = vi.fn();
+  CiRepository.prototype.findInstallationById = vi.fn();
+  CiRepository.prototype.deleteInstallation = vi.fn();
   return { CiRepository };
 });
 
@@ -558,5 +560,57 @@ describe('CiService.checkSecrets()', () => {
     const result = await service.checkSecrets('owner/test-repo');
 
     expect(result.github_token).toBe(true);
+  });
+});
+
+// ===========================================================================
+// CiService.removeCiInstallation() — "Remove from CI"
+// ===========================================================================
+
+describe('CiService.removeCiInstallation()', () => {
+  beforeEach(() => {
+    (CiRepository.prototype.findInstallationById as Mock).mockResolvedValue(MOCK_INSTALLATION);
+    (CiRepository.prototype.findAgentById as Mock).mockResolvedValue(MOCK_AGENT);
+    (CiRepository.prototype.deleteInstallation as Mock).mockResolvedValue(true);
+  });
+
+  it('deletes the installation when it belongs to the given agent and workspace', async () => {
+    const service = new CiService(buildContainer());
+
+    await service.removeCiInstallation(MOCK_AGENT.id, MOCK_INSTALLATION.id, MOCK_AGENT.workspaceId);
+
+    expect(CiRepository.prototype.deleteInstallation).toHaveBeenCalledWith(MOCK_INSTALLATION.id);
+  });
+
+  it('throws NotFoundError (404) when the installation does not exist', async () => {
+    (CiRepository.prototype.findInstallationById as Mock).mockResolvedValue(null);
+    const service = new CiService(buildContainer());
+
+    await expect(
+      service.removeCiInstallation(MOCK_AGENT.id, 'nonexistent-id', MOCK_AGENT.workspaceId),
+    ).rejects.toThrow(/not found/i);
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFoundError when the installation belongs to a different agent', async () => {
+    (CiRepository.prototype.findInstallationById as Mock).mockResolvedValue({
+      ...MOCK_INSTALLATION,
+      agentId: 'some-other-agent-id',
+    });
+    const service = new CiService(buildContainer());
+
+    await expect(
+      service.removeCiInstallation(MOCK_AGENT.id, MOCK_INSTALLATION.id, MOCK_AGENT.workspaceId),
+    ).rejects.toThrow(/not found/i);
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFoundError when the agent belongs to a different workspace', async () => {
+    const service = new CiService(buildContainer());
+
+    await expect(
+      service.removeCiInstallation(MOCK_AGENT.id, MOCK_INSTALLATION.id, 'some-other-workspace-id'),
+    ).rejects.toThrow(/not found/i);
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
   });
 });

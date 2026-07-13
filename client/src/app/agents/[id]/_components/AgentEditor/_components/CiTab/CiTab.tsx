@@ -5,7 +5,12 @@ import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Button, Skeleton } from "@devdigest/ui";
 import type { CiFailOn } from "@devdigest/shared";
-import { useCiInstallations, useCiRuns, useUpdateAgent } from "../../../../../../../lib/hooks";
+import {
+  useCiInstallations,
+  useCiRuns,
+  useUpdateAgent,
+  useRemoveCiInstallation,
+} from "../../../../../../../lib/hooks";
 import { ExportWizard } from "../ExportWizard";
 
 // ---------------------------------------------------------------------------
@@ -32,10 +37,17 @@ export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
   const { data: installations, isLoading: instLoading } = useCiInstallations(agentId);
   const { data: runs } = useCiRuns(agentId);
   const updateAgent = useUpdateAgent();
+  const removeInstallation = useRemoveCiInstallation(agentId);
 
   const openWizard = (repo?: string) => {
     setWizardRepo(repo);
     setWizardOpen(true);
+  };
+
+  const handleRemove = (installationId: string, repo: string) => {
+    if (window.confirm(t("ci.removeConfirm", { repo }))) {
+      removeInstallation.mutate(installationId);
+    }
   };
 
   const failOnOptions: Array<{ value: CiFailOn; labelKey: string }> = [
@@ -132,6 +144,15 @@ export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
                     onClick={() => openWizard(inst.repo)}
                   >
                     {t("ci.updateConfig")}
+                  </Button>
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    icon="Trash"
+                    disabled={removeInstallation.isPending}
+                    onClick={() => handleRemove(inst.id, inst.repo)}
+                  >
+                    {t("ci.remove")}
                   </Button>
                 </div>
               );

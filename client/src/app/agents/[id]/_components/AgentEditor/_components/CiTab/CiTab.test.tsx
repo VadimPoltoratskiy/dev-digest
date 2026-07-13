@@ -9,12 +9,14 @@ import messages from "../../../../../../../../messages/en/agents.json";
 // ---------------------------------------------------------------------------
 
 const mockUpdateAgentMutate = vi.fn();
+const mockRemoveInstallationMutate = vi.fn();
 
 vi.mock("../../../../../../../lib/hooks/ci", () => ({
   useCiInstallations: vi.fn(),
   useCiRuns: vi.fn(),
   useExportCi: vi.fn(),
   useCiPreflight: vi.fn(),
+  useRemoveCiInstallation: vi.fn(),
 }));
 
 vi.mock("../../../../../../../lib/hooks/agents", () => ({
@@ -27,7 +29,11 @@ vi.mock("../ExportWizard", () => ({
     open ? <div data-testid="export-wizard-open">wizard</div> : null,
 }));
 
-import { useCiInstallations, useCiRuns } from "../../../../../../../lib/hooks/ci";
+import {
+  useCiInstallations,
+  useCiRuns,
+  useRemoveCiInstallation,
+} from "../../../../../../../lib/hooks/ci";
 import { useUpdateAgent } from "../../../../../../../lib/hooks/agents";
 import { CiTab } from "./CiTab";
 
@@ -79,11 +85,17 @@ function setupDefaultMocks() {
   vi.mocked(useCiRuns).mockReturnValue({ data: [RUN], isLoading: false, isError: false } as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(useUpdateAgent).mockReturnValue({ mutate: mockUpdateAgentMutate, isPending: false } as any);
+  vi.mocked(useRemoveCiInstallation).mockReturnValue({
+    mutate: mockRemoveInstallationMutate,
+    isPending: false,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
 }
 
 beforeEach(() => {
   setupDefaultMocks();
   mockUpdateAgentMutate.mockClear();
+  mockRemoveInstallationMutate.mockClear();
 });
 
 // ---------------------------------------------------------------------------
@@ -205,5 +217,48 @@ describe("CiTab — run history table", () => {
     expect(screen.getByText("succeeded")).toBeInTheDocument();
     // Findings count
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+});
+
+describe("CiTab — remove installation", () => {
+  it("renders a Remove button per installation row", () => {
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    expect(screen.getByRole("button", { name: /remove/i })).toBeInTheDocument();
+  });
+
+  it("clicking Remove after confirming calls the mutation with the installation id", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /remove/i }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("owner/repo"));
+    expect(mockRemoveInstallationMutate).toHaveBeenCalledWith("inst1");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("clicking Remove and declining the confirmation does NOT call the mutation", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /remove/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockRemoveInstallationMutate).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("disables the Remove button while the mutation is pending", () => {
+    vi.mocked(useRemoveCiInstallation).mockReturnValue({
+      mutate: mockRemoveInstallationMutate,
+      isPending: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    expect(screen.getByRole("button", { name: /remove/i })).toBeDisabled();
   });
 });

@@ -225,6 +225,15 @@ export function fetchCiInstallations(agentId: string): Promise<CiInstallation[]>
   return api.get<CiInstallation[]>(`/agents/${agentId}/ci-installations`);
 }
 
+/**
+ * Stop tracking a CI installation ("Remove from CI"). Only removes
+ * DevDigest's own record — does not touch the target repo's committed files
+ * or workflow.
+ */
+export function removeCiInstallation(agentId: string, installationId: string): Promise<void> {
+  return api.del<void>(`/agents/${agentId}/ci-installations/${installationId}`);
+}
+
 /** Preflight response: write access + readiness of the wizard's expected secrets. */
 export interface CiPreflightResult {
   has_write_access: boolean;
