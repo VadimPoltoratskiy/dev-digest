@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CiExportInput } from '@devdigest/shared';
+import { CiExportInput, CiRemoveInput } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -13,6 +13,7 @@ import { CiService } from './service.js';
  *   POST /agents/:id/export-ci            → CiExport (generate + optionally commit bundle)
  *   GET  /agents/:id/ci-installations     → CiInstallation[]
  *   DELETE /agents/:id/ci-installations/:installationId → 204 ("Remove from CI")
+ *   POST /agents/:id/ci-installations/:installationId/remove-from-repo → CiRemoval (SPEC-04)
  *   GET  /ci/runs                         → CiRun[] (workspace-scoped, optional agent_id filter)
  *   POST /ci/runs/refresh                 → { inserted, skipped } (ingest GHA artifacts)
  *   GET  /ci/runs/:id                     → CiRun (single run with workspace check)
@@ -83,6 +84,29 @@ export default async function ciRoutes(appBase: FastifyInstance) {
       const { workspaceId } = await getContext(app.container, req);
       await service.removeCiInstallation(req.params.id, req.params.installationId, workspaceId);
       return reply.status(204).send();
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /agents/:id/ci-installations/:installationId/remove-from-repo
+  // -------------------------------------------------------------------------
+  app.post(
+    '/agents/:id/ci-installations/:installationId/remove-from-repo',
+    {
+      schema: {
+        params: CiInstallationParams,
+        body: CiRemoveInput,
+      },
+      config: { rateLimit: { max: 6, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.removeCiFromRepo(
+        req.params.id,
+        req.params.installationId,
+        workspaceId,
+        req.body.base,
+      );
     },
   );
 

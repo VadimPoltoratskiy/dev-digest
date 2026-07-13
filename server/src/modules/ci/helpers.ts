@@ -138,6 +138,25 @@ export function buildWorkflowYaml(params: {
 // ---------------------------------------------------------------------------
 
 /**
+ * Canonical list of DevDigest-managed repo paths for a given agent slug + skill slugs.
+ * Called by both buildCiBundle (add-flow) and removeCiFromRepo (removal flow)
+ * to guarantee the deletion PR deletes exactly what was added (AC-9).
+ */
+export function buildCiFilePaths(params: {
+  slug: string;
+  skillSlugs: string[];
+}): string[] {
+  const { slug, skillSlugs } = params;
+  return [
+    `.devdigest/agents/${slug}.yaml`,
+    ...skillSlugs.map((s) => `.devdigest/skills/${s}.md`),
+    '.devdigest/memory.jsonl',
+    '.devdigest/runner/index.js',
+    '.github/workflows/devdigest-review.yml',
+  ];
+}
+
+/**
  * Assemble the full CI file bundle from its parts.
  *
  * AC-2 file categories:
@@ -156,16 +175,26 @@ export function buildCiBundle(params: {
 }): CiFile[] {
   const { slug, manifestYaml, skills, workflowYaml, runnerBinary } = params;
 
+  // Paths come from buildCiFilePaths — the single source AC-9 requires the
+  // removal flow's deletion list to exactly mirror. Fixed order: agent path,
+  // one path per skill, memory, runner, workflow.
+  const [agentPath, ...restPaths] = buildCiFilePaths({
+    slug,
+    skillSlugs: skills.map((s) => s.slug),
+  });
+  const skillPaths = restPaths.slice(0, skills.length);
+  const [memoryPath, runnerPath, workflowPath] = restPaths.slice(skills.length);
+
   const files: CiFile[] = [
-    { path: `.devdigest/agents/${slug}.yaml`, contents: manifestYaml, editable: false },
-    ...skills.map((skill) => ({
-      path: `.devdigest/skills/${skill.slug}.md`,
+    { path: agentPath!, contents: manifestYaml, editable: false },
+    ...skills.map((skill, i) => ({
+      path: skillPaths[i]!,
       contents: skill.body,
       editable: false,
     })),
-    { path: '.devdigest/memory.jsonl', contents: '', editable: false },
+    { path: memoryPath!, contents: '', editable: false },
     {
-      path: '.devdigest/runner/index.js',
+      path: runnerPath!,
       // The ncc bundle is NOT ASCII-only — it carries ~500 non-ASCII bytes
       // (unicode chars pulled in from deps). It IS valid UTF-8 (ncc emits a
       // normal JS source file), so 'utf8' round-trips it exactly. 'binary'
@@ -184,7 +213,7 @@ export function buildCiBundle(params: {
   // Workflow file is only included for GHA targets (null = non-GHA, AC-7).
   if (workflowYaml !== null) {
     files.push({
-      path: '.github/workflows/devdigest-review.yml',
+      path: workflowPath!,
       contents: workflowYaml,
       editable: true,
     });

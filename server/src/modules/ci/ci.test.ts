@@ -36,10 +36,11 @@ vi.mock('./repository.js', () => {
 import * as jsYaml from 'js-yaml';
 import { AgentManifest } from '@devdigest/shared';
 import type { WorkflowRun } from '@devdigest/shared';
-import { agentSlug, buildCiBundle, buildWorkflowYaml, manifestToYaml } from './helpers.js';
+import { agentSlug, buildCiBundle, buildCiFilePaths, buildWorkflowYaml, manifestToYaml } from './helpers.js';
 import { CiRepository } from './repository.js';
 import { CiService } from './service.js';
 import { MockGitHubClient } from '../../adapters/mocks.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import type { AgentRow, CiInstallationRow, CiRunRow } from './types.js';
 import type { CiExportInput } from '@devdigest/shared';
 
@@ -636,5 +637,137 @@ describe('CiService.removeCiInstallation()', () => {
       service.removeCiInstallation(MOCK_AGENT.id, MOCK_INSTALLATION.id, 'some-other-workspace-id'),
     ).rejects.toThrow(/not found/i);
     expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// CiService.removeCiFromRepo() — SPEC-04 remove-from-repo path
+// ===========================================================================
+
+describe('CiService.removeCiFromRepo()', () => {
+  beforeEach(() => {
+    (CiRepository.prototype.findInstallationById as Mock).mockResolvedValue(MOCK_INSTALLATION);
+    (CiRepository.prototype.findAgentById as Mock).mockResolvedValue(MOCK_AGENT);
+    (CiRepository.prototype.findSkillsByAgentId as Mock).mockResolvedValue([]);
+    (CiRepository.prototype.deleteInstallation as Mock).mockResolvedValue(true);
+  });
+
+  it('happy path (no existing PR): deletedFiles has one entry with the correct paths; opens PR; deletes installation', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'findOpenPr').mockResolvedValue(null);
+    const openPrSpy = vi.spyOn(github, 'openPullRequest');
+
+    const service = new CiService(buildContainer({ github }));
+    const result = await service.removeCiFromRepo(
+      MOCK_AGENT.id,
+      MOCK_INSTALLATION.id,
+      MOCK_AGENT.workspaceId,
+    );
+
+    // deleteFiles was called once
+    expect(github.deletedFiles).toHaveLength(1);
+    // paths includes the agent yaml and the workflow file (no skills)
+    const paths = github.deletedFiles[0]!.paths;
+    const expectedPaths = buildCiFilePaths({ slug: agentSlug(MOCK_AGENT.name), skillSlugs: [] });
+    expect(paths).toEqual(expectedPaths);
+    // openPullRequest was called once
+    expect(openPrSpy).toHaveBeenCalledTimes(1);
+    // local installation row deleted
+    expect(CiRepository.prototype.deleteInstallation).toHaveBeenCalledWith(MOCK_INSTALLATION.id);
+    // result has pr_url
+    expect(result.pr_url).toBeTruthy();
+  });
+
+  it('AC-4: existing PR reused — openPullRequest is NOT called', async () => {
+    const existingUrl = 'https://github.com/owner/test-repo/pull/99';
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'findOpenPr').mockResolvedValue({ url: existingUrl });
+    const openPrSpy = vi.spyOn(github, 'openPullRequest');
+
+    const service = new CiService(buildContainer({ github }));
+    const result = await service.removeCiFromRepo(
+      MOCK_AGENT.id,
+      MOCK_INSTALLATION.id,
+      MOCK_AGENT.workspaceId,
+    );
+
+    expect(openPrSpy).not.toHaveBeenCalled();
+    expect(result.pr_url).toBe(existingUrl);
+    expect(CiRepository.prototype.deleteInstallation).toHaveBeenCalledWith(MOCK_INSTALLATION.id);
+  });
+
+  it('AC-5 (zero linked skills): paths has 4 entries (no skill files), commit proceeds', async () => {
+    // findSkillsByAgentId already returns [] in this describe's beforeEach
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'findOpenPr').mockResolvedValue(null);
+
+    const service = new CiService(buildContainer({ github }));
+    await service.removeCiFromRepo(
+      MOCK_AGENT.id,
+      MOCK_INSTALLATION.id,
+      MOCK_AGENT.workspaceId,
+    );
+
+    const paths = github.deletedFiles[0]!.paths;
+    // With 0 skills: agent yaml + memory.jsonl + runner/index.js + workflow = 4
+    expect(paths).toHaveLength(4);
+    expect(paths.some((p) => p.includes('/skills/'))).toBe(false);
+    expect(CiRepository.prototype.deleteInstallation).toHaveBeenCalled();
+  });
+
+  it('AC-7: deleteFiles throws { status: 403 } → service throws ValidationError(422) → deleteInstallation NOT called', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'findOpenPr').mockResolvedValue(null);
+    vi.spyOn(github, 'deleteFiles').mockRejectedValue({ status: 403 });
+
+    const service = new CiService(buildContainer({ github }));
+
+    await expect(
+      service.removeCiFromRepo(MOCK_AGENT.id, MOCK_INSTALLATION.id, MOCK_AGENT.workspaceId),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+
+  it('404 on unknown installation: findInstallationById returns null → NotFoundError', async () => {
+    (CiRepository.prototype.findInstallationById as Mock).mockResolvedValue(null);
+    const service = new CiService(buildContainer());
+
+    await expect(
+      service.removeCiFromRepo(MOCK_AGENT.id, 'nonexistent-id', MOCK_AGENT.workspaceId),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+
+  it('404 on workspace mismatch: agent.workspaceId !== workspaceId → NotFoundError', async () => {
+    const service = new CiService(buildContainer());
+
+    await expect(
+      service.removeCiFromRepo(MOCK_AGENT.id, MOCK_INSTALLATION.id, 'wrong-workspace'),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(CiRepository.prototype.deleteInstallation).not.toHaveBeenCalled();
+  });
+
+  it('base auto-detect: base param undefined → getDefaultBranch is called and its value passed to deleteFiles and openPullRequest', async () => {
+    const github = new MockGitHubClient();
+    vi.spyOn(github, 'findOpenPr').mockResolvedValue(null);
+    const getDefaultBranchSpy = vi.spyOn(github, 'getDefaultBranch').mockResolvedValue('main');
+    const openPrSpy = vi.spyOn(github, 'openPullRequest');
+
+    const service = new CiService(buildContainer({ github }));
+    await service.removeCiFromRepo(
+      MOCK_AGENT.id,
+      MOCK_INSTALLATION.id,
+      MOCK_AGENT.workspaceId,
+      // base is undefined (not supplied)
+    );
+
+    expect(getDefaultBranchSpy).toHaveBeenCalledTimes(1);
+    expect(github.deletedFiles[0]!.base).toBe('main');
+    // openPullRequest is also called with the resolved base
+    expect(openPrSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ base: 'main' }),
+    );
   });
 });

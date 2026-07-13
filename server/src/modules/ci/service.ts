@@ -4,6 +4,7 @@ import type {
   CiExport,
   CiExportInput,
   CiInstallation,
+  CiRemoval,
   CiRun,
   CiResultArtifact as CiResultArtifactType,
 } from '@devdigest/shared';
@@ -15,6 +16,7 @@ import {
   agentSlug,
   buildAgentManifest,
   buildCiBundle,
+  buildCiFilePaths,
   buildWorkflowYaml,
   manifestToYaml,
   parseRepoRef,
@@ -256,6 +258,90 @@ export class CiService {
     }
 
     await repo.deleteInstallation(installationId);
+  }
+
+  /**
+   * Remove CI integration from the target repository (SPEC-04 AC-3 through AC-7).
+   *
+   * Opens a deletion PR on `devdigest/ci-remove`; deletes the local ci_installations
+   * row only after GitHub API success — fail-closed on 403 (AC-7).
+   * ci_runs rows are NOT deleted; FK ON DELETE SET NULL nulls ci_installation_id.
+   */
+  async removeCiFromRepo(
+    agentId: string,
+    installationId: string,
+    workspaceId: string,
+    base?: string,
+  ): Promise<CiRemoval> {
+    const repo = new CiRepository(this.container.db);
+
+    // 1. Ownership verification — 404 on any mismatch (edge case 6 in spec)
+    const installation = await repo.findInstallationById(installationId);
+    if (!installation || installation.agentId !== agentId) {
+      throw new NotFoundError('CI installation not found');
+    }
+    const agent = await repo.findAgentById(agentId);
+    if (!agent || agent.workspaceId !== workspaceId) {
+      throw new NotFoundError('CI installation not found');
+    }
+
+    // 2. Build deletion path list — same 5 categories as buildCiBundle (AC-9)
+    const skills = await repo.findSkillsByAgentId(agentId);
+    const slug = agentSlug(agent.name);
+    const skillSlugs = skills.map((s) => agentSlug(s.name));
+    const paths = buildCiFilePaths({ slug, skillSlugs });
+
+    // 3. Resolve base branch (AC-3: auto-detect when not supplied)
+    const repoRef = parseRepoRef(installation.repo);
+    const github = await this.container.github();
+    const resolvedBase = base ?? (await github.getDefaultBranch(repoRef));
+
+    // 4. Check for existing open PR — reuse URL rather than open duplicate (AC-4)
+    const existingPr = await github.findOpenPr(repoRef, 'devdigest/ci-remove');
+
+    // 5. Commit deletion tree — 403 → 422, local row NOT deleted (AC-7)
+    try {
+      await github.deleteFiles(repoRef, {
+        branch: 'devdigest/ci-remove',
+        base: resolvedBase,
+        message: `chore: remove DevDigest agent "${agent.name}" from CI`,
+        paths,
+      });
+    } catch (err) {
+      const e = err as { status?: number };
+      if (e.status === 403) {
+        throw new ValidationError(
+          'GitHub token lacks write access to this repository',
+          422,
+        );
+      }
+      throw err;
+    }
+
+    // 6. Open PR or reuse existing URL (AC-4)
+    let prUrl: string;
+    if (existingPr) {
+      prUrl = existingPr.url;
+    } else {
+      const newPr = await github.openPullRequest(repoRef, {
+        title: `Remove DevDigest CI: ${installation.repo}`,
+        head: 'devdigest/ci-remove',
+        base: resolvedBase,
+        body: [
+          `This PR removes the DevDigest CI integration from this repository.`,
+          '',
+          'Review the file deletions and merge to complete the cleanup.',
+          '',
+          '> Opened by [DevDigest](https://github.com/devdigest).',
+        ].join('\n'),
+      });
+      prUrl = newPr.url;
+    }
+
+    // 7. Delete local record AFTER GitHub success (AC-5, AC-7)
+    await repo.deleteInstallation(installationId);
+
+    return { pr_url: prUrl };
   }
 
   // ---------------------------------------------------------------------------

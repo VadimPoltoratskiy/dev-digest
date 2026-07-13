@@ -5,13 +5,14 @@ import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Button, Skeleton } from "@devdigest/ui";
 import type { CiFailOn } from "@devdigest/shared";
+import type { CiInstallation } from "@devdigest/shared";
 import {
   useCiInstallations,
   useCiRuns,
   useUpdateAgent,
-  useRemoveCiInstallation,
 } from "../../../../../../../lib/hooks";
 import { ExportWizard } from "../ExportWizard";
+import { RemovalDialog } from "./RemovalDialog";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -33,21 +34,27 @@ export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
 
   const [wizardOpen, setWizardOpen] = React.useState(false);
   const [wizardRepo, setWizardRepo] = React.useState<string | undefined>(undefined);
+  const [dialogInstallation, setDialogInstallation] = React.useState<CiInstallation | null>(null);
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null);
 
   const { data: installations, isLoading: instLoading } = useCiInstallations(agentId);
   const { data: runs } = useCiRuns(agentId);
   const updateAgent = useUpdateAgent();
-  const removeInstallation = useRemoveCiInstallation(agentId);
 
   const openWizard = (repo?: string) => {
     setWizardRepo(repo);
     setWizardOpen(true);
   };
 
-  const handleRemove = (installationId: string, repo: string) => {
-    if (window.confirm(t("ci.removeConfirm", { repo }))) {
-      removeInstallation.mutate(installationId);
-    }
+  const handleRemoveClick = (inst: CiInstallation, btn: HTMLButtonElement) => {
+    triggerRef.current = btn;
+    setDialogInstallation(inst);
+  };
+
+  const handleDialogClose = () => {
+    setDialogInstallation(null);
+    triggerRef.current?.focus();
+    triggerRef.current = null;
   };
 
   const failOnOptions: Array<{ value: CiFailOn; labelKey: string }> = [
@@ -149,8 +156,9 @@ export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
                     kind="ghost"
                     size="sm"
                     icon="Trash"
-                    disabled={removeInstallation.isPending}
-                    onClick={() => handleRemove(inst.id, inst.repo)}
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
+                      handleRemoveClick(inst, e.currentTarget)
+                    }
                   >
                     {t("ci.remove")}
                   </Button>
@@ -268,6 +276,14 @@ export function CiTab({ agentId, ciFailOn, headerActionsEl }: CiTabProps) {
         onClose={() => setWizardOpen(false)}
         prefilledRepo={wizardRepo}
       />
+
+      {dialogInstallation && (
+        <RemovalDialog
+          agentId={agentId}
+          installation={dialogInstallation}
+          onClose={handleDialogClose}
+        />
+      )}
     </div>
   );
 }

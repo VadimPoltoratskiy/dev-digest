@@ -232,6 +232,18 @@ export const CiExport = z.object({
 });
 export type CiExport = z.infer<typeof CiExport>;
 
+/** Request body for POST /agents/:id/ci-installations/:installationId/remove-from-repo */
+export const CiRemoveInput = z.object({
+  base: z.string().min(1).optional(),
+});
+export type CiRemoveInput = z.infer<typeof CiRemoveInput>;
+
+/** Response of POST /agents/:id/ci-installations/:installationId/remove-from-repo */
+export const CiRemoval = z.object({
+  pr_url: z.string(),
+});
+export type CiRemoval = z.infer<typeof CiRemoval>;
+
 export const CiRunStatus = z.enum(['succeeded', 'failed', 'no_findings', 'running']);
 export type CiRunStatus = z.infer<typeof CiRunStatus>;
 

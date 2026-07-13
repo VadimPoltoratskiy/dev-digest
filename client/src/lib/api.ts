@@ -11,6 +11,7 @@ import type {
   CiExport,
   CiExportInputBody,
   CiInstallation,
+  CiRemoval,
   CiRun,
   EvalDashboard,
   EvalDashboardAgentSummary,
@@ -232,6 +233,22 @@ export function fetchCiInstallations(agentId: string): Promise<CiInstallation[]>
  */
 export function removeCiInstallation(agentId: string, installationId: string): Promise<void> {
   return api.del<void>(`/agents/${agentId}/ci-installations/${installationId}`);
+}
+
+/**
+ * Open a deletion PR in the target repository for a CI installation (SPEC-04).
+ * Deletes the local ci_installations row on success.
+ * Returns 422 when the GitHub token lacks write access (AC-7).
+ */
+export function removeCiFromRepo(
+  agentId: string,
+  installationId: string,
+  body: { base?: string },
+): Promise<CiRemoval> {
+  return api.post<CiRemoval>(
+    `/agents/${agentId}/ci-installations/${installationId}/remove-from-repo`,
+    body,
+  );
 }
 
 /** Preflight response: write access + readiness of the wizard's expected secrets. */

@@ -108,7 +108,19 @@
     "addToCi": "Add to CI",
     "updateConfig": "Update CI config",
     "remove": "Remove",
-    "removeConfirm": "Stop DevDigest from tracking CI for \"{repo}\"? This only removes DevDigest's record — the workflow file and secrets stay in the repo until you remove them there yourself.",
+    "removeDialog": {
+      "title": "Remove \"{repo}\" from CI",
+      "openPrBtn": "Open removal PR",
+      "openPrDescription": "Opens a pull request on the target repository that deletes all DevDigest-managed files when merged. The local tracking record is removed immediately.",
+      "stopTrackingBtn": "Stop tracking only",
+      "stopTrackingDescription": "Removes DevDigest's local record only. The workflow and config files remain in the target repository and keep running until you delete them there.",
+      "noWriteAccess": "DevDigest does not have write access to this repository. Use \"Stop tracking only\", or grant write access first.",
+      "nonGhaNote": "This is not a GitHub Actions installation. Use \"Stop tracking only\" — non-GitHub-Actions CI systems must be cleaned up manually in the target CI platform.",
+      "skillDriftNote": "Note: skills unlinked from this agent since the original export will not appear in the deletion PR. Audit .devdigest/skills/ manually if a complete cleanup is needed.",
+      "prSuccess": "Removal PR opened:",
+      "prView": "View PR",
+      "close": "Close"
+    },
     "failOn": "Fail CI on",
     "failOnOptions": {
       "never": "Never",

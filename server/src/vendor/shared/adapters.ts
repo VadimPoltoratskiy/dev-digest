@@ -147,6 +147,20 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** Payload for a deletion commit: removes existing repo paths; no file contents needed. */
+export interface DeleteFilesPayload {
+  /** Branch to create-or-update with the deletion commit (e.g. "devdigest/ci-remove"). */
+  branch: string;
+  /** Base branch to fork from when `branch` does not yet exist (e.g. "main"). */
+  base: string;
+  message: string;
+  /**
+   * Repo-relative paths to delete. Paths absent from the base tree are silently
+   * ignored by the GitHub Trees API (edge case 2 in SPEC-04).
+   */
+  paths: string[];
+}
+
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -168,6 +182,14 @@ export interface GitHubClient {
   commitFiles(repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }>;
   /** The open PR whose head is `branch`, if any (so re-publish reuses it). */
   findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null>;
+  /**
+   * Commit a deletion of `paths` onto `branch` as ONE atomic commit (Git Data API:
+   * null-SHA tree entries → commit → ref). Creates `branch` from `base` if missing,
+   * else fast-forwards it. Paths not present in the base tree are silently ignored.
+   */
+  deleteFiles(repo: RepoRef, payload: DeleteFilesPayload): Promise<{ branch: string }>;
+  /** Fetch the repository's default branch name (e.g. "main" or "master"). */
+  getDefaultBranch(repo: RepoRef): Promise<string>;
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;

@@ -12,6 +12,7 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  DeleteFilesPayload,
   IssueMeta,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
@@ -350,6 +351,84 @@ export class OctokitGitHubClient implements GitHubClient {
         TIMEOUT,
       ),
     );
+  }
+
+  async deleteFiles(
+    repo: RepoRef,
+    payload: DeleteFilesPayload,
+  ): Promise<{ branch: string }> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const owner = repo.owner;
+          const name = repo.name;
+          const g = this.octokit.rest.git;
+
+          // Parent commit: the target branch if it already exists, else the base.
+          let parentSha: string;
+          let branchExists = false;
+          try {
+            const ref = await g.getRef({ owner, repo: name, ref: `heads/${payload.branch}` });
+            parentSha = ref.data.object.sha;
+            branchExists = true;
+          } catch {
+            const baseRef = await g.getRef({ owner, repo: name, ref: `heads/${payload.base}` });
+            parentSha = baseRef.data.object.sha;
+          }
+
+          // Get parent commit's tree SHA.
+          const parentCommit = await g.getCommit({ owner, repo: name, commit_sha: parentSha });
+
+          // Create deletion tree: null-SHA entries tell GitHub to delete those paths.
+          const tree = await g.createTree({
+            owner,
+            repo: name,
+            base_tree: parentCommit.data.tree.sha,
+            tree: payload.paths.map((path) => ({
+              path,
+              mode: '100644' as const,
+              type: 'blob' as const,
+              sha: null as string | null,
+            })),
+          });
+
+          const commit = await g.createCommit({
+            owner,
+            repo: name,
+            message: payload.message,
+            tree: tree.data.sha,
+            parents: [parentSha],
+          });
+
+          if (branchExists) {
+            await g.updateRef({
+              owner,
+              repo: name,
+              ref: `heads/${payload.branch}`,
+              sha: commit.data.sha,
+              force: true,
+            });
+          } else {
+            await g.createRef({
+              owner,
+              repo: name,
+              ref: `refs/heads/${payload.branch}`,
+              sha: commit.data.sha,
+            });
+          }
+          return { branch: payload.branch };
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async getDefaultBranch(repo: RepoRef): Promise<string> {
+    const res = await withTimeout(
+      this.octokit.rest.repos.get({ owner: repo.owner, repo: repo.name }),
+      TIMEOUT,
+    );
+    return res.data.default_branch;
   }
 
   async getIssue(repo: RepoRef, n: number): Promise<IssueMeta> {

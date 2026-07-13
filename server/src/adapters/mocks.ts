@@ -17,6 +17,7 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  DeleteFilesPayload,
   IssueMeta,
   GitClient,
   CloneOptions,
@@ -133,6 +134,7 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  public deletedFiles: DeleteFilesPayload[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -229,6 +231,15 @@ export class MockGitHubClient implements GitHubClient {
   async findOpenPr(_repo: RepoRef, branch: string): Promise<{ url: string } | null> {
     const pr = this.openedPrs.find((p) => p.head === branch);
     return pr ? { url: 'https://github.com/mock/mock/pull/1' } : null;
+  }
+
+  async deleteFiles(_repo: RepoRef, payload: DeleteFilesPayload): Promise<{ branch: string }> {
+    this.deletedFiles.push(payload);
+    return { branch: payload.branch };
+  }
+
+  async getDefaultBranch(_repo: RepoRef): Promise<string> {
+    return 'main';
   }
 
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {

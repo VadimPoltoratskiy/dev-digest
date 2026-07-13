@@ -29,6 +29,21 @@ vi.mock("../ExportWizard", () => ({
     open ? <div data-testid="export-wizard-open">wizard</div> : null,
 }));
 
+// Mock RemovalDialog to keep CiTab tests isolated
+vi.mock("./RemovalDialog", () => ({
+  RemovalDialog: ({
+    installation,
+    onClose,
+  }: {
+    installation: { repo: string };
+    onClose: () => void;
+  }) => (
+    <div data-testid="removal-dialog" data-repo={installation.repo}>
+      <button onClick={onClose}>close-dialog</button>
+    </div>
+  ),
+}));
+
 import {
   useCiInstallations,
   useCiRuns,
@@ -220,45 +235,33 @@ describe("CiTab — run history table", () => {
   });
 });
 
-describe("CiTab — remove installation", () => {
+describe("CiTab — remove installation dialog", () => {
   it("renders a Remove button per installation row", () => {
     renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
 
     expect(screen.getByRole("button", { name: /remove/i })).toBeInTheDocument();
   });
 
-  it("clicking Remove after confirming calls the mutation with the installation id", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("clicking Remove opens the RemovalDialog with the correct repo", () => {
     renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
+
+    expect(screen.queryByTestId("removal-dialog")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /remove/i }));
 
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("owner/repo"));
-    expect(mockRemoveInstallationMutate).toHaveBeenCalledWith("inst1");
-
-    confirmSpy.mockRestore();
+    expect(screen.getByTestId("removal-dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("removal-dialog").dataset.repo).toBe("owner/repo");
   });
 
-  it("clicking Remove and declining the confirmation does NOT call the mutation", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("calling onClose from the RemovalDialog unmounts it", () => {
     renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
 
     fireEvent.click(screen.getByRole("button", { name: /remove/i }));
+    expect(screen.getByTestId("removal-dialog")).toBeInTheDocument();
 
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(mockRemoveInstallationMutate).not.toHaveBeenCalled();
+    // The mock dialog exposes a "close-dialog" button that calls onClose
+    fireEvent.click(screen.getByRole("button", { name: /close-dialog/i }));
 
-    confirmSpy.mockRestore();
-  });
-
-  it("disables the Remove button while the mutation is pending", () => {
-    vi.mocked(useRemoveCiInstallation).mockReturnValue({
-      mutate: mockRemoveInstallationMutate,
-      isPending: true,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-    renderWithIntl(<CiTab agentId="ag1" ciFailOn="critical" />);
-
-    expect(screen.getByRole("button", { name: /remove/i })).toBeDisabled();
+    expect(screen.queryByTestId("removal-dialog")).not.toBeInTheDocument();
   });
 });

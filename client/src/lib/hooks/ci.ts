@@ -7,6 +7,7 @@ import {
   fetchCiRuns,
   fetchCiInstallations,
   removeCiInstallation,
+  removeCiFromRepo,
   refreshCiRuns,
   exportCi,
   checkCiPreflight,
@@ -62,5 +63,23 @@ export function useCiPreflight(repo: string | null) {
     queryKey: ["ci-preflight", repo],
     queryFn: () => checkCiPreflight(repo!),
     enabled: !!repo,
+  });
+}
+
+/** Mutation: open a deletion PR in the target repo and remove the local installation record. */
+export function useRemoveCiFromRepo(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      installationId,
+      base,
+    }: {
+      installationId: string;
+      base?: string;
+    }) => removeCiFromRepo(agentId, installationId, { base }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ci-installations", agentId] });
+      qc.invalidateQueries({ queryKey: ["ci-runs"] });
+    },
   });
 }
