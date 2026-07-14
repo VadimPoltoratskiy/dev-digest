@@ -19,6 +19,19 @@ vi.mock("../../../../../lib/hooks/multi-runs", () => ({
 
 vi.mock("../../../../../lib/hooks/reviews", () => ({
   useRunEvents: vi.fn(),
+  useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../../../../../lib/hooks/agents-eval", () => ({
+  useTurnFindingIntoEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("../../../../../lib/repo-context", () => ({
+  useActiveRepo: () => ({ activeRepo: { full_name: "acme/test-repo" } }),
+}));
+
+vi.mock("../../../../../lib/hooks/core", () => ({
+  usePullDetail: () => ({ data: { head_sha: "sha-abc123" } }),
 }));
 
 // Mock RunTraceDrawer: renders a div with a data attribute so tests can

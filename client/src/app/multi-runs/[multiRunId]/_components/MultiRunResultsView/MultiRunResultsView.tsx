@@ -160,6 +160,8 @@ export function MultiRunResultsView({ multiRunId }: MultiRunResultsViewProps) {
           agentFindings={agentFindings}
           sseStatuses={sseStatuses}
           onViewTrace={handleViewTrace}
+          prId={multiRun.pr_id}
+          multiRunId={multiRunId}
         />
       )}
 

@@ -3,8 +3,13 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import type { AgentRunSummary, MultiRunFindings } from "@devdigest/shared";
 import { FindingCard } from "@/components/FindingCard";
+import { useFindingAction } from "@/lib/hooks/reviews";
+import { useTurnFindingIntoEvalCase } from "@/lib/hooks/agents-eval";
+import { useActiveRepo } from "@/lib/repo-context";
+import { usePullDetail } from "@/lib/hooks/core";
 import { s } from "./styles";
 
 export interface TabsViewProps {
@@ -12,6 +17,8 @@ export interface TabsViewProps {
   agentFindings: MultiRunFindings["agents"];
   sseStatuses: Record<string, string>;
   onViewTrace: (runId: string, agentName: string | null) => void;
+  prId: string;
+  multiRunId: string;
 }
 
 export function TabsView({
@@ -19,9 +26,18 @@ export function TabsView({
   agentFindings,
   sseStatuses,
   onViewTrace,
+  prId,
+  multiRunId,
 }: TabsViewProps) {
   const t = useTranslations("multiRuns");
   const [activeIndex, setActiveIndex] = React.useState(0);
+
+  // All hooks must be called unconditionally before any early return.
+  const qc = useQueryClient();
+  const action = useFindingAction();
+  const createEvalCase = useTurnFindingIntoEvalCase();
+  const { activeRepo } = useActiveRepo();
+  const { data: pr } = usePullDetail(prId);
 
   if (agents.length === 0) return null;
 
@@ -124,7 +140,27 @@ export function TabsView({
 
           {/* FindingCard list */}
           {findingsForActive.map((f) => (
-            <FindingCard key={f.id} f={f} defaultExpanded={false} />
+            <FindingCard
+              key={f.id}
+              f={f}
+              defaultExpanded={false}
+              pending={action.isPending}
+              evalCasePending={createEvalCase.isPending}
+              repoFullName={activeRepo?.full_name}
+              headSha={pr?.head_sha}
+              onAction={(act, reply) =>
+                action.mutate(
+                  { findingId: f.id, action: act, reply, prId },
+                  {
+                    onSuccess: () =>
+                      qc.invalidateQueries({ queryKey: ["multi-run-findings", multiRunId] }),
+                  },
+                )
+              }
+              onCreateEvalCase={(kind, name) =>
+                createEvalCase.mutate({ findingId: f.id, kind, name })
+              }
+            />
           ))}
         </div>
       )}

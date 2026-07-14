@@ -103,7 +103,7 @@ finding titles (file + title), and a "View trace" button that opens
 `RunTraceDrawer`. Builds a `run_id → findings[]` map in a `useMemo` by matching
 `agent_id + agent_name` between `agents[]` and `agentFindings[]`.
 
-**`TabsView`** (`_components/TabsView/TabsView.tsx:17-133`):
+**`TabsView`** (`_components/TabsView/TabsView.tsx:15-169`):
 Tab bar (one tab per agent) with a summary card for the active agent and a full
 `FindingCard` list (from `components/FindingCard`). Duration and cost appear in
 the summary card when the agent is done. Failing agents show their `error` string.
@@ -178,9 +178,15 @@ function FindingCard({
 }): JSX.Element
 ```
 
-The Results page (`TabsView`) renders `FindingCard` with only `f` and
-`defaultExpanded={false}` — no `onAction`, no eval-case creation. The PR detail
-page (`FindingsPanel`) passes all props including mutation callbacks.
+`TabsView` passes the full prop set to each card, mirroring the wiring in
+`FindingsPanel`. It calls `useFindingAction()`, `useTurnFindingIntoEvalCase()`,
+`useActiveRepo()`, and `usePullDetail(prId)` unconditionally before its early-return
+guard (`TabsView.tsx:36-40`), then threads `pending`, `evalCasePending`,
+`repoFullName` (`activeRepo?.full_name`), `headSha` (`pr?.head_sha`), `onAction`,
+and `onCreateEvalCase` into each card (`TabsView.tsx:142-164`). On a successful
+action, `onAction` invalidates the `["multi-run-findings", multiRunId]` query key.
+`TabsViewProps` carries two required props to support this — `prId` and `multiRunId`
+— threaded in from `MultiRunResultsView.tsx:158-165`.
 
 ## Data hooks (`lib/hooks/multi-runs.ts`)
 
@@ -202,10 +208,10 @@ a query before the ID is known (lazy-fetch-on-open pattern).
 | `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx` | 1–473 | Two-step configure UI: PR picker + agent cards + aggregate estimate footer. |
 | `client/src/app/multi-runs/configure/_components/ConfigureRunView/helpers.ts` | 1–38 | Pure `computeAggregateDuration` (max) and `computeAggregateCost` (sum). |
 | `client/src/app/multi-runs/[multiRunId]/page.tsx` | 1–13 | Thin RSC; reads `params.multiRunId`; renders `MultiRunResultsView`. |
-| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx` | 1–182 | Orchestrator: data fetching, SSE fan-in, view mode toggle, drawer state. |
+| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx` | 1–184 | Orchestrator: data fetching, SSE fan-in, view mode toggle, drawer state. |
 | `client/src/app/multi-runs/[multiRunId]/_components/MultiRunHeader/MultiRunHeader.tsx` | 1–80 | Breadcrumb, Configure Run link, Columns/Tabs toggle, summary line. |
 | `client/src/app/multi-runs/[multiRunId]/_components/ColumnsView/ColumnsView.tsx` | 1–100 | Horizontal per-agent column grid; inline finding title list + View trace button. |
-| `client/src/app/multi-runs/[multiRunId]/_components/TabsView/TabsView.tsx` | 1–133 | Tab-per-agent view; renders full `FindingCard` list for the active tab. |
+| `client/src/app/multi-runs/[multiRunId]/_components/TabsView/TabsView.tsx` | 1–169 | Tab-per-agent view; renders full `FindingCard` list for the active tab. |
 | `client/src/app/multi-runs/[multiRunId]/_components/ConflictsSection/ConflictsSection.tsx` | 1–108 | "Where agents disagree" panel; toggle for conflicts-only filter; `isConflict` predicate. |
 | `client/src/components/RunTraceDrawer/RunTraceDrawer.tsx` | 1–107 | Shared trace + live-log drawer; consumed by PR detail page and Results page. |
 | `client/src/components/FindingCard/FindingCard.tsx` | 1–196 | Shared finding card; consumed by PR detail `FindingsPanel` and multi-run `TabsView`. |
