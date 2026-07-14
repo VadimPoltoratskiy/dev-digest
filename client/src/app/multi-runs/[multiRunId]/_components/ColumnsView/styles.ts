@@ -62,8 +62,16 @@ export const s = {
   } satisfies CSSProperties,
 
   score: {
-    fontSize: 22,
+    width: 40,
+    height: 40,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 15,
     fontWeight: 700,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
     color: "var(--text-primary)",
   } satisfies CSSProperties,
 

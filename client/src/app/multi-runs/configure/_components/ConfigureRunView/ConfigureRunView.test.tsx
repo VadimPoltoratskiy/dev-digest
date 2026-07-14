@@ -34,6 +34,12 @@ vi.mock("../../../../../lib/repo-context", () => ({
   useActiveRepo: vi.fn(),
 }));
 
+// Mock AppShell: renders children directly, avoiding router/context dependencies.
+vi.mock("../../../../../components/app-shell", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  AppShell: ({ children }: { children: any }) => <>{children}</>,
+}));
+
 // ---------------------------------------------------------------------------
 // Import subject under test (after mocks are set up)
 // ---------------------------------------------------------------------------

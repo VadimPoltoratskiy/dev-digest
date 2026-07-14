@@ -35,7 +35,7 @@ flowchart TD
   RES --> CFG
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
-  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
+  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)<br/>POST /pulls/:id/compose-review"| API
   CFG -->|"GET /pulls/:id/agents/estimates"| API
   RES -->|"GET /multi-runs/:id · /multi-runs/:id/findings<br/>GET /runs/:id/events (SSE, per agent)"| API
   AGENTS -->|"/agents · /agents/:id"| API
@@ -46,9 +46,17 @@ Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
 `_components/<Name>/` folders, each with its own `*.test.tsx`.
 
+The PR detail page (`/repos/:repoId/pulls/:number`) also hosts the
+`ComposeReviewDrawer` component (`_components/ComposeReviewDrawer/`) — a
+PR-page-local slide-over that posts a human-curated GitHub PR review using
+the workspace's configured PAT.
+
 See [`multi-runs.md`](./multi-runs.md) for the full multi-agent review feature:
 Configure Run page, Results page (Columns/Tabs/Conflicts views), the shared
 `RunTraceDrawer` and `FindingCard` components, and TanStack Query hooks.
+
+See [`compose-review.md`](./compose-review.md) for the Compose Review drawer
+(`ComposeReviewDrawer`), its mutation hook, and how it wires into `PrDetailHeader`.
 
 ## Testing
 

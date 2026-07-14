@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { useRepos, usePulls } from "@/lib/hooks";
 import { useActiveRepo } from "@/lib/repo-context";
 import { useAgentEstimates, useRunMultiReview } from "@/lib/hooks/multi-runs";
+import { AppShell } from "@/components/app-shell";
 import { computeAggregateDuration, computeAggregateCost } from "./helpers";
 import type { CSSProperties } from "react";
 
@@ -313,8 +314,10 @@ export function ConfigureRunView({ initialPrId }: ConfigureRunViewProps) {
 
   const repos = repoList ?? [];
   const prs = pulls ?? [];
+  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
 
   return (
+    <AppShell crumb={crumb}>
     <div style={s.page}>
       <h1 style={s.heading}>{t("configure.title")}</h1>
 
@@ -469,5 +472,6 @@ export function ConfigureRunView({ initialPrId }: ConfigureRunViewProps) {
         </button>
       </div>
     </div>
+    </AppShell>
   );
 }

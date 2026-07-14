@@ -35,12 +35,13 @@ export async function findMultiRunById(
   db: Db,
   workspaceId: string,
   multiRunId: string,
-): Promise<{ id: string; prId: string; prNumber: number | null; ranAt: Date } | undefined> {
+): Promise<{ id: string; prId: string; prNumber: number | null; prTitle: string | null; ranAt: Date } | undefined> {
   const [row] = await db
     .select({
       id: t.multiAgentRuns.id,
       prId: t.multiAgentRuns.prId,
       prNumber: t.pullRequests.number,
+      prTitle: t.pullRequests.title,
       ranAt: t.multiAgentRuns.ranAt,
     })
     .from(t.multiAgentRuns)
@@ -56,6 +57,7 @@ export async function findMultiRunById(
     id: row.id,
     prId: row.prId,
     prNumber: row.prNumber ?? null,
+    prTitle: row.prTitle ?? null,
     ranAt: row.ranAt,
   };
 }
@@ -282,7 +284,7 @@ export class MultiRunsRepository {
   findMultiRunById(
     workspaceId: string,
     multiRunId: string,
-  ): Promise<{ id: string; prId: string; prNumber: number | null; ranAt: Date } | undefined> {
+  ): Promise<{ id: string; prId: string; prNumber: number | null; prTitle: string | null; ranAt: Date } | undefined> {
     return findMultiRunById(this.db, workspaceId, multiRunId);
   }
 

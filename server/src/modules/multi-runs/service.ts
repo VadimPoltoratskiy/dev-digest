@@ -114,6 +114,7 @@ export class MultiRunsService {
       id: row.id,
       pr_id: row.prId,
       pr_number: row.prNumber ?? null,
+      pr_title: row.prTitle ?? null,
       ran_at: row.ranAt.toISOString(),
       agents: agentRuns.map((ar) => ({
         run_id: ar.id,

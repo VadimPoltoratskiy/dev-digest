@@ -34,6 +34,12 @@ vi.mock("../../../../../lib/hooks/core", () => ({
   usePullDetail: () => ({ data: { head_sha: "sha-abc123" } }),
 }));
 
+// Mock AppShell: renders children directly, avoiding router/context dependencies.
+vi.mock("../../../../../components/app-shell", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  AppShell: ({ children }: { children: any }) => <>{children}</>,
+}));
+
 // Mock RunTraceDrawer: renders a div with a data attribute so tests can
 // verify the runId without needing a full drawer setup.
 vi.mock("../../../../../components/RunTraceDrawer", () => ({

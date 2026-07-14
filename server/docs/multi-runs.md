@@ -81,12 +81,15 @@ or an empty array are rejected 422 before the handler runs.
 
 ### `GET /multi-runs/:id`
 
-**Response type:** `MultiRunRecord` (`observability.ts:169-180`).
+**Response type:** `MultiRunRecord` (`observability.ts:169-182`).
 
-Returns the multi-run header (`id`, `pr_id`, `pr_number`, `ran_at`) plus an
-`agents[]` array of `AgentRunSummary` objects and computed totals. The service
-sums `cost_usd` and `duration_ms` from all `agent_runs` rows in JS — null when
-no row has data yet (`service.ts:94-107`).
+Returns the multi-run header (`id`, `pr_id`, `pr_number`, `pr_title`, `ran_at`)
+plus an `agents[]` array of `AgentRunSummary` objects and computed totals. The
+service sums `cost_usd` and `duration_ms` from all `agent_runs` rows in JS — null
+when no row has data yet (`service.ts:97-111`). `pr_title` is joined from the
+`pull_requests` table alongside `pr_number` in `findMultiRunById`
+(`repository.ts:38-63`); both are `.nullish()` in the Zod schema for forward
+compatibility.
 
 ### `GET /pulls/:id/agents/estimates`
 
@@ -182,10 +185,10 @@ finding.severity]`).
 | File | Lines | Purpose |
 |------|-------|---------|
 | `server/src/modules/multi-runs/routes.ts` | 1–75 | Four Fastify route handlers; rate limit on POST; workspace scoping via `getContext`. |
-| `server/src/modules/multi-runs/service.ts` | 1–283 | Business logic: `createMultiRun`, `getMultiRun`, `getEstimates`, `getFindings`. No HTTP, no raw DB. |
-| `server/src/modules/multi-runs/repository.ts` | 1–334 | Drizzle queries: `insertMultiRun`, `findMultiRunById`, `getAgentRunsByMultiRunId`, `getLastNRunsPerAgent`, `getLastFindingSummaryPerAgent`, `getReviewsAndFindingsByAgentRunIds`. |
+| `server/src/modules/multi-runs/service.ts` | 1–288 | Business logic: `createMultiRun`, `getMultiRun`, `getEstimates`, `getFindings`. No HTTP, no raw DB. |
+| `server/src/modules/multi-runs/repository.ts` | 1–336 | Drizzle queries: `insertMultiRun`, `findMultiRunById`, `getAgentRunsByMultiRunId`, `getLastNRunsPerAgent`, `getLastFindingSummaryPerAgent`, `getReviewsAndFindingsByAgentRunIds`. |
 | `server/src/modules/multi-runs/helpers.ts` | 1–96 | Pure `groupFindingsByFileAndOverlap` function. |
 | `server/src/db/schema/runs.ts` | 40–49 | `multi_agent_run_id` FK + index on `agent_runs`; `multi_agent_runs` table definition. |
 | `server/src/modules/index.ts` | 20, 54 | Module registry entry for `multiRuns`. |
-| `server/src/vendor/shared/contracts/observability.ts` | 147–220 | Zod contracts: `MultiReviewRequest`, `AgentRunSummary`, `MultiRunRecord`, `AgentEstimate`, `FindingGroup`, `MultiRunFindings`. |
+| `server/src/vendor/shared/contracts/observability.ts` | 147–222 | Zod contracts: `MultiReviewRequest`, `AgentRunSummary`, `MultiRunRecord` (includes `pr_title`), `AgentEstimate`, `FindingGroup`, `MultiRunFindings`. |
 | `server/src/modules/reviews/service.ts` | 109–136 | `ReviewService.runReview` — accepts `opts.multiRunId` and sets the FK on `agent_runs` rows. |

@@ -171,6 +171,8 @@ export const MultiRunRecord = z.object({
   pr_id: z.string(),
   /** Joined from pulls table; nullish for forward compat. */
   pr_number: z.number().int().nullish(),
+  /** Joined from pulls table; nullish for forward compat. */
+  pr_title: z.string().nullish(),
   ran_at: z.string(),
   agents: z.array(AgentRunSummary),
   /** .nullable() — service always computes this from summing agent rows. */

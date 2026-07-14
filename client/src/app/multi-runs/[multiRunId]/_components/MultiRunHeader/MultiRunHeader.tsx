@@ -9,6 +9,7 @@ import { s } from "./styles";
 export interface MultiRunHeaderProps {
   prId: string;
   prNumber: number | null | undefined;
+  prTitle: string | null | undefined;
   agentCount: number;
   allComplete: boolean;
   totalDurationMs: number | null;
@@ -20,6 +21,7 @@ export interface MultiRunHeaderProps {
 export function MultiRunHeader({
   prId,
   prNumber,
+  prTitle,
   agentCount,
   allComplete,
   totalDurationMs,
@@ -34,21 +36,28 @@ export function MultiRunHeader({
   const cost =
     totalCostUsd != null ? totalCostUsd.toFixed(2) : null;
 
-  const summaryLine =
-    allComplete && durationS != null && cost != null
-      ? t("results.summaryComplete", { count: agentCount, duration: durationS, cost })
-      : t("results.summaryRunning", { count: agentCount });
+  const showStats = allComplete && durationS != null && cost != null;
+
+  const breadcrumbText =
+    prNumber != null && prTitle != null
+      ? t("results.prTitle", { number: prNumber, title: prTitle })
+      : prNumber != null
+      ? t("results.breadcrumb", { number: prNumber })
+      : t("results.title");
 
   return (
     <div style={s.header}>
       <div style={s.topRow}>
-        <div style={s.breadcrumb}>
-          {prNumber != null
-            ? t("results.breadcrumb", { number: prNumber })
-            : t("results.title")}
-        </div>
+        <div style={s.breadcrumb}>{breadcrumbText}</div>
 
         <div style={s.actions}>
+          {showStats && (
+            <div style={s.statsBlock}>
+              <span>{durationS}s</span>
+              <span>${cost}</span>
+            </div>
+          )}
+
           <Link href={`/multi-runs/configure?prId=${prId}`} style={s.configLink}>
             {t("results.configureRun")}
           </Link>
@@ -74,7 +83,9 @@ export function MultiRunHeader({
         </div>
       </div>
 
-      <div style={s.summary}>{summaryLine}</div>
+      <div style={s.summary}>
+        {t("results.summaryRunning", { count: agentCount })}
+      </div>
     </div>
   );
 }

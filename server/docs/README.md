@@ -69,7 +69,7 @@ flowchart TB
     polling["polling<br/>/repos/:id/poll"]
   end
   subgraph Review["Review & runs"]
-    reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
+    reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace) · /findings/:id/reply<br/>/pulls/:id/compose-review"]
     multiRuns["multi-runs<br/>POST /pulls/:id/multi-review<br/>GET /multi-runs/:id<br/>GET /pulls/:id/agents/estimates<br/>GET /multi-runs/:id/findings"]
   end
   subgraph Agents["Agents"]
@@ -87,6 +87,10 @@ flowchart TB
 
 See [`multi-runs.md`](./multi-runs.md) for the full request-flow diagram, endpoint
 reference, DB schema additions, and the cross-agent finding-grouping algorithm.
+
+See [`compose-review.md`](./compose-review.md) for the Compose Review endpoint
+(`POST /pulls/:id/compose-review`), service method, repository scope guard, and
+shared Zod contracts.
 
 ## Environment
 

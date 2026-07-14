@@ -2,6 +2,7 @@
   "results": {
     "title": "Multi-Agent Review",
     "breadcrumb": "Multi-Agent Review > #{number}",
+    "prTitle": "#{number} · {title}",
     "configureRun": "Configure run",
     "columnsMode": "Columns",
     "tabsMode": "Tabs",

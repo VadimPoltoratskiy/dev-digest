@@ -9,6 +9,12 @@ a **Configure Run** page where the user picks a PR and selects agents, and a
 route-local components (`RunTraceDrawer`, `FindingCard`) to `components/` because
 the Results page needs them alongside the existing PR detail page.
 
+Both pages render inside `AppShell` so the left sidebar appears in all render
+states (loading, error, and normal). The sidebar nav link
+(`client/src/vendor/ui/nav.ts:43`) points to `/multi-runs/configure`, and
+`activeKeyFor` (`client/src/components/app-shell/helpers.ts:28`) highlights the
+nav item for all `/multi-runs/*` paths.
+
 ## Route map
 
 ```mermaid
@@ -37,7 +43,7 @@ flowchart TD
 **Props:** `initialPrId?: string` — pre-seeds the PR selector when the page is
 opened with `?prId=<uuid>` from the PR detail page.
 
-**Two-step flow (`ConfigureRunView.tsx:202-473`):**
+**Two-step flow (`ConfigureRunView.tsx:200-477`):**
 
 1. **PR selection** — repo picker (only shown when the workspace has more than one
    repo) + PR dropdown. Changing the repo resets both the PR and agent selections.
@@ -85,23 +91,32 @@ components for live status text. When all SSE streams close (all agents done or
 failed), the component invalidates the `["multi-run", multiRunId]` TanStack Query
 key to fetch final statuses.
 
-**View modes (`MultiRunResultsView.tsx:65`):** the user toggles between `"columns"`
+**View modes (`MultiRunResultsView.tsx:68`):** the user toggles between `"columns"`
 and `"tabs"` via buttons in `MultiRunHeader`. Both modes receive the same
 `agents[]`, `agentFindings[]`, and `sseStatuses` props.
 
 ### Sub-components of the Results page
 
-**`MultiRunHeader`** (`_components/MultiRunHeader/MultiRunHeader.tsx:20-80`):
-Breadcrumb with PR number, a "Configure Run" link back to the configure page
-(pre-fills `?prId=<prId>`), Columns/Tabs toggle buttons, and a summary line
-showing total agent count, wall time, and cost when all agents are complete.
+**`MultiRunHeader`** (`_components/MultiRunHeader/MultiRunHeader.tsx:9-91`):
+Breadcrumb that renders `#{number} · {title}` when both `prNumber` and `prTitle`
+are available, falling back to `#{number}` or the i18n key `results.title` when
+either is absent (`MultiRunHeader.tsx:41-46`). Includes a "Configure Run" link
+(pre-fills `?prId=<prId>`), Columns/Tabs toggle buttons, and — when all agents are
+complete — a right-aligned `statsBlock` containing wall time and cost that appears
+in the actions row alongside the toggle buttons (`MultiRunHeader.tsx:54-59`). An
+agent-count summary line renders below the breadcrumb unconditionally
+(`MultiRunHeader.tsx:86-88`).
 
-**`ColumnsView`** (`_components/ColumnsView/ColumnsView.tsx:16-100`):
-Horizontal-scrollable grid of agent columns. Each column shows the agent name,
-live SSE status or final status badge, score, finding count, a compact list of
-finding titles (file + title), and a "View trace" button that opens
-`RunTraceDrawer`. Builds a `run_id → findings[]` map in a `useMemo` by matching
-`agent_id + agent_name` between `agents[]` and `agentFindings[]`.
+**`ColumnsView`** (`_components/ColumnsView/ColumnsView.tsx:19-114`):
+Horizontal-scrollable grid of agent columns. Each column carries a distinct
+left-border accent color drawn from the `AGENT_COLORS` constant array
+(`ColumnsView.tsx:10-17`) and applied by index, making agents visually
+distinguishable at a glance (`ColumnsView.tsx:60`). Each column shows the agent
+name, live SSE status or final status badge, score rendered as a circular badge,
+finding count, a compact list of finding titles (file + title), and a "View trace"
+button that opens `RunTraceDrawer`. Builds a `run_id → findings[]` map in a
+`useMemo` by matching `agent_id + agent_name` between `agents[]` and
+`agentFindings[]`.
 
 **`TabsView`** (`_components/TabsView/TabsView.tsx:15-169`):
 Tab bar (one tab per agent) with a summary card for the active agent and a full
@@ -197,7 +212,7 @@ action, `onAction` invalidates the `["multi-run-findings", multiRunId]` query ke
 | `useMultiRun(multiRunId)` | `["multi-run", multiRunId]` | `multiRunId != null` |
 | `useMultiRunFindings(multiRunId)` | `["multi-run-findings", multiRunId]` | `multiRunId != null` |
 
-All four call functions from `lib/api.ts` (lines 202–225). Pass `null` to disable
+All four call functions from `lib/api.ts` (lines 204–229). Pass `null` to disable
 a query before the ID is known (lazy-fetch-on-open pattern).
 
 ## Related files
@@ -205,15 +220,17 @@ a query before the ID is known (lazy-fetch-on-open pattern).
 | File | Lines | Purpose |
 |------|-------|---------|
 | `client/src/app/multi-runs/configure/page.tsx` | 1–13 | Thin RSC; reads `searchParams.prId`; renders `ConfigureRunView`. |
-| `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx` | 1–473 | Two-step configure UI: PR picker + agent cards + aggregate estimate footer. |
+| `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx` | 1–477 | Two-step configure UI: PR picker + agent cards + aggregate estimate footer. |
 | `client/src/app/multi-runs/configure/_components/ConfigureRunView/helpers.ts` | 1–38 | Pure `computeAggregateDuration` (max) and `computeAggregateCost` (sum). |
 | `client/src/app/multi-runs/[multiRunId]/page.tsx` | 1–13 | Thin RSC; reads `params.multiRunId`; renders `MultiRunResultsView`. |
-| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx` | 1–184 | Orchestrator: data fetching, SSE fan-in, view mode toggle, drawer state. |
-| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunHeader/MultiRunHeader.tsx` | 1–80 | Breadcrumb, Configure Run link, Columns/Tabs toggle, summary line. |
-| `client/src/app/multi-runs/[multiRunId]/_components/ColumnsView/ColumnsView.tsx` | 1–100 | Horizontal per-agent column grid; inline finding title list + View trace button. |
+| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx` | 1–194 | Orchestrator: data fetching, SSE fan-in, view mode toggle, drawer state. `AppShell` wraps all render branches (loading, error, normal). |
+| `client/src/app/multi-runs/[multiRunId]/_components/MultiRunHeader/MultiRunHeader.tsx` | 1–91 | Breadcrumb (with PR title when available), Configure Run link, Columns/Tabs toggle, right-aligned stats block when complete, agent-count line. |
+| `client/src/app/multi-runs/[multiRunId]/_components/ColumnsView/ColumnsView.tsx` | 1–114 | Horizontal per-agent column grid; per-agent left-border accent color from `AGENT_COLORS`; inline finding title list + View trace button. |
 | `client/src/app/multi-runs/[multiRunId]/_components/TabsView/TabsView.tsx` | 1–169 | Tab-per-agent view; renders full `FindingCard` list for the active tab. |
 | `client/src/app/multi-runs/[multiRunId]/_components/ConflictsSection/ConflictsSection.tsx` | 1–108 | "Where agents disagree" panel; toggle for conflicts-only filter; `isConflict` predicate. |
 | `client/src/components/RunTraceDrawer/RunTraceDrawer.tsx` | 1–107 | Shared trace + live-log drawer; consumed by PR detail page and Results page. |
 | `client/src/components/FindingCard/FindingCard.tsx` | 1–196 | Shared finding card; consumed by PR detail `FindingsPanel` and multi-run `TabsView`. |
 | `client/src/lib/hooks/multi-runs.ts` | 1–56 | TanStack Query hooks: `useAgentEstimates`, `useRunMultiReview`, `useMultiRun`, `useMultiRunFindings`. |
-| `client/src/lib/api.ts` | 199–225 | API fetch functions: `fetchAgentEstimates`, `triggerMultiReview`, `fetchMultiRun`, `fetchMultiRunFindings`. |
+| `client/src/lib/api.ts` | 204–229 | API fetch functions: `fetchAgentEstimates`, `triggerMultiReview`, `fetchMultiRun`, `fetchMultiRunFindings`. |
+| `client/src/vendor/ui/nav.ts` | 43 | Nav item: `href: "/multi-runs/configure"` (key `"multi-agent"`). |
+| `client/src/components/app-shell/helpers.ts` | 28 | `activeKeyFor`: `startsWith("/multi-runs")` returns `"multi-agent"`. |

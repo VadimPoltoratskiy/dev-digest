@@ -6,6 +6,16 @@ import { useTranslations } from "next-intl";
 import type { AgentRunSummary, MultiRunFindings } from "@devdigest/shared";
 import { s } from "./styles";
 
+/** Distinct accent colors for per-agent column left-border coding. */
+const AGENT_COLORS = [
+  "#6c8ebf",
+  "#82b366",
+  "#d6a520",
+  "#ae4132",
+  "#9c5caf",
+  "#d98c3e",
+];
+
 export interface ColumnsViewProps {
   agents: AgentRunSummary[];
   agentFindings: MultiRunFindings["agents"];
@@ -36,15 +46,19 @@ export function ColumnsView({
 
   return (
     <div style={s.scroll}>
-      {agents.map((agent) => {
+      {agents.map((agent, index) => {
         const liveStatus = sseStatuses[agent.run_id];
         const isRunning = agent.status === "running";
         const isFailed = agent.status === "failed";
         const findings = findingsByRunId[agent.run_id] ?? [];
         const agentLabel = agent.agent_name ?? t("results.unknownAgent");
+        const accentColor = AGENT_COLORS[index % AGENT_COLORS.length];
 
         return (
-          <div key={agent.run_id} style={s.column}>
+          <div
+            key={agent.run_id}
+            style={{ ...s.column, borderLeft: `3px solid ${accentColor}` }}
+          >
             <div style={s.colHeader}>
               <span style={s.agentName}>{agentLabel}</span>
               {isRunning ? (

@@ -3,15 +3,16 @@
  *
  * Test intentions:
  * 1. MultiRunHeader
- *    - breadcrumb shows PR number when prNumber is provided
+ *    - breadcrumb shows PR number when prNumber is provided (no prTitle)
+ *    - breadcrumb shows "#{number} · {title}" when both prNumber and prTitle are provided
  *    - breadcrumb falls back to "Multi-Agent Review" title when prNumber is null
  *    - "Configure run" link href includes prId as query param
  *    - Columns button has aria-pressed=true initially; Tabs button has aria-pressed=false
  *    - clicking Tabs button calls onViewModeChange('tabs')
  *    - clicking Columns button calls onViewModeChange('columns')
  *    - summary line shows "running..." text when allComplete=false
- *    - summary line shows duration and cost when allComplete=true with non-null values
- *    - summary line falls back to running text when totalDurationMs or totalCostUsd is null
+ *    - stats block (duration + cost) appears when allComplete=true with non-null values
+ *    - stats block absent when totalDurationMs or totalCostUsd is null
  *    - mocks needed: next/link (renders as <a>), next-intl (via NextIntlClientProvider)
  */
 
@@ -51,6 +52,7 @@ vi.mock("next/link", () => ({
 interface HeaderProps {
   prId?: string;
   prNumber?: number | null;
+  prTitle?: string | null;
   agentCount?: number;
   allComplete?: boolean;
   totalDurationMs?: number | null;
@@ -62,6 +64,7 @@ interface HeaderProps {
 const DEFAULTS = {
   prId: "pr-uuid-123",
   prNumber: 42 as number | null,
+  prTitle: null as string | null,
   agentCount: 2,
   allComplete: true as boolean,
   totalDurationMs: 5000 as number | null,
@@ -77,6 +80,7 @@ function renderHeader(overrides: HeaderProps = {}) {
       <MultiRunHeader
         prId={props.prId}
         prNumber={props.prNumber}
+        prTitle={props.prTitle}
         agentCount={props.agentCount}
         allComplete={props.allComplete}
         totalDurationMs={props.totalDurationMs}
@@ -94,14 +98,21 @@ function renderHeader(overrides: HeaderProps = {}) {
 
 describe("MultiRunHeader", () => {
   it("shows PR number in breadcrumb when prNumber is provided (AC-16)", () => {
-    renderHeader({ prNumber: 42 });
+    renderHeader({ prNumber: 42, prTitle: null });
 
     // The breadcrumb i18n key "results.breadcrumb" interpolates the number
     expect(screen.getByText(/Multi-Agent Review > #42/)).toBeInTheDocument();
   });
 
+  it("shows '#{number} · {title}' when both prNumber and prTitle are provided (B1)", () => {
+    renderHeader({ prNumber: 42, prTitle: "Fix auth bug" });
+
+    // results.prTitle = "#{number} · {title}"
+    expect(screen.getByText(/#42 · Fix auth bug/)).toBeInTheDocument();
+  });
+
   it("shows only 'Multi-Agent Review' title when prNumber is null", () => {
-    renderHeader({ prNumber: null });
+    renderHeader({ prNumber: null, prTitle: null });
 
     // results.title = "Multi-Agent Review" (no # suffix)
     expect(screen.getByText("Multi-Agent Review")).toBeInTheDocument();
@@ -163,25 +174,27 @@ describe("MultiRunHeader", () => {
     expect(summary.textContent).toContain("parallel");
   });
 
-  it("summary line shows duration and cost when allComplete is true (AC-16)", () => {
+  it("stats block shows duration and cost when allComplete=true with non-null values (B2)", () => {
     renderHeader({
       allComplete: true,
       agentCount: 2,
       totalDurationMs: 5000,
-      totalCostUsd: 0.02, // (0.02).toFixed(2) === "0.02" — float-safe
+      totalCostUsd: 0.02,
     });
 
-    // summaryComplete: "{count} agents · parallel · {duration}s · ${cost}"
+    // Duration and cost rendered separately in the right-aligned stats block.
     // duration = (5000/1000).toFixed(1) = "5.0"
     // cost = (0.02).toFixed(2) = "0.02"
-    const summary = screen.getByText(/agents · parallel/);
+    expect(screen.getByText("5.0s")).toBeInTheDocument();
+    expect(screen.getByText("$0.02")).toBeInTheDocument();
+
+    // The subtitle always shows agent count in running format
+    const summary = screen.getByText(/parallel/);
     expect(summary).toBeInTheDocument();
     expect(summary.textContent).toContain("2 agents");
-    expect(summary.textContent).toContain("5.0s");
-    expect(summary.textContent).toContain("$0.02");
   });
 
-  it("summary line falls back to running when totalDurationMs or totalCostUsd is null", () => {
+  it("stats block absent when totalDurationMs or totalCostUsd is null", () => {
     renderHeader({
       allComplete: true,
       agentCount: 2,
@@ -189,8 +202,11 @@ describe("MultiRunHeader", () => {
       totalCostUsd: null,
     });
 
-    // When cost/duration are null, allComplete=true but durationS/cost become null
-    // → component picks summaryRunning variant: "{count} agents · parallel · running..."
+    // No stats block rendered — no duration or cost elements
+    expect(screen.queryByText(/\d+\.\d+s/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
+
+    // Subtitle still shows agent count
     const summary = screen.getByText(/parallel/);
     expect(summary).toBeInTheDocument();
     expect(summary.textContent).toContain("running...");

@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMultiRun, useMultiRunFindings } from "@/lib/hooks/multi-runs";
 import { useRunEvents } from "@/lib/hooks/reviews";
 import RunTraceDrawer from "@/components/RunTraceDrawer";
+import { AppShell } from "@/components/app-shell";
 import { MultiRunHeader } from "../MultiRunHeader";
 import { ColumnsView } from "../ColumnsView";
 import { TabsView } from "../TabsView";
@@ -20,6 +21,8 @@ export interface MultiRunResultsViewProps {
 export function MultiRunResultsView({ multiRunId }: MultiRunResultsViewProps) {
   const t = useTranslations("multiRuns");
   const qc = useQueryClient();
+
+  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
 
   // ---- Data fetching --------------------------------------------------------
   const {
@@ -88,57 +91,63 @@ export function MultiRunResultsView({ multiRunId }: MultiRunResultsViewProps) {
   // ---- Loading state --------------------------------------------------------
   if (runLoading || findingsLoading) {
     return (
-      <div style={s.page}>
-        <div style={s.loadingWrap}>
-          <div
-            style={{
-              height: 32,
-              background: "var(--bg-elevated)",
-              borderRadius: 6,
-              width: "60%",
-            }}
-          />
-          <div
-            style={{
-              height: 20,
-              background: "var(--bg-elevated)",
-              borderRadius: 6,
-              width: "40%",
-            }}
-          />
-          <div
-            style={{
-              height: 200,
-              background: "var(--bg-elevated)",
-              borderRadius: 8,
-            }}
-          />
+      <AppShell crumb={crumb}>
+        <div style={s.page}>
+          <div style={s.loadingWrap}>
+            <div
+              style={{
+                height: 32,
+                background: "var(--bg-elevated)",
+                borderRadius: 6,
+                width: "60%",
+              }}
+            />
+            <div
+              style={{
+                height: 20,
+                background: "var(--bg-elevated)",
+                borderRadius: 6,
+                width: "40%",
+              }}
+            />
+            <div
+              style={{
+                height: 200,
+                background: "var(--bg-elevated)",
+                borderRadius: 8,
+              }}
+            />
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   // ---- Error state ----------------------------------------------------------
   if (runError || !multiRun) {
     return (
-      <div style={s.page}>
-        <div style={s.errorWrap}>
-          <div>{t("results.title")}</div>
-          <div>{t("results.loadError")}</div>
-          <button type="button" style={s.retryBtn} onClick={() => void refetchRun()}>
-            {t("results.retry")}
-          </button>
+      <AppShell crumb={crumb}>
+        <div style={s.page}>
+          <div style={s.errorWrap}>
+            <div>{t("results.title")}</div>
+            <div>{t("results.loadError")}</div>
+            <button type="button" style={s.retryBtn} onClick={() => void refetchRun()}>
+              {t("results.retry")}
+            </button>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   // ---- Normal render --------------------------------------------------------
   return (
+    <AppShell crumb={crumb}>
     <div style={s.page}>
       <MultiRunHeader
         prId={multiRun.pr_id}
         prNumber={multiRun.pr_number}
+        prTitle={multiRun.pr_title}
         agentCount={agents.length}
         allComplete={allComplete}
         totalDurationMs={multiRun.total_duration_ms}
@@ -180,5 +189,6 @@ export function MultiRunResultsView({ multiRunId }: MultiRunResultsViewProps) {
         />
       )}
     </div>
+    </AppShell>
   );
 }
