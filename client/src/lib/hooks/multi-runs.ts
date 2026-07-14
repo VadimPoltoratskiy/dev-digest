@@ -7,9 +7,10 @@ import {
   fetchAgentEstimates,
   fetchMultiRun,
   fetchMultiRunFindings,
+  fetchMultiRuns,
   triggerMultiReview,
 } from "../api";
-import type { AgentEstimate, MultiRunFindings, MultiRunRecord } from "@devdigest/shared";
+import type { AgentEstimate, MultiRunFindings, MultiRunRecord, MultiRunSummaryList } from "@devdigest/shared";
 
 /**
  * Per-agent time/cost estimates for the PR-page dropdown and Configure Run page.
@@ -52,5 +53,20 @@ export function useMultiRunFindings(multiRunId: string | null) {
     queryKey: ["multi-run-findings", multiRunId],
     queryFn: () => fetchMultiRunFindings(multiRunId!),
     enabled: !!multiRunId,
+  });
+}
+
+/**
+ * Paginated multi-agent run history for a repo.
+ * Pass `repoId = null` to disable (lazy-fetch-on-active-repo pattern).
+ */
+export function useMultiRuns(
+  repoId: string | null,
+  { limit, offset }: { limit: number; offset: number },
+) {
+  return useQuery<MultiRunSummaryList>({
+    queryKey: ["multi-runs", repoId, limit, offset],
+    queryFn: () => fetchMultiRuns(repoId!, limit, offset),
+    enabled: !!repoId,
   });
 }

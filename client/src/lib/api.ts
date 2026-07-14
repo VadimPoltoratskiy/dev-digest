@@ -16,6 +16,7 @@ import type {
   EvalRunRecord,
   MultiRunFindings,
   MultiRunRecord,
+  MultiRunSummaryList,
   Onboarding,
   PriorPrList,
   WhyTimeline,
@@ -224,6 +225,17 @@ export function fetchMultiRun(multiRunId: string): Promise<MultiRunRecord> {
 /** Fetch per-agent findings and cross-agent finding groups for a multi-run. */
 export function fetchMultiRunFindings(multiRunId: string): Promise<MultiRunFindings> {
   return apiFetch<MultiRunFindings>(`/multi-runs/${multiRunId}/findings`);
+}
+
+/** Fetch paginated multi-agent run history for a repo. */
+export function fetchMultiRuns(
+  repoId: string,
+  limit: number,
+  offset: number,
+): Promise<MultiRunSummaryList> {
+  return apiFetch<MultiRunSummaryList>(
+    `/multi-runs?repoId=${encodeURIComponent(repoId)}&limit=${limit}&offset=${offset}`,
+  );
 }
 
 // ---- Compose Review API functions ----

@@ -33,6 +33,7 @@ vi.mock('./service.js', () => {
   MultiRunsService.prototype.getMultiRun = vi.fn();
   MultiRunsService.prototype.getEstimates = vi.fn();
   MultiRunsService.prototype.getFindings = vi.fn();
+  MultiRunsService.prototype.listMultiRuns = vi.fn();
   return { MultiRunsService };
 });
 
@@ -60,6 +61,7 @@ const PR_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const MULTI_RUN_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const AGENT_ID_1 = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 const AGENT_ID_2 = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+const REPO_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 // ============================================================================
 // Test app factory
@@ -401,6 +403,104 @@ describe('multi-runs routes', () => {
       expect(res.statusCode).toBe(404);
       const body = res.json() as { error: { code: string } };
       expect(body.error.code).toBe('not_found');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /multi-runs
+  // -------------------------------------------------------------------------
+  describe('GET /multi-runs', () => {
+    const mockList = {
+      items: [
+        {
+          id: MULTI_RUN_ID,
+          pr_id: PR_ID,
+          pr_number: 42,
+          pr_title: 'Fix bug',
+          ran_at: '2026-07-01T00:00:00.000Z',
+          agent_count: 2,
+          status: 'done' as const,
+          total_cost_usd: 0.015,
+          total_duration_ms: 8000,
+        },
+      ],
+      total: 1,
+    };
+
+    it('returns 200 with MultiRunSummaryList on a valid request', async () => {
+      svc().listMultiRuns!.mockResolvedValue(mockList);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/multi-runs?repoId=${REPO_ID}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as typeof mockList;
+      expect(body.total).toBe(1);
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]!.id).toBe(MULTI_RUN_ID);
+      expect(svc().listMultiRuns!).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        REPO_ID,
+        { limit: 20, offset: 0 },
+      );
+    });
+
+    it('applies default limit=20 and offset=0 when those params are omitted', async () => {
+      svc().listMultiRuns!.mockResolvedValue({ items: [], total: 0 });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/multi-runs?repoId=${REPO_ID}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(svc().listMultiRuns!).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        REPO_ID,
+        { limit: 20, offset: 0 },
+      );
+    });
+
+    it('returns 422 when repoId is missing', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/multi-runs',
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(svc().listMultiRuns!).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 when repoId is not a valid UUID', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/multi-runs?repoId=not-a-uuid',
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(svc().listMultiRuns!).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 when limit is 0 (below min of 1)', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/multi-runs?repoId=${REPO_ID}&limit=0`,
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(svc().listMultiRuns!).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 when limit is 101 (above max of 100)', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/multi-runs?repoId=${REPO_ID}&limit=101`,
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(svc().listMultiRuns!).not.toHaveBeenCalled();
     });
   });
 });

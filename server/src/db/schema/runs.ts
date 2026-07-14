@@ -57,13 +57,23 @@ export const runTraces = pgTable('run_traces', {
   trace: jsonb('trace').notNull(),
 });
 
-export const multiAgentRuns = pgTable('multi_agent_runs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const multiAgentRuns = pgTable(
+  'multi_agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    /**
+     * Composite index for the paginated list query: equality filter on
+     * workspaceId + sort key ranAt DESC. Column order matches the query plan.
+     */
+    multiRunWorkspaceRanAtIdx: index('multi_agent_runs_workspace_id_ran_at_idx').on(t.workspaceId, t.ranAt),
+  }),
+);

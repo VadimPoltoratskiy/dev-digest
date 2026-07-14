@@ -22,7 +22,7 @@ export function MultiRunResultsView({ multiRunId }: MultiRunResultsViewProps) {
   const t = useTranslations("multiRuns");
   const qc = useQueryClient();
 
-  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
+  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs" }];
 
   // ---- Data fetching --------------------------------------------------------
   const {

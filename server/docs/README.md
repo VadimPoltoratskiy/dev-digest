@@ -70,7 +70,7 @@ flowchart TB
   end
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace) · /findings/:id/reply<br/>/pulls/:id/compose-review"]
-    multiRuns["multi-runs<br/>POST /pulls/:id/multi-review<br/>GET /multi-runs/:id<br/>GET /pulls/:id/agents/estimates<br/>GET /multi-runs/:id/findings"]
+    multiRuns["multi-runs<br/>GET /multi-runs<br/>POST /pulls/:id/multi-review<br/>GET /multi-runs/:id<br/>GET /pulls/:id/agents/estimates<br/>GET /multi-runs/:id/findings"]
   end
   subgraph Agents["Agents"]
     agents["agents<br/>/agents · /agents/:id"]

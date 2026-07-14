@@ -37,6 +37,8 @@ vi.mock('./repository.js', () => {
   MultiRunsRepository.prototype.getLastNRunsPerAgent = vi.fn();
   MultiRunsRepository.prototype.getLastFindingSummaryPerAgent = vi.fn();
   MultiRunsRepository.prototype.getReviewsAndFindingsByAgentRunIds = vi.fn();
+  MultiRunsRepository.prototype.findMultiRuns = vi.fn();
+  MultiRunsRepository.prototype.getAgentRunsForMultiRunIds = vi.fn();
   return { MultiRunsRepository };
 });
 
@@ -297,6 +299,141 @@ describe('MultiRunsService.getEstimates', () => {
     const service = new MultiRunsService(container);
     const estimates = await service.getEstimates(WS_ID, PR_ID);
     expect(estimates).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// listMultiRuns
+// ============================================================================
+
+describe('MultiRunsService.listMultiRuns', () => {
+  const REPO_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns { items: [], total: 0 } when findMultiRuns returns an empty array', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result).toEqual({ items: [], total: 0 });
+    expect(mockRepo().getAgentRunsForMultiRunIds!).not.toHaveBeenCalled();
+  });
+
+  it('derives status "running" when any child agent_run has a null status', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: null, costUsd: null, durationMs: null },
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: null, durationMs: null },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.status).toBe('running');
+  });
+
+  it('derives status "running" when any child agent_run has status "running"', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: 'running', costUsd: null, durationMs: null },
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: null, durationMs: null },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.status).toBe('running');
+  });
+
+  it('derives status "failed" when all child runs are terminal and at least one is "failed"', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: null, durationMs: null },
+      { multiRunId: MULTI_RUN_ID, status: 'failed', costUsd: null, durationMs: null },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.status).toBe('failed');
+  });
+
+  it('derives status "done" when all child runs have status "done"', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: '0.01', durationMs: 1000 },
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: '0.02', durationMs: 2000 },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.status).toBe('done');
+  });
+
+  it('sums total_cost_usd and total_duration_ms from child rows correctly', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: '0.01000000', durationMs: 3000 },
+      { multiRunId: MULTI_RUN_ID, status: 'done', costUsd: '0.00500000', durationMs: 5000 },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.total_cost_usd).toBeCloseTo(0.015, 6);
+    expect(result.items[0]!.total_duration_ms).toBe(8000);
+  });
+
+  it('total_cost_usd and total_duration_ms are null when no child rows have those values', async () => {
+    const container = makeContainer();
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: null, prTitle: null, ranAt: new Date(), total: '1' },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([
+      { multiRunId: MULTI_RUN_ID, status: 'running', costUsd: null, durationMs: null },
+    ]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.items[0]!.total_cost_usd).toBeNull();
+    expect(result.items[0]!.total_duration_ms).toBeNull();
+  });
+
+  it('coerces total correctly with Number() when the repo returns total as a bigint string', async () => {
+    const container = makeContainer();
+    // Simulate Postgres returning bigint as a string ('42')
+    mockRepo().findMultiRuns!.mockResolvedValue([
+      { id: MULTI_RUN_ID, prId: PR_ID, prNumber: 1, prTitle: 'PR', ranAt: new Date(), total: '42' as unknown as number },
+    ]);
+    mockRepo().getAgentRunsForMultiRunIds!.mockResolvedValue([]);
+
+    const service = new MultiRunsService(container);
+    const result = await service.listMultiRuns(WS_ID, REPO_ID, { limit: 20, offset: 0 });
+
+    expect(result.total).toBe(42);
+    expect(typeof result.total).toBe('number');
   });
 });
 

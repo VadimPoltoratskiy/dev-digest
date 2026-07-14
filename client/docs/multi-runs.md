@@ -2,36 +2,99 @@
 
 ## Overview
 
-The multi-agent review feature adds two Next.js routes under `app/multi-runs/`:
-a **Configure Run** page where the user picks a PR and selects agents, and a
-**Results** page that shows per-agent findings side-by-side plus a cross-agent
-"Where agents disagree" conflicts view. It also promoted two previously
-route-local components (`RunTraceDrawer`, `FindingCard`) to `components/` because
-the Results page needs them alongside the existing PR detail page.
+The multi-agent review feature adds three Next.js routes under `app/multi-runs/`:
+a **History** page listing past runs for the selected repo, a **Configure Run**
+page where the user picks a PR and selects agents, and a **Results** page that
+shows per-agent findings side-by-side plus a cross-agent "Where agents disagree"
+conflicts view. It also promoted two previously route-local components
+(`RunTraceDrawer`, `FindingCard`) to `components/` because the Results page needs
+them alongside the existing PR detail page.
 
-Both pages render inside `AppShell` so the left sidebar appears in all render
+All three pages render inside `AppShell` so the left sidebar appears in all render
 states (loading, error, and normal). The sidebar nav link
-(`client/src/vendor/ui/nav.ts:43`) points to `/multi-runs/configure`, and
-`activeKeyFor` (`client/src/components/app-shell/helpers.ts:28`) highlights the
+(`client/src/vendor/ui/nav.ts:43`) now points to `/multi-runs` (the history page),
+and `activeKeyFor` (`client/src/components/app-shell/helpers.ts:28`) highlights the
 nav item for all `/multi-runs/*` paths.
+
+**Breadcrumbs:** the History page shows a single crumb (`Multi-Agent Review` with
+`href: "/multi-runs"`). The Configure Run page shows two levels (`Multi-Agent
+Review → Configure run`), with the second level carrying no `href` since it is the
+current page. The Results page shows a single crumb (`Multi-Agent Review`) linking
+back to `/multi-runs`.
 
 ## Route map
 
 ```mermaid
 flowchart TD
   PR["/repos/:repoId/pulls/:number<br/>PR detail page"]
+  HIST["/multi-runs<br/>History page"]
   CFG["/multi-runs/configure?prId=<uuid><br/>Configure Run page"]
   RES["/multi-runs/:multiRunId<br/>Results page"]
 
   PR -->|"Click 'Run with multiple agents'"| CFG
+  HIST -->|"Click 'Configure run'"| CFG
   CFG -->|"POST /pulls/:id/multi-review → redirect"| RES
-  RES -->|"Link: Configure Run"| CFG
+  RES -->|"Breadcrumb: Multi-Agent Review"| HIST
 
-  CFG -->|"GET /pulls/:id/agents/estimates"| API[("Fastify API :3001")]
+  HIST -->|"GET /multi-runs?repoId=&limit=&offset="| API[("Fastify API :3001")]
+  CFG -->|"GET /pulls/:id/agents/estimates"| API
   RES -->|"GET /multi-runs/:id"| API
   RES -->|"GET /multi-runs/:id/findings"| API
   RES -->|"GET /runs/:id/events (SSE, per agent)"| API
 ```
+
+## History page (`/multi-runs`)
+
+**Files:**
+- `client/src/app/multi-runs/page.tsx` — thin RSC; no params or searchParams
+  needed; renders `MultiRunHistoryView`.
+- `client/src/app/multi-runs/_components/MultiRunHistoryView/MultiRunHistoryView.tsx`
+  (1–224)
+
+**Repo picker (`MultiRunHistoryView.tsx:23-35, 122-135`):** initializes
+`selectedRepoId` from `useActiveRepo()` once on first render, guarded by a
+`didInitRepo` ref to prevent resetting on every re-render. `useRepos()` supplies
+the dropdown options; the `<select>` is only rendered when `repos.length > 1`.
+Changing the repo resets `currentOffset` to 0 and clears `allItems`, which causes
+the accumulation effect (see below) to issue a fresh first-page fetch.
+
+**Pagination (`MultiRunHistoryView.tsx:38-57`):** `LIMIT = 20`, with `currentOffset`
+and `allItems` held in component state. `useMultiRuns(selectedRepoId, { limit:
+LIMIT, offset: currentOffset })` drives the query. A `useEffect` on
+`[data, currentOffset]` accumulates pages: when `currentOffset === 0` it replaces
+`allItems` with `data.items` (initial load or repo-change reset); otherwise it
+appends. This approach avoids `useInfiniteQuery` to keep the hook API consistent
+with the other hooks in `multi-runs.ts`.
+
+**Loading state (`MultiRunHistoryView.tsx:70-82`):** early return when
+`isLoading && allItems.length === 0` — suppresses the skeleton only on the first
+page; subsequent Load More requests show the already-accumulated rows while waiting.
+
+**Error state (`MultiRunHistoryView.tsx:84-99`):** early return when `isError`;
+renders `t("history.errorTitle")` and `t("history.errorBody")`.
+
+**Page header (`MultiRunHistoryView.tsx:106-119`):** `<h1>{t("history.title")}</h1>`
+on the left; a primary "Configure run" button on the right that navigates to
+`/multi-runs/configure?repoId=${selectedRepoId}`.
+
+**Table (`MultiRunHistoryView.tsx:156-207`):** six columns — PR, Agents, Status,
+Cost, Duration, Run at. PR cell shows `#{number} · {title}` when `pr_number` is
+non-null, falling back to the raw `pr_id`. Status cell renders
+`t("history.status.running/done/failed")`. Cost cell renders `$X.XXXX` via the
+`history.costValue` i18n key, or the `history.emptyValue` placeholder when
+`total_cost_usd` is null. Duration cell renders `Xs` via `history.durationValue`
+(rounding `total_duration_ms` to seconds), or the placeholder when null. Run at
+renders `new Date(item.ran_at).toLocaleString()`. The entire row is clickable and
+navigates to `/multi-runs/${item.id}`.
+
+**Empty state (`MultiRunHistoryView.tsx:138-153`):** shown when `allItems.length === 0`
+after the query resolves without error. Renders `t("history.emptyTitle")`,
+`t("history.emptyBody")`, and a "Configure run" link button.
+
+**Load more button (`MultiRunHistoryView.tsx:209-218`):** visible when
+`allItems.length < (data?.total ?? 0) && !isLoading`. Clicking it increments
+`currentOffset` by `LIMIT`, which triggers a new query and then the append branch
+of the accumulation effect.
 
 ## Configure Run page (`/multi-runs/configure`)
 
@@ -211,14 +274,17 @@ action, `onAction` invalidates the `["multi-run-findings", multiRunId]` query ke
 | `useRunMultiReview()` | mutation (no cache key) | always |
 | `useMultiRun(multiRunId)` | `["multi-run", multiRunId]` | `multiRunId != null` |
 | `useMultiRunFindings(multiRunId)` | `["multi-run-findings", multiRunId]` | `multiRunId != null` |
+| `useMultiRuns(repoId, { limit, offset })` | `["multi-runs", repoId, limit, offset]` | `repoId != null` |
 
-All four call functions from `lib/api.ts` (lines 204–229). Pass `null` to disable
+All five call functions from `lib/api.ts` (lines 204–239). Pass `null` to disable
 a query before the ID is known (lazy-fetch-on-open pattern).
 
 ## Related files
 
 | File | Lines | Purpose |
 |------|-------|---------|
+| `client/src/app/multi-runs/page.tsx` | 1–7 | Thin RSC; no params; renders `MultiRunHistoryView`. |
+| `client/src/app/multi-runs/_components/MultiRunHistoryView/MultiRunHistoryView.tsx` | 1–224 | History list: repo picker, offset pagination, run table, empty/loading/error states. |
 | `client/src/app/multi-runs/configure/page.tsx` | 1–13 | Thin RSC; reads `searchParams.prId`; renders `ConfigureRunView`. |
 | `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx` | 1–477 | Two-step configure UI: PR picker + agent cards + aggregate estimate footer. |
 | `client/src/app/multi-runs/configure/_components/ConfigureRunView/helpers.ts` | 1–38 | Pure `computeAggregateDuration` (max) and `computeAggregateCost` (sum). |
@@ -230,7 +296,7 @@ a query before the ID is known (lazy-fetch-on-open pattern).
 | `client/src/app/multi-runs/[multiRunId]/_components/ConflictsSection/ConflictsSection.tsx` | 1–108 | "Where agents disagree" panel; toggle for conflicts-only filter; `isConflict` predicate. |
 | `client/src/components/RunTraceDrawer/RunTraceDrawer.tsx` | 1–107 | Shared trace + live-log drawer; consumed by PR detail page and Results page. |
 | `client/src/components/FindingCard/FindingCard.tsx` | 1–196 | Shared finding card; consumed by PR detail `FindingsPanel` and multi-run `TabsView`. |
-| `client/src/lib/hooks/multi-runs.ts` | 1–56 | TanStack Query hooks: `useAgentEstimates`, `useRunMultiReview`, `useMultiRun`, `useMultiRunFindings`. |
-| `client/src/lib/api.ts` | 204–229 | API fetch functions: `fetchAgentEstimates`, `triggerMultiReview`, `fetchMultiRun`, `fetchMultiRunFindings`. |
-| `client/src/vendor/ui/nav.ts` | 43 | Nav item: `href: "/multi-runs/configure"` (key `"multi-agent"`). |
+| `client/src/lib/hooks/multi-runs.ts` | 1–72 | TanStack Query hooks: `useAgentEstimates`, `useRunMultiReview`, `useMultiRun`, `useMultiRunFindings`, `useMultiRuns`. |
+| `client/src/lib/api.ts` | 204–239 | API fetch functions: `fetchAgentEstimates`, `triggerMultiReview`, `fetchMultiRun`, `fetchMultiRunFindings`, `fetchMultiRuns`. |
+| `client/src/vendor/ui/nav.ts` | 43 | Nav item: `href: "/multi-runs"` (key `"multi-agent"`). |
 | `client/src/components/app-shell/helpers.ts` | 28 | `activeKeyFor`: `startsWith("/multi-runs")` returns `"multi-agent"`. |

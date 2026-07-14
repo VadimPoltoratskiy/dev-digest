@@ -4,7 +4,7 @@
 
 The `multi-runs` module lets the client fan a single pull request out to multiple
 review agents in one HTTP call, then query the aggregate results and the
-cross-agent finding groups once all agents finish. It adds four endpoints to the
+cross-agent finding groups once all agents finish. It adds five endpoints to the
 API surface and one new table (`multi_agent_runs`) with a nullable FK back-reference
 (`multi_agent_run_id`) on `agent_runs`.
 
@@ -52,8 +52,38 @@ sequenceDiagram
 
 ## API reference
 
-All four handlers call `getContext(container, req)` before any DB access to enforce
-workspace scoping (`server/src/modules/multi-runs/routes.ts:36,44,52,60`).
+All five handlers call `getContext(container, req)` before any DB access to enforce
+workspace scoping (`server/src/modules/multi-runs/routes.ts:40,57,72,82,92`).
+
+### `GET /multi-runs`
+
+**Querystring:** `repoId` (UUID, required), `limit` (integer 1–100, default 20),
+`offset` (integer ≥ 0, default 0). The schema is defined inline at `routes.ts:29-33`
+using `z.coerce` for the numeric params — URL querystring values arrive as strings
+and Fastify does not auto-coerce without it. A missing or non-UUID `repoId` is
+rejected 422 before the handler runs.
+
+**Response type:** `MultiRunSummaryList` (`observability.ts:243-247`).
+```
+{ items: MultiRunSummary[], total: number }
+```
+
+**What it does (`service.ts:213-278`):**
+1. Calls `findMultiRuns` (`repository.ts:283-316`) — one paginated `SELECT` with an
+   `INNER JOIN pull_requests` filtered on `workspaceId` and `repoId`, ordered
+   `ranAt DESC`. Uses `COUNT(*) OVER()` to include `total` in every row (avoids a
+   second COUNT query).
+2. Returns `{ items: [], total: 0 }` immediately when the page is empty.
+3. Calls `getAgentRunsForMultiRunIds` (`repository.ts:323-342`) — one `inArray`
+   query for all child `agent_runs` of the page's multi-run IDs (no N+1; identical
+   pattern to `pulls/routes.ts` cost aggregation).
+4. Groups `agent_runs` rows by `multiRunId` in JS via a `Map`; derives `status`
+   (`running` takes priority over `failed` which takes priority over `done`; zero
+   child runs = still setting up = `running`), sums `total_cost_usd` (string→float),
+   and sums `total_duration_ms` (`service.ts:242-277`).
+5. Coerces `COUNT(*) OVER()` with `Number(rows[0]!.total)` (`service.ts:222`) —
+   Postgres returns bigint as a string at runtime despite the `sql<number>`
+   annotation.
 
 ### `POST /pulls/:id/multi-review`
 
@@ -127,7 +157,7 @@ Response shape:
 
 ## DB schema additions
 
-**Table: `multi_agent_runs`** (`server/src/db/schema/runs.ts:60-69`)
+**Table: `multi_agent_runs`** (`server/src/db/schema/runs.ts:60-79`)
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -135,6 +165,11 @@ Response shape:
 | `workspace_id` | `uuid` FK → workspaces | Cascade delete. |
 | `pr_id` | `uuid` FK → pull_requests | Cascade delete. |
 | `ran_at` | `timestamptz` | Defaults to now. |
+
+**Index on `multi_agent_runs`:** `multi_agent_runs_workspace_id_ran_at_idx`
+(`runs.ts:77`) — a composite index on `(workspace_id, ran_at)`. Column order
+matches the query plan: `workspace_id` is the equality filter, `ran_at` is the
+DESC sort key for pagination. Added with the multi-run history feature.
 
 **FK on `agent_runs`:** `multi_agent_run_id uuid REFERENCES multi_agent_runs(id) ON DELETE SET NULL`
 (`runs.ts:40-41`). Null for all single-agent runs. The FK column is indexed
@@ -184,11 +219,12 @@ finding.severity]`).
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `server/src/modules/multi-runs/routes.ts` | 1–75 | Four Fastify route handlers; rate limit on POST; workspace scoping via `getContext`. |
-| `server/src/modules/multi-runs/service.ts` | 1–288 | Business logic: `createMultiRun`, `getMultiRun`, `getEstimates`, `getFindings`. No HTTP, no raw DB. |
-| `server/src/modules/multi-runs/repository.ts` | 1–336 | Drizzle queries: `insertMultiRun`, `findMultiRunById`, `getAgentRunsByMultiRunId`, `getLastNRunsPerAgent`, `getLastFindingSummaryPerAgent`, `getReviewsAndFindingsByAgentRunIds`. |
+| `server/src/modules/multi-runs/routes.ts` | 1–96 | Five Fastify route handlers; `ListMultiRunsQuery` schema inline; rate limit on POST; workspace scoping via `getContext`. |
+| `server/src/modules/multi-runs/service.ts` | 1–364 | Business logic: `createMultiRun`, `getMultiRun`, `getEstimates`, `listMultiRuns`, `getFindings`. No HTTP, no raw DB. |
+| `server/src/modules/multi-runs/repository.ts` | 1–421 | Drizzle queries: `insertMultiRun`, `findMultiRunById`, `getAgentRunsByMultiRunId`, `getLastNRunsPerAgent`, `getLastFindingSummaryPerAgent`, `getReviewsAndFindingsByAgentRunIds`, `findMultiRuns`, `getAgentRunsForMultiRunIds`. |
 | `server/src/modules/multi-runs/helpers.ts` | 1–96 | Pure `groupFindingsByFileAndOverlap` function. |
-| `server/src/db/schema/runs.ts` | 40–49 | `multi_agent_run_id` FK + index on `agent_runs`; `multi_agent_runs` table definition. |
+| `server/src/db/schema/runs.ts` | 40–79 | `multi_agent_run_id` FK + index on `agent_runs`; `multi_agent_runs` table definition and `multi_agent_runs_workspace_id_ran_at_idx` compound index. |
 | `server/src/modules/index.ts` | 20, 54 | Module registry entry for `multiRuns`. |
-| `server/src/vendor/shared/contracts/observability.ts` | 147–222 | Zod contracts: `MultiReviewRequest`, `AgentRunSummary`, `MultiRunRecord` (includes `pr_title`), `AgentEstimate`, `FindingGroup`, `MultiRunFindings`. |
+| `server/src/vendor/shared/contracts/observability.ts` | 147–247 | Zod contracts: `MultiReviewRequest`, `AgentRunSummary`, `MultiRunRecord` (includes `pr_title`), `AgentEstimate`, `FindingGroup`, `MultiRunFindings`, `MultiRunSummary`, `MultiRunSummaryList`. |
+| `client/src/vendor/shared/contracts/observability.ts` | 147–247 | Mirror of server contracts — must be kept in lockstep manually. |
 | `server/src/modules/reviews/service.ts` | 109–136 | `ReviewService.runReview` — accepts `opts.multiRunId` and sets the FK on `agent_runs` rows. |

@@ -220,3 +220,28 @@ export const MultiRunFindings = z.object({
   groups: z.array(FindingGroup),
 });
 export type MultiRunFindings = z.infer<typeof MultiRunFindings>;
+
+/** One row in the GET /multi-runs list response. */
+export const MultiRunSummary = z.object({
+  id: z.string().uuid(),
+  pr_id: z.string().uuid(),
+  /** Joined from pulls table; nullish for forward compat. */
+  pr_number: z.number().int().nullish(),
+  /** Joined from pulls table; nullish for forward compat. */
+  pr_title: z.string().nullish(),
+  ran_at: z.string(),
+  agent_count: z.number().int(),
+  status: z.enum(['running', 'done', 'failed']),
+  /** nullable: service always computes (null when no agent_runs have cost data yet). */
+  total_cost_usd: z.number().nullable(),
+  /** nullable: service always computes (null when no agent_runs have duration data yet). */
+  total_duration_ms: z.number().int().nullable(),
+});
+export type MultiRunSummary = z.infer<typeof MultiRunSummary>;
+
+/** Paginated response for GET /multi-runs. */
+export const MultiRunSummaryList = z.object({
+  items: z.array(MultiRunSummary),
+  total: z.number().int(),
+});
+export type MultiRunSummaryList = z.infer<typeof MultiRunSummaryList>;

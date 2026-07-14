@@ -314,7 +314,10 @@ export function ConfigureRunView({ initialPrId }: ConfigureRunViewProps) {
 
   const repos = repoList ?? [];
   const prs = pulls ?? [];
-  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
+  const crumb = [
+    { label: "Multi-Agent Review", href: "/multi-runs" },
+    { label: "Configure run" },
+  ];
 
   return (
     <AppShell crumb={crumb}>

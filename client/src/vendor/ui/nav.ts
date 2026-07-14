@@ -40,7 +40,7 @@ export const NAV: NavGroup[] = [
     section: "GLOBAL",
     items: [
       { key: "memory", label: "Memory", icon: "Database", href: "/memory" },
-      { key: "multi-agent", label: "Multi-Agent Review", icon: "Workflow", href: "/multi-runs/configure" },
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Workflow", href: "/multi-runs" },
       { key: "agent-performance", label: "Agent Performance", icon: "BarChart", href: "/agent-performance" },
       { key: "ci-runs", label: "CI Runs", icon: "Zap", href: "/ci-runs" },
     ],

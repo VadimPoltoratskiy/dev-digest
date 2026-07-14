@@ -35,6 +35,8 @@ import {
   getLastNRunsPerAgent,
   getLastFindingSummaryPerAgent,
   getReviewsAndFindingsByAgentRunIds,
+  findMultiRuns,
+  getAgentRunsForMultiRunIds,
 } from './repository.js';
 
 const hasDocker = await dockerAvailable();
@@ -505,6 +507,113 @@ d('multi-runs repository (Testcontainers pg)', () => {
     it('returns [] when agentRunIds is empty', async () => {
       const rows = await getReviewsAndFindingsByAgentRunIds(pg.handle.db, []);
       expect(rows).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. findMultiRuns
+  // -------------------------------------------------------------------------
+  describe('findMultiRuns', () => {
+    it('returns an empty array for a repo with no multi-runs', async () => {
+      const { workspaceId, repo } = await makeWorkspaceAndRepo(pg.handle.db);
+
+      const rows = await findMultiRuns(pg.handle.db, workspaceId, repo.id, { limit: 20, offset: 0 });
+      expect(rows).toHaveLength(0);
+    });
+
+    it('returns rows ordered by ranAt DESC (newest first)', async () => {
+      const { workspaceId, repo } = await makeWorkspaceAndRepo(pg.handle.db);
+      const pr = await makePr(pg.handle.db, workspaceId, repo.id);
+
+      // Insert two multi-runs. The DB sets ranAt to now() on insert;
+      // to guarantee ordering, insert them sequentially and rely on DESC order.
+      const idA = await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+      // Small pause to ensure different ranAt timestamps
+      await new Promise((r) => setTimeout(r, 50));
+      const idB = await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+
+      const rows = await findMultiRuns(pg.handle.db, workspaceId, repo.id, { limit: 20, offset: 0 });
+
+      // idB was inserted later → should appear first in DESC order
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      const ownedRows = rows.filter((r) => r.id === idA || r.id === idB);
+      expect(ownedRows[0]!.id).toBe(idB);
+      expect(ownedRows[1]!.id).toBe(idA);
+    });
+
+    it('total reflects full count when result set is larger than the page', async () => {
+      const { workspaceId, repo } = await makeWorkspaceAndRepo(pg.handle.db);
+      const pr = await makePr(pg.handle.db, workspaceId, repo.id);
+
+      // Insert 3 runs
+      await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+      await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+      await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+
+      // Fetch with limit=1 — only 1 row returned but total should be 3
+      const rows = await findMultiRuns(pg.handle.db, workspaceId, repo.id, { limit: 1, offset: 0 });
+
+      expect(rows).toHaveLength(1);
+      // COUNT(*) OVER() returns a bigint string at runtime — coerce to verify
+      expect(Number(rows[0]!.total)).toBe(3);
+    });
+
+    it('filters by repoId — runs for a different repo in the same workspace are excluded', async () => {
+      const { workspaceId, repo: repoA } = await makeWorkspaceAndRepo(pg.handle.db);
+      const [repoB] = await pg.handle.db
+        .insert(t.repos)
+        .values({ workspaceId, owner: 'acme', name: `repo-b-${seq++}`, fullName: `acme/repo-b-${seq}` })
+        .returning();
+
+      const prA = await makePr(pg.handle.db, workspaceId, repoA.id, 200);
+      const prB = await makePr(pg.handle.db, workspaceId, repoB!.id, 201);
+
+      await insertMultiRun(pg.handle.db, { workspaceId, prId: prA.id });
+      await insertMultiRun(pg.handle.db, { workspaceId, prId: prB!.id });
+
+      const rowsA = await findMultiRuns(pg.handle.db, workspaceId, repoA.id, { limit: 20, offset: 0 });
+      const rowsB = await findMultiRuns(pg.handle.db, workspaceId, repoB!.id, { limit: 20, offset: 0 });
+
+      // repoA rows should only contain the run for prA
+      expect(rowsA.every((r) => r.prId === prA.id)).toBe(true);
+      // repoB rows should only contain the run for prB
+      expect(rowsB.every((r) => r.prId === prB!.id)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. getAgentRunsForMultiRunIds
+  // -------------------------------------------------------------------------
+  describe('getAgentRunsForMultiRunIds', () => {
+    it('returns [] when multiRunIds is empty', async () => {
+      const rows = await getAgentRunsForMultiRunIds(pg.handle.db, []);
+      expect(rows).toHaveLength(0);
+    });
+
+    it('returns agent_runs rows for the given multiRunIds', async () => {
+      const { workspaceId, repo } = await makeWorkspaceAndRepo(pg.handle.db);
+      const pr = await makePr(pg.handle.db, workspaceId, repo.id);
+      const agent = await makeAgent(pg.handle.db, workspaceId);
+      const multiRunId = await insertMultiRun(pg.handle.db, { workspaceId, prId: pr.id });
+
+      await makeAgentRun(pg.handle.db, {
+        workspaceId,
+        agentId: agent.id,
+        prId: pr.id,
+        status: 'done',
+        costUsd: '0.01',
+        durationMs: 3000,
+        multiAgentRunId: multiRunId,
+      });
+
+      const rows = await getAgentRunsForMultiRunIds(pg.handle.db, [multiRunId]);
+
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      const ownedRows = rows.filter((r) => r.multiRunId === multiRunId);
+      expect(ownedRows).toHaveLength(1);
+      expect(ownedRows[0]!.status).toBe('done');
+      expect(ownedRows[0]!.costUsd).toBe('0.01000000');
+      expect(ownedRows[0]!.durationMs).toBe(3000);
     });
   });
 });

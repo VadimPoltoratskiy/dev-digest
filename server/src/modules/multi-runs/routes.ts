@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { MultiReviewRequest } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -23,6 +24,26 @@ export default async function multiRunsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
   const service = new MultiRunsService(container);
+
+  // Querystring schema for GET /multi-runs
+  const ListMultiRunsQuery = z.object({
+    repoId: z.string().uuid(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    offset: z.coerce.number().int().min(0).default(0),
+  });
+
+  // GET /multi-runs?repoId=&limit=&offset=
+  app.get(
+    '/multi-runs',
+    { schema: { querystring: ListMultiRunsQuery } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.listMultiRuns(workspaceId, req.query.repoId, {
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+    },
+  );
 
   // POST /pulls/:id/multi-review — create multi-agent run
   // Tight rate limit: each call fans out to N expensive LLM reviews.

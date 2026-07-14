@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { AgentEstimate, MultiRunRecord, MultiRunFindings, FindingRecord } from '@devdigest/shared';
+import type { AgentEstimate, MultiRunRecord, MultiRunFindings, FindingRecord, MultiRunSummary, MultiRunSummaryList } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewService } from '../reviews/service.js';
@@ -199,6 +199,82 @@ export class MultiRunsService {
         has_historical_data: hasHistoricalData,
       };
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /multi-runs
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Paginated list of multi-runs for a workspace + repo.
+   * Aggregates per-run status, cost, and duration from child agent_runs in
+   * one batch query (no N+1 — same pattern as pulls/routes.ts costByPr block).
+   */
+  async listMultiRuns(
+    workspaceId: string,
+    repoId: string,
+    { limit, offset }: { limit: number; offset: number },
+  ): Promise<MultiRunSummaryList> {
+    const rows = await this.repo.findMultiRuns(workspaceId, repoId, { limit, offset });
+    if (rows.length === 0) return { items: [], total: 0 };
+
+    // COUNT(*) OVER() returns a bigint string from Postgres — coerce explicitly.
+    const total = Number(rows[0]!.total);
+    const multiRunIds = rows.map((r) => r.id);
+
+    // Batch-fetch all child agent_runs (one round-trip, no N+1).
+    const agentRunRows = await this.repo.getAgentRunsForMultiRunIds(multiRunIds);
+
+    // Group by multiRunId in JS (same pattern as pulls/routes.ts costByPr block).
+    type AgentRunMini = { status: string | null; costUsd: string | null; durationMs: number | null };
+    const agentRunsMap = new Map<string, AgentRunMini[]>();
+    for (const ar of agentRunRows) {
+      if (!ar.multiRunId) continue; // null cannot occur given inArray filter
+      const list = agentRunsMap.get(ar.multiRunId) ?? [];
+      list.push(ar);
+      agentRunsMap.set(ar.multiRunId, list);
+    }
+
+    const items: MultiRunSummary[] = rows.map((row) => {
+      const childRuns = agentRunsMap.get(row.id) ?? [];
+
+      // Status: running > failed > done. Zero child runs = still setting up => running.
+      let status: 'running' | 'done' | 'failed';
+      if (childRuns.length === 0 || childRuns.some((r) => !r.status || r.status === 'running')) {
+        status = 'running';
+      } else if (childRuns.some((r) => r.status === 'failed')) {
+        status = 'failed';
+      } else {
+        status = 'done';
+      }
+
+      // Sum cost and duration (mirrors getMultiRun aggregation at service.ts:98-111).
+      let totalCostUsd: number | null = null;
+      let totalDurationMs: number | null = null;
+      for (const ar of childRuns) {
+        if (ar.costUsd !== null) {
+          const parsed = parseFloat(ar.costUsd);
+          if (!isNaN(parsed)) totalCostUsd = (totalCostUsd ?? 0) + parsed;
+        }
+        if (ar.durationMs !== null) {
+          totalDurationMs = (totalDurationMs ?? 0) + ar.durationMs;
+        }
+      }
+
+      return {
+        id: row.id,
+        pr_id: row.prId,
+        pr_number: row.prNumber ?? null,
+        pr_title: row.prTitle ?? null,
+        ran_at: row.ranAt.toISOString(),
+        agent_count: childRuns.length,
+        status,
+        total_cost_usd: totalCostUsd,
+        total_duration_ms: totalDurationMs,
+      };
+    });
+
+    return { items, total };
   }
 
   // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { FindingRow } from '../../db/rows.js';
@@ -271,6 +271,77 @@ export async function getReviewsAndFindingsByAgentRunIds(
 }
 
 // ---------------------------------------------------------------------------
+// List queries (for GET /multi-runs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Paginated list of multi_agent_runs for a workspace + repo.
+ * Includes `total` from COUNT(*) OVER() — note: Postgres returns this as a
+ * bigint string at runtime despite the `sql<number>` annotation. The service
+ * layer must coerce with `Number(rows[0]!.total)`.
+ */
+export async function findMultiRuns(
+  db: Db,
+  workspaceId: string,
+  repoId: string,
+  { limit, offset }: { limit: number; offset: number },
+): Promise<{
+  id: string;
+  prId: string;
+  prNumber: number | null;
+  prTitle: string | null;
+  ranAt: Date;
+  total: number;
+}[]> {
+  return db
+    .select({
+      id: t.multiAgentRuns.id,
+      prId: t.multiAgentRuns.prId,
+      prNumber: t.pullRequests.number,
+      prTitle: t.pullRequests.title,
+      ranAt: t.multiAgentRuns.ranAt,
+      total: sql<number>`count(*) over()`,
+    })
+    .from(t.multiAgentRuns)
+    .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.multiAgentRuns.prId))
+    .where(
+      and(
+        eq(t.multiAgentRuns.workspaceId, workspaceId),
+        eq(t.pullRequests.repoId, repoId),
+      ),
+    )
+    .orderBy(desc(t.multiAgentRuns.ranAt))
+    .limit(limit)
+    .offset(offset);
+}
+
+/**
+ * Batch-fetch child agent_runs for a list of multi-run IDs.
+ * Returns lightweight rows for status/cost/duration aggregation in the service.
+ * Returns `[]` immediately when `multiRunIds` is empty (avoids an invalid `IN ()`).
+ */
+export async function getAgentRunsForMultiRunIds(
+  db: Db,
+  multiRunIds: string[],
+): Promise<{
+  multiRunId: string | null;
+  status: string | null;
+  costUsd: string | null;
+  durationMs: number | null;
+}[]> {
+  if (multiRunIds.length === 0) return [];
+  return db
+    .select({
+      multiRunId: t.agentRuns.multiAgentRunId,
+      status: t.agentRuns.status,
+      costUsd: t.agentRuns.costUsd,
+      durationMs: t.agentRuns.durationMs,
+    })
+    .from(t.agentRuns)
+    .where(inArray(t.agentRuns.multiAgentRunId, multiRunIds));
+}
+
+// ---------------------------------------------------------------------------
 // Repository class wrapper (for DI pattern used by the service)
 // ---------------------------------------------------------------------------
 
@@ -332,5 +403,19 @@ export class MultiRunsRepository {
     }[]
   > {
     return getReviewsAndFindingsByAgentRunIds(this.db, agentRunIds);
+  }
+
+  findMultiRuns(
+    workspaceId: string,
+    repoId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ id: string; prId: string; prNumber: number | null; prTitle: string | null; ranAt: Date; total: number }[]> {
+    return findMultiRuns(this.db, workspaceId, repoId, opts);
+  }
+
+  getAgentRunsForMultiRunIds(
+    multiRunIds: string[],
+  ): Promise<{ multiRunId: string | null; status: string | null; costUsd: string | null; durationMs: number | null }[]> {
+    return getAgentRunsForMultiRunIds(this.db, multiRunIds);
   }
 }

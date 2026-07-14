@@ -1,4 +1,29 @@
 {
+  "history": {
+    "title": "Multi-Agent Review",
+    "configureRun": "Configure run",
+    "emptyTitle": "No runs yet",
+    "emptyBody": "No multi-agent review runs for this repo yet.",
+    "loadMore": "Load more",
+    "errorTitle": "Failed to load history",
+    "errorBody": "Could not load multi-agent run history.",
+    "columns": {
+      "pr": "PR",
+      "agents": "Agents",
+      "status": "Status",
+      "cost": "Cost",
+      "duration": "Duration",
+      "ranAt": "Run at"
+    },
+    "status": {
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "emptyValue": "—",
+    "costValue": "${value}",
+    "durationValue": "{seconds}s"
+  },
   "results": {
     "title": "Multi-Agent Review",
     "breadcrumb": "Multi-Agent Review > #{number}",
