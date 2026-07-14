@@ -33,7 +33,6 @@
     "noMatchBody": "Adjust the filters above, or run a review to generate findings."
   },
   "runReview": {
-    "runAll": "Run all enabled agents",
     "configureAgents": "Configure agents…",
     "running": "Running…",
     "runReview": "Run Review",
@@ -44,7 +43,9 @@
     "estimateLabel": "≈ {duration}s · ${cost}",
     "estimatesLoading": "Loading…",
     "pickAgents": "Pick agents to run",
-    "clear": "Clear"
+    "clear": "Clear",
+    "noAgentsYet": "No agents yet — create one",
+    "noEnabledAgents": "No enabled agents — enable one to run a review"
   },
   "runStatus": {
     "elapsed": "Running · {count} agent(s)",

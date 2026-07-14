@@ -1,6 +1,8 @@
-/* RunReviewDropdown — PR-page trigger for single-agent and multi-agent reviews.
-   - Single-agent: "Run all enabled agents" / per-agent items call POST /pulls/:id/review.
-   - Multi-agent: checkbox picker with per-agent estimates; calls POST /pulls/:id/multi-review.
+/* RunReviewDropdown — PR-page trigger for the multi-agent review picker.
+   Replaces the old "one agent or all agents" menu: check any number of agents
+   (1..N) and click "Run multi-agent review (N)" to fan out via
+   POST /pulls/:id/multi-review. Running exactly one agent is just a 1-agent
+   multi-run — there is no separate single-agent code path here anymore.
    The dropdown manages its own `open` state so estimates can be lazy-fetched on open
    (INSIGHTS: lazy-fetch-on-open pattern). */
 "use client";
@@ -11,7 +13,6 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Checkbox, Icon } from "@devdigest/ui";
 import { useAgents } from "../../../../../../../lib/hooks/agents";
-import { useRunReview } from "../../../../../../../lib/hooks/reviews";
 import { useAgentEstimates, useRunMultiReview } from "../../../../../../../lib/hooks/multi-runs";
 import { DROPDOWN_WIDTH, ESTIMATE_COLUMN_WIDTH } from "./constants";
 import type { AgentEstimate } from "@devdigest/shared";
@@ -98,7 +99,6 @@ export function RunReviewDropdown({
   const t = useTranslations("prReview");
   const router = useRouter();
   const { data: agents } = useAgents();
-  const run = useRunReview();
   const runMultiReview = useRunMultiReview();
 
   const [open, setOpen] = React.useState(false);
@@ -111,8 +111,7 @@ export function RunReviewDropdown({
   );
 
   const all = agents ?? [];
-  const hasEnabled = all.some((a) => a.enabled);
-  const isPending = run.isPending || runMultiReview.isPending;
+  const isPending = runMultiReview.isPending;
 
   // Close dropdown + reset selection on click-outside.
   React.useEffect(() => {
@@ -132,19 +131,7 @@ export function RunReviewDropdown({
     setSelectedAgentIds(new Set());
   };
 
-  // ---- Single-agent kick ----
-  const kick = async (opts: { all?: boolean; agentId?: string }) => {
-    onRunStart?.();
-    closeDropdown();
-    try {
-      const res = await run.mutateAsync({ prId, ...opts });
-      onRunsStarted?.(res.runs.map((r) => r.run_id));
-    } finally {
-      onRunSettled?.();
-    }
-  };
-
-  // ---- Multi-agent kick ----
+  // ---- Multi-agent kick (also used for a single selected agent) ----
   const kickMulti = async () => {
     const agentIds = [...selectedAgentIds];
     onRunStart?.();
@@ -186,16 +173,6 @@ export function RunReviewDropdown({
   };
 
   const canRunMulti = selectedAgentIds.size > 0;
-
-  // Per-agent single-run items (unchanged from original).
-  const agentMenuItems =
-    all.length > 0
-      ? all.map((a) => ({
-          label: a.name,
-          hint: a.enabled ? a.model : `${a.model} · disabled`,
-          agentId: a.id,
-        }))
-      : null;
 
   return (
     <div ref={dropdownRef} style={{ position: "relative", display: "inline-block" }}>
@@ -302,6 +279,17 @@ export function RunReviewDropdown({
             >
               {t("runReview.estimatesLoading")}
             </div>
+          ) : (estimates ?? []).length === 0 ? (
+            <MenuItem
+              label={
+                all.length === 0
+                  ? t("runReview.noAgentsYet")
+                  : t("runReview.noEnabledAgents")
+              }
+              icon="Plus"
+              muted
+              onClick={() => router.push("/agents")}
+            />
           ) : (
             (estimates ?? []).map((estimate) => (
               <div
@@ -369,37 +357,6 @@ export function RunReviewDropdown({
               {t("runReview.runMultiAgentReview", { count: selectedAgentIds.size })}
             </button>
           </div>
-
-          <Divider />
-
-          {/* Run all enabled agents (single-agent path, unchanged). */}
-          <MenuItem
-            label={t("runReview.runAll")}
-            icon="Play"
-            muted={!hasEnabled}
-            onClick={() => kick({ all: true })}
-          />
-
-          <Divider />
-
-          {/* Per-agent single-run items (unchanged). */}
-          {agentMenuItems
-            ? agentMenuItems.map((a) => (
-                <MenuItem
-                  key={a.agentId}
-                  label={a.label}
-                  icon="Cpu"
-                  onClick={() => kick({ agentId: a.agentId })}
-                />
-              ))
-            : (
-              <MenuItem
-                label="No agents yet — create one"
-                icon="Plus"
-                muted
-                onClick={() => router.push("/agents")}
-              />
-            )}
 
           <Divider />
 

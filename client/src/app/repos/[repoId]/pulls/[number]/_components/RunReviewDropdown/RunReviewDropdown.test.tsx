@@ -29,16 +29,12 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("../../../../../../../lib/hooks/agents", () => ({
-  useAgents: () => ({
+  useAgents: vi.fn(() => ({
     data: [
       { id: "a1", name: "Security", model: "gpt-4.1", enabled: true },
       { id: "a2", name: "Style", model: "claude-3", enabled: true },
     ],
-  }),
-}));
-
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useRunReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  })),
 }));
 
 const mockMutateAsync = vi.fn().mockResolvedValue({
@@ -74,6 +70,7 @@ vi.mock("../../../../../../../lib/hooks/multi-runs", () => ({
 // Import after vi.mock declarations.
 import { RunReviewDropdown } from "./RunReviewDropdown";
 import { useAgentEstimates } from "../../../../../../../lib/hooks/multi-runs";
+import { useAgents } from "../../../../../../../lib/hooks/agents";
 
 // ---- Lifecycle --------------------------------------------------------------
 
@@ -84,6 +81,12 @@ afterEach(() => {
   vi.mocked(useAgentEstimates).mockReturnValue(
     { data: defaultEstimates, isLoading: false } as ReturnType<typeof useAgentEstimates>,
   );
+  vi.mocked(useAgents).mockReturnValue({
+    data: [
+      { id: "a1", name: "Security", model: "gpt-4.1", enabled: true },
+      { id: "a2", name: "Style", model: "claude-3", enabled: true },
+    ],
+  } as ReturnType<typeof useAgents>);
   mockMutateAsync.mockResolvedValue({
     multi_run_id: "mr-1",
     runs: [{ run_id: "run-1", agent_id: "a1", agent_name: "Security" }],
@@ -211,5 +214,57 @@ describe("RunReviewDropdown", () => {
 
     const configureLink = screen.getByRole("link", { name: /Configure agents/i });
     expect(configureLink).toHaveAttribute("href", "/multi-runs/configure?prId=pr-cfg");
+  });
+
+  it("checking a checkbox only toggles selection — it does not start a run", () => {
+    renderWithIntl(<RunReviewDropdown prId="pr-test" />);
+    openDropdown();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]!);
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("does not render the legacy 'run all agents' / per-agent immediate-run list", () => {
+    renderWithIntl(<RunReviewDropdown prId="pr-test" />);
+    openDropdown();
+
+    expect(screen.queryByText(/Run all enabled agents/i)).not.toBeInTheDocument();
+    // Only the checkbox-labeled agent rows should render — no duplicate plain
+    // menu-item entries for the same agent names outside the checkbox list.
+    expect(screen.getAllByText("Security")).toHaveLength(1);
+    expect(screen.getAllByText("Style")).toHaveLength(1);
+  });
+
+  it("shows 'No agents yet — create one' when the workspace has zero agents", () => {
+    vi.mocked(useAgents).mockReturnValue({ data: [] } as unknown as ReturnType<
+      typeof useAgents
+    >);
+    vi.mocked(useAgentEstimates).mockReturnValue(
+      { data: [] as AgentEstimate[], isLoading: false } as ReturnType<typeof useAgentEstimates>,
+    );
+
+    renderWithIntl(<RunReviewDropdown prId="pr-empty" />);
+    openDropdown();
+
+    expect(screen.getByText("No agents yet — create one")).toBeInTheDocument();
+  });
+
+  it("shows 'No enabled agents' when agents exist but none are enabled", () => {
+    vi.mocked(useAgents).mockReturnValue({
+      data: [{ id: "a1", name: "Security", model: "gpt-4.1", enabled: false }],
+    } as unknown as ReturnType<typeof useAgents>);
+    vi.mocked(useAgentEstimates).mockReturnValue(
+      { data: [] as AgentEstimate[], isLoading: false } as ReturnType<typeof useAgentEstimates>,
+    );
+
+    renderWithIntl(<RunReviewDropdown prId="pr-disabled" />);
+    openDropdown();
+
+    expect(
+      screen.getByText("No enabled agents — enable one to run a review"),
+    ).toBeInTheDocument();
   });
 });
