@@ -1,16 +1,18 @@
 import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
 import type { AgentEvalCase, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type { ComposeReviewBody, ComposeReviewResponse } from '@devdigest/shared';
 import { AppError, NotFoundError, ValidationError } from '../../platform/errors.js';
-import type { AgentRow } from '../../db/rows.js';
+import type { AgentRow, FindingRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import type { IntentRecord } from './repository.js';
-import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
+import { type ReviewDto, type ReviewDtoFinding, buildCommentBody } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 import { IntentClassifier } from './intent-classifier.js';
 import { getPrFilePatch, insertFindingEvalCase } from './repository/eval-case.repo.js';
+import { loadDiff } from './diff-loader.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -290,6 +292,107 @@ export class ReviewService {
       return { comment };
     } catch (err) {
       throw new AppError('github_comment_failed', 'Failed to post the reply to GitHub.', 400, {
+        cause: String(err),
+      });
+    }
+  }
+
+  /**
+   * Post a human-curated GitHub PR review (verdict + optional inline comments
+   * derived from selected AI findings). Each selected finding becomes one inline
+   * comment anchored to its file path and end line. Findings whose end_line falls
+   * outside the current PR diff are silently omitted (GitHub would reject them
+   * with a 422); the count of omitted findings is returned in `omitted_count`.
+   *
+   * Security: `finding_ids` are verified to belong to the request's workspace +
+   * PR before their content is passed to GitHub. Out-of-scope IDs raise a 404.
+   */
+  async composeReview(
+    workspaceId: string,
+    prId: string,
+    body: ComposeReviewBody,
+  ): Promise<ComposeReviewResponse> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const repoRow = await this.repo.getRepo(pull.repoId);
+    if (!repoRow) throw new NotFoundError('Repo not found');
+
+    // Scope-guard: verify all requested finding IDs belong to this workspace + PR.
+    let findings: FindingRow[] = [];
+    if (body.finding_ids.length > 0) {
+      findings = await this.repo.findFindingsByIdsForPr(workspaceId, prId, body.finding_ids);
+      if (findings.length !== body.finding_ids.length) {
+        throw new NotFoundError('One or more findings not found for this PR');
+      }
+    }
+
+    let gh: GitHubClient;
+    try {
+      gh = await this.container.github();
+    } catch {
+      throw new AppError(
+        'github_unavailable',
+        'Connect a GitHub token to post a review.',
+        400,
+      );
+    }
+
+    // Pre-filter: partition findings into those whose end_line falls inside the
+    // PR diff hunks (GitHub accepts them) vs. those outside (GitHub rejects with 422).
+    let comments: { path: string; line: number; body: string }[] = [];
+    let omittedCount = 0;
+
+    if (findings.length > 0) {
+      const diff = await loadDiff(this.container, this.repo, workspaceId, pull, repoRow);
+
+      // Build a lookup: file path → Set of new-side line numbers present in the diff.
+      const diffLines = new Map<string, Set<number>>();
+      for (const file of diff.files) {
+        const lineSet = new Set<number>();
+        for (const hunk of file.hunks) {
+          for (const ln of hunk.newLineNumbers) {
+            lineSet.add(ln);
+          }
+        }
+        diffLines.set(file.path, lineSet);
+      }
+
+      const inDiff: FindingRow[] = [];
+      const outOfDiff: FindingRow[] = [];
+      for (const f of findings) {
+        const lineSet = diffLines.get(f.file);
+        if (lineSet?.has(f.endLine)) {
+          inDiff.push(f);
+        } else {
+          outOfDiff.push(f);
+        }
+      }
+
+      omittedCount = outOfDiff.length;
+      comments = inDiff.map((f) => ({
+        path: f.file,
+        line: f.endLine,
+        body: buildCommentBody(f),
+      }));
+    }
+
+    try {
+      const result = await gh.postReview(
+        { owner: repoRow.owner, name: repoRow.name },
+        pull.number,
+        {
+          body: body.body,
+          event: body.verdict,
+          comments: comments.length > 0 ? comments : undefined,
+        },
+      );
+      return {
+        github_review_id: result.id,
+        ...(omittedCount > 0 ? { omitted_count: omittedCount } : {}),
+      };
+    } catch (err) {
+      throw new AppError('github_review_failed', 'Failed to post the review to GitHub.', 400, {
         cause: String(err),
       });
     }

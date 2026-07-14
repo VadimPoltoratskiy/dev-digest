@@ -116,6 +116,33 @@ export async function findingContext(
   return { finding, review, pull };
 }
 
+/**
+ * Find findings by a set of IDs, scoped to a specific PR and workspace.
+ * Used as a security guard in composeReview to prevent cross-workspace data leaks.
+ * Returns only findings whose review's PR matches prId + workspaceId.
+ */
+export async function findFindingsByIdsForPr(
+  db: Db,
+  workspaceId: string,
+  prId: string,
+  findingIds: string[],
+): Promise<FindingRow[]> {
+  if (findingIds.length === 0) return [];
+  const rows = await db
+    .select({ finding: t.findings })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+    .innerJoin(t.pullRequests, eq(t.reviews.prId, t.pullRequests.id))
+    .where(
+      and(
+        inArray(t.findings.id, findingIds),
+        eq(t.pullRequests.id, prId),
+        eq(t.pullRequests.workspaceId, workspaceId),
+      ),
+    );
+  return rows.map((r) => r.finding);
+}
+
 export async function setFindingAccepted(
   db: Db,
   findingId: string,

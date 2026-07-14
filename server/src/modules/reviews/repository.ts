@@ -119,6 +119,18 @@ export class ReviewRepository {
     return reviewRepo.findingContext(this.db, findingId);
   }
 
+  /**
+   * Batch-fetch findings by IDs, scoped to a PR + workspace (security guard).
+   * Returns only findings belonging to the given PR in the given workspace.
+   */
+  findFindingsByIdsForPr(
+    workspaceId: string,
+    prId: string,
+    findingIds: string[],
+  ): Promise<FindingRow[]> {
+    return reviewRepo.findFindingsByIdsForPr(this.db, workspaceId, prId, findingIds);
+  }
+
   setFindingAccepted(findingId: string, at: Date | null): Promise<FindingRow | undefined> {
     return reviewRepo.setFindingAccepted(this.db, findingId, at);
   }

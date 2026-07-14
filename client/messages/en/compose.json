@@ -7,6 +7,7 @@
     "post": "Post review to GitHub",
     "posting": "Posting…",
     "postedWithId": "Review posted to GitHub · id {id}.",
+    "postedWithOmissions": "Review posted to GitHub · id {id} · {count} comment(s) skipped (out of diff).",
     "posted": "Review posted to GitHub.",
     "verdictLabel": "Verdict",
     "verdicts": {
@@ -16,6 +17,7 @@
     },
     "reviewBody": "Review body",
     "markdownEditable": "markdown · editable",
-    "findingsCount": "{count, plural, one {# finding} other {# findings}}"
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "errorGithubUnavailable": "Connect a GitHub token in Settings → API Keys."
   }
 }

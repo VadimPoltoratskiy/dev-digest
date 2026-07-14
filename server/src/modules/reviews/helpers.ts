@@ -74,6 +74,16 @@ export function reviewToDto(
 }
 
 /**
+ * Build the inline comment body for a finding posted as part of a composed
+ * GitHub PR review. Severity + title provide context; suggestion is preferred
+ * over rationale for actionability.
+ */
+export function buildCommentBody(f: FindingRow): string {
+  const content = f.suggestion ?? f.rationale;
+  return `**[${f.severity}] ${f.title}**\n\n${content}`;
+}
+
+/**
  * Build the per-run task instruction line for a PR.
  *
  * The TRUSTED part (ours) states the task and the non-negotiable rule: review

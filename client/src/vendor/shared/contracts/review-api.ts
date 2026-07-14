@@ -63,3 +63,19 @@ export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;
 export type SmartDiffResponse = z.infer<typeof SmartDiffResponse>;
+
+/** POST /pulls/:id/compose-review request body. */
+export const ComposeReviewBody = z.object({
+  verdict: z.enum(['APPROVE', 'COMMENT', 'REQUEST_CHANGES']),
+  body: z.string(),
+  finding_ids: z.array(z.string()),
+});
+export type ComposeReviewBody = z.infer<typeof ComposeReviewBody>;
+
+/** POST /pulls/:id/compose-review response. */
+export const ComposeReviewResponse = z.object({
+  github_review_id: z.string(),
+  /** Number of selected findings whose file+line was outside the PR diff and omitted. */
+  omitted_count: z.number().int().optional(),
+});
+export type ComposeReviewResponse = z.infer<typeof ComposeReviewResponse>;

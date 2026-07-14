@@ -9,6 +9,8 @@ import type {
   AgentEvalCompare,
   Brief,
   BriefTimeline,
+  ComposeReviewBody,
+  ComposeReviewResponse,
   EvalDashboard,
   EvalDashboardAgentSummary,
   EvalRunRecord,
@@ -222,4 +224,14 @@ export function fetchMultiRun(multiRunId: string): Promise<MultiRunRecord> {
 /** Fetch per-agent findings and cross-agent finding groups for a multi-run. */
 export function fetchMultiRunFindings(multiRunId: string): Promise<MultiRunFindings> {
   return apiFetch<MultiRunFindings>(`/multi-runs/${multiRunId}/findings`);
+}
+
+// ---- Compose Review API functions ----
+
+/** POST /pulls/:id/compose-review — post a human-curated GitHub PR review. */
+export function postComposeReview(
+  prId: string,
+  body: ComposeReviewBody,
+): Promise<ComposeReviewResponse> {
+  return api.post<ComposeReviewResponse>(`/pulls/${prId}/compose-review`, body);
 }
