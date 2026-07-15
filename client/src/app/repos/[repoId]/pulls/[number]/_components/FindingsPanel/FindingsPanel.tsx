@@ -6,7 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
-import { FindingCard } from "../FindingCard";
+import { FindingCard } from "@/components/FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { useTurnFindingIntoEvalCase } from "../../../../../../../lib/hooks/agents-eval";
 import { KEY_TO_ACTION } from "./constants";

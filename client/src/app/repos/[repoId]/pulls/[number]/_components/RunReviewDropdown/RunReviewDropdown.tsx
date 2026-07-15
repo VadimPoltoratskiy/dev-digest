@@ -1,15 +1,80 @@
-/* RunReviewDropdown — ported from components2.jsx.
-   "Run all enabled agents" / a specific agent → kicks off POST /pulls/:id/review
-   and hands the resulting runIds up so the parent can stream SSE live status. */
+/* RunReviewDropdown — PR-page trigger for the multi-agent review picker.
+   Replaces the old "one agent or all agents" menu: check any number of agents
+   (1..N) and click "Run multi-agent review (N)" to fan out via
+   POST /pulls/:id/multi-review. Running exactly one agent is just a 1-agent
+   multi-run — there is no separate single-agent code path here anymore.
+   The dropdown manages its own `open` state so estimates can be lazy-fetched on open
+   (INSIGHTS: lazy-fetch-on-open pattern). */
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
+import { Button, Checkbox, Icon } from "@devdigest/ui";
 import { useAgents } from "../../../../../../../lib/hooks/agents";
-import { useRunReview } from "../../../../../../../lib/hooks/reviews";
-import { DROPDOWN_WIDTH } from "./constants";
+import { useAgentEstimates, useRunMultiReview } from "../../../../../../../lib/hooks/multi-runs";
+import { DROPDOWN_WIDTH, ESTIMATE_COLUMN_WIDTH } from "./constants";
+import type { AgentEstimate } from "@devdigest/shared";
+
+// ---- Helpers ----------------------------------------------------------------
+
+function formatDuration(ms: number): number {
+  return Math.round(ms / 1000);
+}
+
+function formatCost(usd: number): string {
+  return usd.toFixed(2);
+}
+
+// ---- Sub-components ---------------------------------------------------------
+
+function Divider() {
+  return <div style={{ height: 1, background: "var(--border)", margin: "6px 0" }} />;
+}
+
+function MenuItem({
+  label,
+  icon,
+  muted,
+  onClick,
+}: {
+  label: string;
+  icon?: keyof typeof Icon;
+  muted?: boolean;
+  onClick?: () => void;
+}) {
+  const [hover, setHover] = React.useState(false);
+  const I = icon ? Icon[icon] : null;
+  return (
+    <button
+      type="button"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: 6,
+        border: "none",
+        background: hover ? "var(--bg-hover)" : "transparent",
+        color: muted ? "var(--text-secondary)" : "var(--text-primary)",
+        fontSize: 14,
+        fontWeight: 500,
+        textAlign: "left",
+        cursor: "pointer",
+      }}
+    >
+      {I && <I size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+}
+
+// ---- Main component ---------------------------------------------------------
 
 export function RunReviewDropdown({
   prId,
@@ -34,68 +99,288 @@ export function RunReviewDropdown({
   const t = useTranslations("prReview");
   const router = useRouter();
   const { data: agents } = useAgents();
-  const run = useRunReview();
-  const all = agents ?? [];
-  const hasEnabled = all.some((a) => a.enabled);
+  const runMultiReview = useRunMultiReview();
 
-  const kick = async (opts: { all?: boolean; agentId?: string }) => {
+  const [open, setOpen] = React.useState(false);
+  const [selectedAgentIds, setSelectedAgentIds] = React.useState<Set<string>>(new Set());
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Lazy-fetch estimates only when dropdown is open (INSIGHTS: lazy-fetch-on-open pattern).
+  const { data: estimates, isLoading: estimatesLoading } = useAgentEstimates(
+    open ? prId : null,
+  );
+
+  const all = agents ?? [];
+  const isPending = runMultiReview.isPending;
+
+  // Close dropdown + reset selection on click-outside.
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSelectedAgentIds(new Set());
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const closeDropdown = () => {
+    setOpen(false);
+    setSelectedAgentIds(new Set());
+  };
+
+  // ---- Multi-agent kick (also used for a single selected agent) ----
+  const kickMulti = async () => {
+    const agentIds = [...selectedAgentIds];
     onRunStart?.();
+    closeDropdown();
     try {
-      const res = await run.mutateAsync({ prId, ...opts });
+      const res = await runMultiReview.mutateAsync({ prId, agentIds });
       onRunsStarted?.(res.runs.map((r) => r.run_id));
+      router.push(`/multi-runs/${res.multi_run_id}`);
     } finally {
       onRunSettled?.();
     }
   };
 
-  // List EVERY agent (not just enabled) so they're always visible; a specific
-  // agent can be run regardless of its enabled flag. "Run all" still targets
-  // only enabled agents.
-  const agentItems: DropdownItemDef[] = all.length
-    ? all.map((a) => ({
-        label: a.name,
-        icon: "Cpu" as const,
-        hint: a.enabled ? a.model : `${a.model} · disabled`,
-        onClick: () => kick({ agentId: a.id }),
-      }))
-    : [{ label: "No agents yet — create one", icon: "Plus", muted: true, onClick: () => router.push("/agents") }];
+  const toggleAgent = (agentId: string) => {
+    setSelectedAgentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentId)) {
+        next.delete(agentId);
+      } else {
+        next.add(agentId);
+      }
+      return next;
+    });
+  };
 
-  const items: DropdownItemDef[] = [
-    // Merged/closed PRs can still be reviewed (informational only); lead with a
-    // muted, non-actionable warning so the intent is clear.
-    ...(warnMerged
-      ? [
-          { label: t("runReview.mergedWarning"), icon: "AlertTriangle" as const, muted: true },
-          { divider: true } as DropdownItemDef,
-        ]
-      : []),
-    {
-      label: t("runReview.runAll"),
-      icon: "Play",
-      ...(hasEnabled ? {} : { muted: true }),
-      onClick: () => kick({ all: true }),
-    },
-    { divider: true },
-    ...agentItems,
-    { divider: true },
-    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push("/agents") },
-  ];
+  const getEstimateLabel = (estimate: AgentEstimate): string => {
+    if (!estimate.has_historical_data) {
+      return t("runReview.noHistoryYet");
+    }
+    const durationMs = estimate.estimated_duration_ms;
+    const costUsd = estimate.estimated_cost_usd;
+    if (durationMs != null && costUsd != null) {
+      return t("runReview.estimateLabel", {
+        duration: formatDuration(durationMs),
+        cost: formatCost(costUsd),
+      });
+    }
+    return t("runReview.noHistoryYet");
+  };
+
+  const canRunMulti = selectedAgentIds.size > 0;
 
   return (
-    <Dropdown
-      width={DROPDOWN_WIDTH}
-      align="right"
-      items={items}
-      trigger={
-        <span
-          title={warnMerged ? t("runReview.mergedTooltip") : undefined}
-          style={warnMerged ? { opacity: 0.6 } : undefined}
+    <div ref={dropdownRef} style={{ position: "relative", display: "inline-block" }}>
+      {/* Trigger */}
+      <span
+        title={warnMerged ? t("runReview.mergedTooltip") : undefined}
+        style={warnMerged ? { opacity: 0.6 } : undefined}
+      >
+        <Button
+          kind={kind}
+          size={size}
+          iconRight="ChevronDown"
+          icon="Sparkles"
+          loading={isPending}
+          onClick={() => setOpen((o) => !o)}
         >
-          <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
-            {run.isPending ? t("runReview.running") : t("runReview.runReview")}
-          </Button>
-        </span>
-      }
-    />
+          {isPending ? t("runReview.running") : t("runReview.runReview")}
+        </Button>
+      </span>
+
+      {/* Panel */}
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            width: DROPDOWN_WIDTH,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 9,
+            boxShadow: "var(--shadow-modal)",
+            padding: 6,
+            zIndex: 40,
+          }}
+        >
+          {/* Merged/closed PR warning */}
+          {warnMerged && (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  color: "var(--text-secondary)",
+                  fontSize: 13,
+                }}
+              >
+                <Icon.AlertTriangle size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                {t("runReview.mergedWarning")}
+              </div>
+              <Divider />
+            </>
+          )}
+
+          {/* Multi-select section header: label + Clear (mirrors the Configure Run mockup). */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 10px 6px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+              }}
+            >
+              {t("runReview.pickAgents")}
+            </span>
+            {selectedAgentIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedAgentIds(new Set())}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                {t("runReview.clear")}
+              </button>
+            )}
+          </div>
+
+          {/* Multi-select section: one checkbox row per agent (from estimates). */}
+          {estimatesLoading ? (
+            <div
+              style={{
+                padding: "8px 10px",
+                fontSize: 13,
+                color: "var(--text-muted)",
+              }}
+            >
+              {t("runReview.estimatesLoading")}
+            </div>
+          ) : (estimates ?? []).length === 0 ? (
+            <MenuItem
+              label={
+                all.length === 0
+                  ? t("runReview.noAgentsYet")
+                  : t("runReview.noEnabledAgents")
+              }
+              icon="Plus"
+              muted
+              onClick={() => router.push("/agents")}
+            />
+          ) : (
+            (estimates ?? []).map((estimate) => (
+              <div
+                key={estimate.agent_id}
+                style={{ padding: "4px 6px" }}
+              >
+                <Checkbox
+                  checked={selectedAgentIds.has(estimate.agent_id)}
+                  onChange={() => toggleAgent(estimate.agent_id)}
+                  label={
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flex: 1,
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
+                        {estimate.agent_name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          flexShrink: 0,
+                          width: ESTIMATE_COLUMN_WIDTH,
+                          textAlign: "right",
+                        }}
+                      >
+                        {getEstimateLabel(estimate)}
+                      </span>
+                    </span>
+                  }
+                />
+              </div>
+            ))
+          )}
+
+          {/* Divider between multi-select and primary action. */}
+          <Divider />
+
+          {/* Primary multi-agent action button. */}
+          <div style={{ padding: "2px 4px" }}>
+            <button
+              type="button"
+              aria-disabled={!canRunMulti}
+              disabled={!canRunMulti}
+              onClick={canRunMulti ? kickMulti : undefined}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 6,
+                border: "1px solid " + (canRunMulti ? "var(--accent)" : "var(--border-strong)"),
+                background: canRunMulti ? "var(--accent)" : "var(--bg-elevated)",
+                color: canRunMulti ? "#fff" : "var(--text-muted)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: canRunMulti ? "pointer" : "not-allowed",
+                opacity: canRunMulti ? 1 : 0.6,
+                textAlign: "center",
+              }}
+            >
+              {t("runReview.runMultiAgentReview", { count: selectedAgentIds.size })}
+            </button>
+          </div>
+
+          <Divider />
+
+          {/* Configure agents link — changed to /multi-runs/configure?prId=... */}
+          <Link
+            href={`/multi-runs/configure?prId=${prId}`}
+            onClick={closeDropdown}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: 6,
+              color: "var(--text-secondary)",
+              fontSize: 14,
+              fontWeight: 500,
+              textDecoration: "none",
+            }}
+          >
+            <Icon.Settings size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            {t("runReview.configureAgents")}
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest, CreateFindingEvalCaseBody, FindingReplyBody } from '@devdigest/shared';
+import { RunRequest, CreateFindingEvalCaseBody, FindingReplyBody, ComposeReviewBody } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -190,6 +190,16 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(container, req);
       return service.replyToFinding(workspaceId, req.params.id, req.body.reply);
+    },
+  );
+
+  // ---- Compose a human-curated GitHub PR review --------------------------------
+  app.post(
+    '/pulls/:id/compose-review',
+    { schema: { params: IdParams, body: ComposeReviewBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.composeReview(workspaceId, req.params.id, req.body);
     },
   );
 }

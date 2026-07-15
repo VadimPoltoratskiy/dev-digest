@@ -1,0 +1,66 @@
+{
+  "history": {
+    "title": "Multi-Agent Review",
+    "configureRun": "Configure run",
+    "emptyTitle": "No runs yet",
+    "emptyBody": "No multi-agent review runs for this repo yet.",
+    "loadMore": "Load more",
+    "errorTitle": "Failed to load history",
+    "errorBody": "Could not load multi-agent run history.",
+    "columns": {
+      "pr": "PR",
+      "agents": "Agents",
+      "status": "Status",
+      "cost": "Cost",
+      "duration": "Duration",
+      "ranAt": "Run at"
+    },
+    "status": {
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "emptyValue": "—",
+    "costValue": "${value}",
+    "durationValue": "{seconds}s"
+  },
+  "results": {
+    "title": "Multi-Agent Review",
+    "breadcrumb": "Multi-Agent Review > #{number}",
+    "prTitle": "#{number} · {title}",
+    "configureRun": "Configure run",
+    "columnsMode": "Columns",
+    "tabsMode": "Tabs",
+    "summaryRunning": "{count} agents · parallel · running...",
+    "summaryComplete": "{count} agents · parallel · {duration}s · ${cost}",
+    "viewTrace": "View trace",
+    "unknownAgent": "Unknown agent",
+    "loadError": "Failed to load multi-run results.",
+    "retry": "Retry",
+    "agent": {
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "conflicts": {
+      "title": "Where agents disagree",
+      "showOnlyConflicts": "Show only conflicts",
+      "didNotFlag": "did not flag",
+      "requiresMultipleAgents": "Where agents disagree requires at least two agents with results"
+    }
+  },
+  "configure": {
+    "title": "Configure run",
+    "selectPr": "Select PR",
+    "selectAgents": "Select agents",
+    "selectAll": "Select all",
+    "estimateParallel": "≈ {duration}s · ${cost} · parallel fan-out",
+    "estimateVaries": "≈ varies · parallel fan-out",
+    "noHistory": "no history yet",
+    "run": "Run multi-agent review ({count})",
+    "disabledNoAgents": "Select at least one agent",
+    "disabledNoPr": "Select a PR first",
+    "loading": "Loading…",
+    "mergedWarning": "⚠ This PR is {status} — review is still allowed."
+  }
+}

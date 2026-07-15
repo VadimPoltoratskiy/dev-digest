@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
 import { RunReviewDropdown } from "../RunReviewDropdown";
+import { ComposeReviewDrawer } from "../ComposeReviewDrawer";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
+import type { FindingRecord } from "@devdigest/shared";
 
 interface PrDetailHeaderProps {
   pr: PrDetail;
@@ -16,6 +19,9 @@ interface PrDetailHeaderProps {
   onSetTab: (tab: string) => void;
   onRunStart: () => void;
   onRunsStarted: () => void;
+  /** All findings from all completed review runs on this PR — passed to the
+   *  ComposeReviewDrawer for finding curation. */
+  allFindings: FindingRecord[];
 }
 
 export function PrDetailHeader({
@@ -27,7 +33,11 @@ export function PrDetailHeader({
   onSetTab,
   onRunStart,
   onRunsStarted,
+  allFindings,
 }: PrDetailHeaderProps) {
+  const tCompose = useTranslations("compose.reviewDrawer");
+  const [composeOpen, setComposeOpen] = React.useState(false);
+
   const handleRunStart = useCallback(() => {
     onRunStart();
   }, [onRunStart]);
@@ -97,6 +107,11 @@ export function PrDetailHeader({
               onRunsStarted={handleRunsStarted}
             />
           )}
+          {prId && (
+            <Button kind="primary" size="sm" onClick={() => setComposeOpen(true)}>
+              {tCompose("title")}
+            </Button>
+          )}
         </div>
       </div>
       {(pr.status === "merged" || pr.status === "closed") && (
@@ -119,6 +134,14 @@ export function PrDetailHeader({
           { key: "blast", label: "Blast radius", icon: "Zap" },
         ]}
       />
+      {prId && (
+        <ComposeReviewDrawer
+          prId={prId}
+          open={composeOpen}
+          onClose={() => setComposeOpen(false)}
+          allFindings={allFindings}
+        />
+      )}
     </div>
   );
 }

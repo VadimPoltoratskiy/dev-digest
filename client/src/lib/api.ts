@@ -3,6 +3,7 @@
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
 import type {
+  AgentEstimate,
   AgentEvalBatchResult,
   AgentEvalCase,
   AgentEvalCompare,
@@ -13,9 +14,14 @@ import type {
   CiInstallation,
   CiRemoval,
   CiRun,
+  ComposeReviewBody,
+  ComposeReviewResponse,
   EvalDashboard,
   EvalDashboardAgentSummary,
   EvalRunRecord,
+  MultiRunFindings,
+  MultiRunRecord,
+  MultiRunSummaryList,
   Onboarding,
   PriorPrList,
   WhyTimeline,
@@ -196,6 +202,55 @@ export function getEvalsDashboard(ownerId?: string): Promise<EvalDashboard> {
 /** Fetch per-agent eval summaries (one row per agent) for the dashboard's agent list. */
 export function getEvalsDashboardAgents(): Promise<EvalDashboardAgentSummary[]> {
   return api.get<EvalDashboardAgentSummary[]>("/evals/dashboard/agents");
+}
+
+// ---- Multi-Agent Review API functions ----
+
+/** Fetch per-agent time/cost estimates for a PR (lazy-fetched on dropdown open). */
+export function fetchAgentEstimates(prId: string): Promise<AgentEstimate[]> {
+  return apiFetch<AgentEstimate[]>(`/pulls/${prId}/agents/estimates`);
+}
+
+/** Trigger a multi-agent review run for a PR with the given agent IDs. */
+export function triggerMultiReview(
+  prId: string,
+  agentIds: string[],
+): Promise<{ multi_run_id: string; runs: { run_id: string; agent_id: string; agent_name: string }[] }> {
+  return apiFetch(`/pulls/${prId}/multi-review`, {
+    method: "POST",
+    body: JSON.stringify({ agentIds }),
+  });
+}
+
+/** Fetch the aggregate status record for a multi-agent run. */
+export function fetchMultiRun(multiRunId: string): Promise<MultiRunRecord> {
+  return apiFetch<MultiRunRecord>(`/multi-runs/${multiRunId}`);
+}
+
+/** Fetch per-agent findings and cross-agent finding groups for a multi-run. */
+export function fetchMultiRunFindings(multiRunId: string): Promise<MultiRunFindings> {
+  return apiFetch<MultiRunFindings>(`/multi-runs/${multiRunId}/findings`);
+}
+
+/** Fetch paginated multi-agent run history for a repo. */
+export function fetchMultiRuns(
+  repoId: string,
+  limit: number,
+  offset: number,
+): Promise<MultiRunSummaryList> {
+  return apiFetch<MultiRunSummaryList>(
+    `/multi-runs?repoId=${encodeURIComponent(repoId)}&limit=${limit}&offset=${offset}`,
+  );
+}
+
+// ---- Compose Review API functions ----
+
+/** POST /pulls/:id/compose-review — post a human-curated GitHub PR review. */
+export function postComposeReview(
+  prId: string,
+  body: ComposeReviewBody,
+): Promise<ComposeReviewResponse> {
+  return api.post<ComposeReviewResponse>(`/pulls/${prId}/compose-review`, body);
 }
 
 // ---- CI API functions ----

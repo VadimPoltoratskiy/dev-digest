@@ -33,12 +33,19 @@
     "noMatchBody": "Adjust the filters above, or run a review to generate findings."
   },
   "runReview": {
-    "runAll": "Run all enabled agents",
     "configureAgents": "Configure agents…",
     "running": "Running…",
     "runReview": "Run Review",
     "mergedWarning": "Already merged — review is informational",
-    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code."
+    "mergedTooltip": "This PR is already merged; running a review won’t affect the merged code.",
+    "runMultiAgentReview": "Run multi-agent review ({count} selected)",
+    "noHistoryYet": "no history yet",
+    "estimateLabel": "≈ {duration}s · ${cost}",
+    "estimatesLoading": "Loading…",
+    "pickAgents": "Pick agents to run",
+    "clear": "Clear",
+    "noAgentsYet": "No agents yet — create one",
+    "noEnabledAgents": "No enabled agents — enable one to run a review"
   },
   "runStatus": {
     "elapsed": "Running · {count} agent(s)",

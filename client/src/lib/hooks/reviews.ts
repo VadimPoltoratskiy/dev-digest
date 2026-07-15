@@ -4,9 +4,11 @@
 
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, API_BASE } from "../api";
+import { api, API_BASE, postComposeReview } from "../api";
 import { notify } from "../toast";
 import type {
+  ComposeReviewBody,
+  ComposeReviewResponse,
   FindingActionKind,
   Intent,
   PrReviewComment,
@@ -247,4 +249,13 @@ export function useRunEvents(runIds: string[]) {
   }, [key]);
 
   return { events, running };
+}
+
+// ---- Compose review (post a human-curated GitHub PR review) ----
+/** Does NOT call notify.error internally — error handling (github_unavailable vs
+ *  github_review_failed) happens in the drawer's onError callback. */
+export function usePostComposeReview(prId: string | null) {
+  return useMutation<ComposeReviewResponse, Error, ComposeReviewBody>({
+    mutationFn: (body) => postComposeReview(prId!, body),
+  });
 }

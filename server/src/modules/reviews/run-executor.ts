@@ -120,34 +120,22 @@ export class ReviewRunExecutor {
       runLog.info(`Plan/spec extracted: ${planContent.length} chars — will inject into all agent prompts`);
     }
 
-    for (const { agent, runId } of jobs) {
-      const agentStart = Date.now();
-      logger?.info(
-        { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
-        `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
-      );
-      try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, planContent, agent, runId, runLog);
+    await Promise.allSettled(
+      jobs.map(async ({ agent, runId }) => {
+        const agentStart = Date.now();
         logger?.info(
-          {
-            runId,
-            agent: agent.name,
-            findings: outcome.findings.length,
-            grounding: outcome.grounding,
-            durationMs: Date.now() - agentStart,
-          },
+          { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
+          `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
+        );
+        const outcome = await this.runOneAgent(
+          workspaceId, pull, repo, diff, planContent, agent, runId, runLog,
+        );
+        logger?.info(
+          { runId, agent: agent.name, findings: outcome.findings.length, grounding: outcome.grounding, durationMs: Date.now() - agentStart },
           `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
         );
-      } catch (err) {
-        // runOneAgent already persisted the failure/cancel (status + error +
-        // trace) and completed the bus; here we only log at the run level.
-        const cancelled = err instanceof RunCancelledError;
-        logger?.[cancelled ? 'info' : 'error'](
-          { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
-          `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
-        );
-      }
-    }
+      }),
+    );
   }
 
   /** Execute a single agent's review against a PR, streaming progress. */
@@ -298,20 +286,10 @@ export class ReviewRunExecutor {
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
-      // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-        costUsd: outcome.costUsd ?? this.container.priceBook.estimate(agent.model, tokensIn, tokensOut) ?? null,
-      });
-
+      // ---- Observability: ONE run_traces document + agent_runs -------------
+      // Trace is saved BEFORE the status flip to 'done': callers (tests, UI)
+      // poll agent_runs.status to know a run finished, then immediately fetch
+      // its trace — writing the trace first guarantees it's already there.
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -343,8 +321,21 @@ export class ReviewRunExecutor {
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
       };
-      runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+
+      await this.repo.completeAgentRun(runId, {
+        status: 'done',
+        durationMs,
+        tokensIn,
+        tokensOut,
+        findingsCount: findingRows.length,
+        grounding,
+        score: outcome.review.score,
+        blockers,
+        error: null,
+        costUsd: outcome.costUsd ?? this.container.priceBook.estimate(agent.model, tokensIn, tokensOut) ?? null,
+      });
+      runLog.info('Run complete; trace persisted');
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -355,6 +346,10 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
+      // Trace before status flip, same reasoning as the success path above.
+      await this.repo
+        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .catch(() => undefined);
       await this.repo
         .completeAgentRun(runId, {
           status,
@@ -365,9 +360,6 @@ export class ReviewRunExecutor {
           grounding: '0/0 passed',
           error: msg,
         })
-        .catch(() => undefined);
-      await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;

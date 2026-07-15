@@ -1,36 +1,53 @@
-import { pgTable, uuid, text, integer, numeric, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, numeric, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
 
 // ============================================================ Observability
 
-export const agentRuns = pgTable('agent_runs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  prId: uuid('pr_id').references(() => pullRequests.id, { onDelete: 'set null' }),
-  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
-  provider: text('provider'),
-  model: text('model'),
-  durationMs: integer('duration_ms'),
-  tokensIn: integer('tokens_in'),
-  tokensOut: integer('tokens_out'),
-  status: text('status'),
-  /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
-  error: text('error'),
-  source: text('source', { enum: ['local', 'ci'] }).notNull().default('local'),
-  findingsCount: integer('findings_count'),
-  grounding: text('grounding'),
-  /** Review score (0-100) for this run; null on failed/cancelled runs. */
-  score: integer('score'),
-  /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
-  blockers: integer('blockers'),
-  /** Actual cost in USD for this run (stored at completion; null on failed/cancelled). */
-  costUsd: numeric('cost_usd', { precision: 12, scale: 8 }),
-});
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'set null' }),
+    prId: uuid('pr_id').references(() => pullRequests.id, { onDelete: 'set null' }),
+    ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+    provider: text('provider'),
+    model: text('model'),
+    durationMs: integer('duration_ms'),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    status: text('status'),
+    /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
+    error: text('error'),
+    source: text('source', { enum: ['local', 'ci'] }).notNull().default('local'),
+    findingsCount: integer('findings_count'),
+    grounding: text('grounding'),
+    /** Review score (0-100) for this run; null on failed/cancelled runs. */
+    score: integer('score'),
+    /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
+    blockers: integer('blockers'),
+    /** Actual cost in USD for this run (stored at completion; null on failed/cancelled). */
+    costUsd: numeric('cost_usd', { precision: 12, scale: 8 }),
+    /**
+     * FK to multi_agent_runs (set when this run is part of a multi-agent batch).
+     * Null for single-agent runs. onDelete: 'set null' so deleting a multi-run
+     * record does not cascade-delete the individual agent_run rows.
+     */
+    multiAgentRunId: uuid('multi_agent_run_id')
+      .references(() => multiAgentRuns.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    /**
+     * PostgreSQL does NOT auto-index FK columns. This column is the primary
+     * filter for every multi-run read (getAgentRunsByMultiRunId).
+     */
+    multiRunIdx: index('agent_runs_multi_agent_run_id_idx').on(t.multiAgentRunId),
+  }),
+);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {
@@ -40,13 +57,23 @@ export const runTraces = pgTable('run_traces', {
   trace: jsonb('trace').notNull(),
 });
 
-export const multiAgentRuns = pgTable('multi_agent_runs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  prId: uuid('pr_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const multiAgentRuns = pgTable(
+  'multi_agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    prId: uuid('pr_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    /**
+     * Composite index for the paginated list query: equality filter on
+     * workspaceId + sort key ranAt DESC. Column order matches the query plan.
+     */
+    multiRunWorkspaceRanAtIdx: index('multi_agent_runs_workspace_id_ran_at_idx').on(t.workspaceId, t.ranAt),
+  }),
+);
