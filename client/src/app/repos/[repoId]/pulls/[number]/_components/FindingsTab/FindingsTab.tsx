@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
@@ -71,6 +71,17 @@ export function FindingsTab({
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
 
+  // Build a map of run_id → FindingRecord[] for the timeline severity badges.
+  const findingsByRun = useMemo(() => {
+    const map = new Map<string, FindingRecord[]>();
+    for (const review of runs) {
+      if (!review.run_id || review.findings.length === 0) continue;
+      const existing = map.get(review.run_id) ?? [];
+      map.set(review.run_id, existing.concat(review.findings));
+    }
+    return map;
+  }, [runs]);
+
   return (
     <section>
       {liveRunIds.length > 0 && (
@@ -134,6 +145,7 @@ export function FindingsTab({
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
+            findingsByRun={findingsByRun}
           />
         </div>
       )}
