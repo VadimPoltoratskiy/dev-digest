@@ -82,6 +82,13 @@ export function buildWorkflowYaml(params: {
 }): string {
   const { triggers, postAs } = params;
 
+  // agent-runner is a boundary this repo does not rename underneath (see
+  // agent-runner/CLAUDE.md): its bundled runner only understands the
+  // pre-rename 'none' value. The contract-facing 'exit_code_only' name stays
+  // everywhere else (DB, manifest, wizard) — only the env var handed to the
+  // runner needs translating.
+  const runnerPostAs = postAs === 'exit_code_only' ? 'none' : postAs;
+
   // NOTE: `on` is a valid JavaScript object key and a valid YAML key in YAML 1.2.
   // js-yaml v4 (YAML 1.2 core schema) does not treat `on` as a boolean.
   const workflowObj = {
@@ -109,7 +116,7 @@ export function buildWorkflowYaml(params: {
               OPENROUTER_API_KEY: '${{ secrets.OPENROUTER_API_KEY }}',
               // GITHUB_TOKEN is auto-provided but must be in env for the runner to read it.
               GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
-              DEVDIGEST_POST_AS: postAs,
+              DEVDIGEST_POST_AS: runnerPostAs,
               GITHUB_REPOSITORY: '${{ github.repository }}',
               PR_NUMBER: '${{ github.event.pull_request.number }}',
             },

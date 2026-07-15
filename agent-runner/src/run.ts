@@ -32,7 +32,7 @@ import { RunnerError } from './errors.js';
  * grounded review" produces NOTHING (no synthetic review skeleton).
  */
 
-export type PostAs = 'github_review' | 'pr_comment' | 'exit_code_only';
+export type PostAs = 'github_review' | 'pr_comment' | 'none';
 
 export interface RunCiDeps {
   /** Directory containing `agents/` and `skills/` (checked-in `.devdigest/`). */
@@ -40,7 +40,7 @@ export interface RunCiDeps {
   env: CiEnv;
   /** Injected LLM provider — `OpenRouterProvider` in production, a stub in tests. */
   llm: LLMProvider;
-  /** How to post the result — `'github_review' | 'pr_comment' | 'exit_code_only'` (AC-24). */
+  /** How to post the result — `'github_review' | 'pr_comment' | 'none'` (AC-24). */
   postAs: PostAs;
   /** Absolute path to write the `CiResultArtifact` JSON to. */
   resultPath: string;
@@ -97,19 +97,8 @@ export async function runCi(deps: RunCiDeps): Promise<RunCiResult> {
     const ctx = resolvePrContext(deps.env, readFile);
 
     const githubToken = deps.env.GITHUB_TOKEN;
-    if (deps.postAs !== 'exit_code_only' && !githubToken) {
+    if (deps.postAs !== 'none' && !githubToken) {
       throw new RunnerError(`GITHUB_TOKEN is required to post as '${deps.postAs}'`);
-    }
-
-    // Fail with a clear, actionable message instead of letting an empty key
-    // reach the LLM provider — an empty OPENROUTER_API_KEY produces a cryptic
-    // downstream 401 ("Missing Authentication header") that gives no hint
-    // it's a missing repo secret, not a code or network problem.
-    if (!deps.env.OPENROUTER_API_KEY?.trim()) {
-      throw new RunnerError(
-        'OPENROUTER_API_KEY is not set. Add it in the target repository\'s ' +
-          'Settings -> Secrets and variables -> Actions -> New repository secret.',
-      );
     }
 
     // 3. Assemble the diff from the CI context. Strip DevDigest's own exported
@@ -165,7 +154,7 @@ export async function runCi(deps: RunCiDeps): Promise<RunCiResult> {
     } else if (deps.postAs === 'pr_comment') {
       await postPrComment(ctx, githubToken as string, payload.body, fetchImpl);
     }
-    // 'exit_code_only' → post nothing.
+    // 'none' → post nothing (exit-code only).
 
     // 8. Exit non-zero IFF the gate triggered REQUEST_CHANGES (AC-25).
     return {

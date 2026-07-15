@@ -23,10 +23,7 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { runCi, type PostAs } from './run.js';
 
 function resolvePostAs(value: string | undefined): PostAs {
-  if (value === 'github_review' || value === 'pr_comment' || value === 'exit_code_only') return value;
-  // 'none' is the pre-rename value (bundles exported before the post_as contract
-  // rename); accept it as a legacy alias so already-installed CI bundles keep working.
-  if (value === 'none') return 'exit_code_only';
+  if (value === 'github_review' || value === 'pr_comment' || value === 'none') return value;
   return 'github_review';
 }
 

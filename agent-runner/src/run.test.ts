@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -186,7 +186,6 @@ describe('runCi (T8 agent-runner orchestrator)', () => {
         GITHUB_REPOSITORY: 'acme/widgets',
         GITHUB_EVENT_PATH: path.join(dir, 'event.json'),
         GITHUB_TOKEN: 'ghp_test_token',
-        OPENROUTER_API_KEY: 'or_test_key',
       },
       llm: makeStubLlm(GROUNDED_PLUS_HALLUCINATED_REVIEW).llm,
       postAs: 'github_review',
@@ -208,30 +207,6 @@ describe('runCi (T8 agent-runner orchestrator)', () => {
     expect(result.artifact).toBeNull();
     expect(result.error).toMatch(/failed validation/i);
     expect(stub.capturedMessages).toHaveLength(0); // never reached the LLM
-    expect(existsSync(resultPath)).toBe(false);
-  });
-
-  it('fails clearly (non-zero exit, no artifact) with an actionable message when OPENROUTER_API_KEY is missing, before any LLM call or diff fetch', async () => {
-    const stub = makeStubLlm(GROUNDED_PLUS_HALLUCINATED_REVIEW);
-    const fetchDiff = vi.fn(async () => FIXTURE_DIFF_RAW);
-    const result = await runCi(
-      baseDeps({
-        llm: stub.llm,
-        fetchDiff,
-        env: {
-          GITHUB_REPOSITORY: 'acme/widgets',
-          GITHUB_EVENT_PATH: path.join(dir, 'event.json'),
-          GITHUB_TOKEN: 'ghp_test_token',
-          // OPENROUTER_API_KEY intentionally omitted
-        },
-      }),
-    );
-
-    expect(result.exitCode).toBe(1);
-    expect(result.artifact).toBeNull();
-    expect(result.error).toMatch(/OPENROUTER_API_KEY is not set/);
-    expect(stub.capturedMessages).toHaveLength(0); // never reached the LLM
-    expect(fetchDiff).not.toHaveBeenCalled(); // never fetched the diff either
     expect(existsSync(resultPath)).toBe(false);
   });
 
@@ -311,16 +286,11 @@ describe('runCi (T8 agent-runner orchestrator)', () => {
     expect(calls[0]!.method).toBe('POST');
   });
 
-  it('AC-24 + AC-25: post_as="exit_code_only" posts nothing but still exits 0 on a clean (non-triggering) review', async () => {
+  it('AC-24 + AC-25: post_as="none" posts nothing but still exits 0 on a clean (non-triggering) review', async () => {
     const stub = makeStubLlm(ALL_HALLUCINATED_REVIEW); // grounds to zero findings → no gate trigger
     const { fetchImpl, calls } = makeFetchRecorder();
     const result = await runCi(
-      baseDeps({
-        llm: stub.llm,
-        fetchDiff: async () => FIXTURE_DIFF_RAW,
-        fetchImpl,
-        postAs: 'exit_code_only',
-      }),
+      baseDeps({ llm: stub.llm, fetchDiff: async () => FIXTURE_DIFF_RAW, fetchImpl, postAs: 'none' }),
     );
 
     expect(calls).toHaveLength(0);
