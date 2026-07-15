@@ -1,713 +1,518 @@
-# Plan: Multi-Agent Review
+# Plan: Export to CI (SPEC-03)
 
 ## Spec reference
-
-`specs/SPEC-03-multi-agent-review.md`
+`specs/SPEC-03-export-to-ci.md`
 
 ## Execution mode: multi-agent
-
-Five phases; two execute in the first wave (Phase 1 + Phase 2 in parallel), two in the second wave (Phase 3 + Phase 4 in parallel after Phase 1), and one in the third wave (Phase 5 after Phase 3). Five implementer agents at most; natural minimum for the dependency graph.
-
-```
-Wave 1 (parallel):  [Phase 1: Server foundation]  [Phase 2: Executor concurrency]
-                                   ↓ (Phase 1 done)
-Wave 2 (parallel):  [Phase 3: Client infra + PR picker]  [Phase 4: Results page]
-                           ↓ (Phase 3 done)
-Wave 3:             [Phase 5: Configure Run page]
-```
+User chose multi-agent with parallel phases. Phase 1 (schema migration + shared contracts + GitHubClient interface) is sequential and a hard prerequisite for all later work. Phase 2 (server `modules/ci/`) and Phase 3 (client `/ci-runs` page + AgentEditor CI tab) are independent and run in parallel once Phase 1 is complete. Phase 4 (tests) requires both Phase 2 and Phase 3 to finish.
 
 ## Goal
-
-Users currently run one review agent at a time per PR. This feature adds parallel multi-agent runs: a PR-page checkbox picker (with per-agent time/cost estimates), a Configure Run page, a multi-run grouping service that records N agent_runs under a single `multi_agent_runs` row, and a Multi-Agent Review results page showing per-agent findings side-by-side plus a "Where agents disagree" cross-agent conflict view grouped by file and overlapping line range.
+An agent configured in DevDigest studio can be exported as a versioned YAML manifest + GitHub Actions workflow bundle, committed to a target repo as a PR via a 4-step Export Wizard, and have its CI-originated run results ingested back into DevDigest on user-triggered refresh. New surfaces: `modules/ci/` server module (5 endpoints + preflight), a global `/ci-runs` page, and a CI tab in the Agent Editor.
 
 ## Modules affected
-
-- `server/` — new `multi-runs` feature module (routes, service, repository, helpers); `db/schema/runs.ts` migration to add `multi_agent_run_id` nullable FK on `agent_runs`; executor concurrency change in `reviews/run-executor.ts`; backward-compatible extension of `ReviewService.runReview`; new Zod contracts added to `vendor/shared/contracts/observability.ts`
-- `client/` — new `app/multi-runs/configure/` and `app/multi-runs/[multiRunId]/` page routes; modified `RunReviewDropdown` on the PR detail page; new `lib/hooks/multi-runs.ts`; new `lib/api.ts` functions; new `messages/en/multiRuns.json` i18n file
+- `server/` — new `modules/ci/` plugin (routes + service + repository + helpers); `db/schema/ci.ts` (add `duration_ms` column); `vendor/shared/adapters.ts` + `adapters/github/octokit.ts` + `adapters/mocks.ts` (three new `GitHubClient` methods); `vendor/shared/contracts/eval-ci.ts` (two contract changes); `package.json` (add `js-yaml`)
+- `client/` — new `app/ci-runs/` page; new CI tab in `app/agents/[id]/_components/AgentEditor/`; `vendor/shared/contracts/eval-ci.ts` (mirror server contract changes); `lib/hooks/ci.ts` (new TanStack Query hooks); `lib/api.ts` (new fetch functions); i18n messages; `package.json` (add `jszip`)
 
 ## Engineering Insights applied
+- `vendor/shared/` is a **manual mirror** — both `server/src/vendor/shared/contracts/eval-ci.ts` and `client/src/vendor/shared/contracts/eval-ci.ts` must be updated in lockstep. Drift is caught only by `tsc`, not at runtime. (client INSIGHTS.md)
+- Derived fields that require a JOIN (`agent` name from `ci_installations`, `duration_s` computed from `duration_ms`) cannot be returned from the repository layer — the repository returns raw typed rows; enrichment happens in the service. (server INSIGHTS.md: "repo layer cannot access PriceBook")
+- Adding a new field to a shared Zod contract with `.default()` makes it optional in the input type but required in the output type (`z.infer`). Any test fixture typed as the output shape needs the new field added, or TS2741 fires. After Phase 1 adds `post_as` to `AgentManifest`, all `AgentManifest`-typed fixtures in tests must include `post_as: 'github_review'`. (client INSIGHTS.md recurring errors + server INSIGHTS.md)
+- The DB-backed integration tests must use the `*.it.test.ts` suffix and import `test/helpers/pg.ts`; hermetic unit tests use any other suffix. Docker absence causes IT tests to self-skip safely. (server docs README.md)
 
-- `cost_usd` is already stored on `agent_runs` rows at completion by the executor via `completeAgentRun`. The multi-run aggregate `total_cost_usd` sums those columns directly in the repository — no service-layer price-book call needed for reads (INSIGHTS: cost-at-read-time pattern).
-- `reviews.run_id` links to `agent_runs.id`, not to `multi_agent_runs.id`. To aggregate findings for a multi-run batch: collect all `agent_runs.id` where `multi_agent_run_id = ?`, then join `reviews` on `run_id` (INSIGHTS: FK chain context note).
-- Per-agent estimates: one IN-query over `agent_runs` for all agent IDs in the workspace (status='done', last N rows), then group by `agent_id` in JS to compute averages — same IN-query + JS-Map pattern as `costByPr` (INSIGHTS: aggregation pattern).
-- `cost_usd` on `AgentRunSummary` must use `.nullish()` (not `.nullable()`) because `agent_runs` rows written before cost tracking existed lack this column; `.nullable()` is correct only for `total_cost_usd` on `MultiRunRecord` which the service always computes. (INSIGHTS: nullish vs nullable decision.)
-- Both `server/src/vendor/shared/` and `client/src/vendor/shared/` must be updated together; only `tsc` catches the drift — no tooling enforces it. (INSIGHTS + client INSIGHTS: manual mirror of vendor.)
-- Test fixtures for any contract that gains a required (non-.nullish) field must be updated in every hardcoded factory object in `*.test.tsx` files; otherwise TS2741 errors appear at test time. (INSIGHTS: recurring error pattern.)
-- New components used by exactly two routes belong in `client/src/components/<Name>/` (shared), not colocated under one route. Components used by exactly one route stay colocated. (INSIGHTS: shared component placement, ui-architecture skill.)
-
-## Recommendations
-
-- `RunTraceDrawer` props (`runId, agentName?, prNumber?, findings?, running?, onClose`) are already fully generic — confirmed by reading the component source. Zero modifications to the drawer itself are needed. However, it is currently colocated under the PR detail page's `_components/` folder. Since the Multi-Agent Review results page (a different route) also needs it, Phase 4 should move it to `client/src/components/RunTraceDrawer/` (shared components zone) and update the PR-detail page's import — one clean move, no duplication.
-- The cross-agent grouping algorithm (file + overlapping line range) is a pure function with no I/O — implement it in `server/src/modules/multi-runs/helpers.ts` as a unit-testable standalone. The client receives pre-grouped data and applies the "show only conflicts" toggle filter client-side (cheap array filter, no extra API call).
-- `RunRequest` (in `vendor/shared/contracts/review-api.ts`) must NOT be modified. The spec permits "a new parallel request contract" — use a new `MultiReviewRequest` Zod schema for `POST /pulls/:id/multi-review`. This eliminates any risk of breaking existing single-agent callers.
-- Per the postgresql-table-design skill: PostgreSQL does NOT auto-index FK columns. The new `agent_runs.multi_agent_run_id` column is the primary filter for every multi-run read. Declare a Drizzle index on it in `schema/runs.ts` so `pnpm db:generate` includes a `CREATE INDEX` in the migration.
+## Recommendations (chosen as plan approach — see Step 2 analysis)
+- **Client-side ZIP (AC-4):** The API consistently returns `CiExport { files: CiFile[] }` JSON for both `action: 'open_pr'` and `action: 'files'`. The Install step uses `jszip` in the browser to produce the downloadable archive from the returned `files` array. This keeps the API JSON-only and avoids a binary-response endpoint. Add `jszip` to `client/`.
+- **`CiExportInput.post_as` backward-compat alias:** The spec renames `'none'` → `'exit_code_only'`. Apply the rename AND wrap with `z.preprocess((v) => (v === 'none' ? 'exit_code_only' : v), z.enum([...]))` so any caller still using the old string gets a silent coercion instead of a 422.
+- **Agent-runner binary lazy singleton:** `CiService` reads `agent-runner/dist/index.js` exactly once at construction time and stores it as `private readonly runnerBinary: Buffer | null`. Subsequent export calls reuse the cached buffer. On ENOENT, logs a warning and stores `null` — exports still succeed but the runner file entry has empty contents.
+- **YAML serialization via `js-yaml`:** Add `js-yaml` + `@types/js-yaml` to `server/`. Use `jsYaml.dump(manifest, { lineWidth: -1 })` for manifest YAML. After serialization, validate the round-trip with `AgentManifest.safeParse(jsYaml.load(yaml))` and throw before committing if validation fails.
 
 ## Architecture decisions
-
-- **New `modules/multi-runs/` module, not extending `modules/reviews/`** — multi-run grouping is a distinct domain concern. Extending `reviews/` with 4 new endpoints and a grouping service would violate the one-domain-per-module convention (onion-architecture skill: module anatomy).
-- **`multi-runs/service.ts` imports `ReviewService` from `modules/reviews/service.ts`** — a service-layer-to-service-layer cross-module call. Valid: no circular dependency (`reviews` never imports from `multi-runs`). The alternative — duplicating agent_run creation logic — would create divergent behavior and maintenance risk.
-- **`ReviewService.runReview` extended with `opts?: { multiRunId?: string }`** — additive, backward-compatible. Existing callers (the `POST /pulls/:id/review` route) pass no opts; `multiAgentRunId` defaults to null in the INSERT. Multi-run callers pass `{ multiRunId }` and the FK is set. The extension is two lines in `service.ts` and one field addition in `run.repo.ts`.
-- **Sequential for-loop → `Promise.allSettled` in `run-executor.ts`** — confirmed required. AC-4 says "total estimated duration assuming parallel execution"; AC-16 says the summary line shows execution model as "parallel"; the architecture diagram labels the background work "parallel fan-out". A sequential loop makes the "parallel" UI label false. `Promise.allSettled` preserves per-agent isolated failure domain (AC-6): a single-agent rejection settles as `{ status: 'rejected' }` without cancelling the others. `runOneAgent` already owns its own catch/persist logic — the loop's `try/catch` wrapper is replaced by the settled-result check.
-- **Client route at `app/multi-runs/`** — top-level, not under `repos/[repoId]/`, because results are addressed by `multiRunId` (not by repoId + prNumber), and the Configure Run page is a standalone flow that selects its own PR. Workspace scoping is server-enforced via `getContext` on every endpoint.
-- **New `lib/hooks/multi-runs.ts`** — separates multi-run hooks from `lib/hooks/reviews.ts` to avoid Phase 3 and Phase 4 implementers editing the same file concurrently. Phase 3 creates this file; Phase 4 imports from it. (ui-architecture skill: hooks in `lib/hooks/<domain>.ts`.)
-- **"Show only conflicts" filtering is client-side** — the server returns all finding groups (each with every agent's verdict or null). The toggle filter (`agent_verdicts` has ≥ 2 distinct verdict strings, counting null as "did not flag") is a cheap array filter in the component — no extra API call, no server state.
+- **New `modules/ci/` follows the onion model** (routes → service → repository → adapters via DI container). All Drizzle queries are in `CiRepository`; no DB access in routes or service directly. Per onion-architecture SKILL.md.
+- **All CI-related routes live in `modules/ci/routes.ts`**, including the agent-scoped ones (`/agents/:id/export-ci`, `/agents/:id/ci-installations`). Fastify plugins registered without a prefix declare absolute paths. Splitting CI routes across the agents module would scatter cohesive functionality. Per onion-architecture decision tree: "new domain feature → new module."
+- **Preflight endpoint `GET /ci/preflight?repo=...`** is added as an implementation detail to satisfy AC-22 (check write access before the Install step enables "Open a PR"). Not in the spec's service contracts table but required. Returns `{ has_write_access: boolean }`. Lightweight — no DB write.
+- **`GitHubClient` interface extended with three new methods** (`listWorkflowRuns`, `downloadArtifact`, `checkWriteAccess`) in `server/src/vendor/shared/adapters.ts`, with real implementations in the octokit adapter and stubs in `mocks.ts`. All GitHub calls stay behind one interface — no direct `octokit` import in service code.
+- **SSRF mitigation on `repo` field:** `CiExportInput.repo` uses `.regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, 'repo must be owner/name format')` at the Zod schema definition level. Route boundary rejects malformed values before they reach `GitHubClient`. Per security skill A05/injection: attacker-controlled URL fragment → validate before passing to any HTTP client.
+- **Ingest deduplication by `(ci_installation_id, github_url)`:** `CiRepository.findRunByInstallationAndUrl` checks for an existing `ci_runs` row before each insert. Prevents duplicates on repeated refresh clicks (spec Edge case 7). No new DB unique constraint needed — a `SELECT` guard is sufficient given user-triggered cadence.
+- **Export Wizard colocated under AgentEditor:** The wizard is launched only from the agent CI tab (`Add repository` / `Update CI config`). Belongs at `_components/AgentEditor/_components/ExportWizard/`. Per ui-architecture SKILL.md: "a component used only by one route → that route's `_components/`; a sub-component of a feature component → `_components/<Parent>/_components/<Name>/`."
+- **`AgentManifest.post_as` as optional-with-default:** `z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review')`. Existing manifests without the field parse cleanly — `.default()` supplies the value. Backward-compatible per Zod best-practices `refine-defaults` rule.
+- **"Fail CI on" selector uses existing `PATCH /agents/:id` endpoint:** `agents.ci_fail_on` is already a column the agent PATCH endpoint accepts. No new endpoint for AC-20 — the CI tab's selector mutation reuses the existing `useUpdateAgent` hook.
 
 ---
 
 ## Tasks
 
----
+### Phase 1: DB schema migration + shared contracts + GitHubClient interface (sequential — must complete before Phases 2 and 3)
 
-### Phase 1: DB schema + Zod contracts + multi-run backend module
+#### 1a. DB schema migration
 
-**This phase runs first. Phases 3 and 4 cannot start until Phase 1 is complete** (they call the new server endpoints).
+- [ ] `server/src/db/schema/ci.ts` — add `durationMs: integer('duration_ms')` column to the `ciRuns` table definition; place it after `source`. The column is nullable with no default. (This is the only permitted edit to this file — Drizzle ORM generates the SQL.)
+- [ ] Run `cd server && pnpm db:generate` — review the auto-generated migration file in `server/src/db/migrations/` to confirm it adds only `duration_ms integer`; commit the migration file
+- [ ] Run `cd server && pnpm db:migrate` — apply the migration to the local database
 
-#### 1.1 Schema — add `multi_agent_run_id` FK column and index
+#### 1b. Server dependency
 
-- [ ] `server/src/db/schema/runs.ts` — in the `agentRuns` table definition, add:
+- [ ] `server/package.json` — add `"js-yaml": "^4.1.0"` to `dependencies` and `"@types/js-yaml": "^4.0.9"` to `devDependencies`; run `cd server && pnpm install`
+
+#### 1c. Shared Zod contracts — server side
+
+File: `server/src/vendor/shared/contracts/eval-ci.ts`
+
+- [ ] **`AgentManifest`** — add the `post_as` field after `ci_fail_on`:
   ```typescript
-  multiAgentRunId: uuid('multi_agent_run_id')
-    .references(() => multiAgentRuns.id, { onDelete: 'set null' }),
+  post_as: z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
   ```
-  (nullable — no `.notNull()`; no default. The reference must be declared after `multiAgentRuns` in the file; confirm import/declaration order does not create a circular schema reference. In Drizzle, use an arrow function `() => multiAgentRuns.id` to avoid this.)
+  Verify the already-exported `AgentManifestInput = z.input<typeof AgentManifest>` picks up `post_as?` automatically (it will, since `.default()` makes the input optional).
 
-  Also declare a Drizzle index in the same file (per postgresql-table-design: FK columns are not auto-indexed):
+- [ ] **`CiExportInput.post_as`** — replace the existing `z.enum(['github_review', 'pr_comment', 'none']).default('github_review')` with:
   ```typescript
-  export const agentRunsMultiRunIdx = index('agent_runs_multi_agent_run_id_idx')
-    .on(agentRuns.multiAgentRunId);
-  ```
-
-> **Migrations never auto-run — do not skip these steps:**
-- [ ] Run `cd server && pnpm db:generate` — review the generated SQL in `server/src/db/migrations/` for correctness (expect: `ALTER TABLE "agent_runs" ADD COLUMN "multi_agent_run_id" uuid REFERENCES "multi_agent_runs"("id") ON DELETE SET NULL;` and a `CREATE INDEX` statement). Commit the generated migration file to git.
-- [ ] Run `cd server && pnpm db:migrate` — apply the migration to the running Postgres instance.
-
-#### 1.2 Extend `createAgentRun` to accept the optional FK
-
-- [ ] `server/src/modules/reviews/repository/run.repo.ts` — add `multiAgentRunId?: string | null` to the `values` parameter of `createAgentRun`. Include `multiAgentRunId: values.multiAgentRunId ?? null` in the Drizzle `.values({...})` call. Existing callers omit this field; they receive `null` implicitly.
-- [ ] `server/src/modules/reviews/repository.ts` — update the `createAgentRun` wrapper method's parameter type to match the new optional field.
-
-#### 1.3 Extend `ReviewService.runReview` with optional `multiRunId`
-
-- [ ] `server/src/modules/reviews/service.ts` — add optional parameter `opts?: { multiRunId?: string }` to `runReview`. In the loop that calls `repo.createAgentRun(...)`, pass `multiAgentRunId: opts?.multiRunId ?? null`.
-
-#### 1.4 New Zod contracts — server vendor
-
-- [ ] `server/src/vendor/shared/contracts/observability.ts` — append the following new exports (additive only; do NOT touch existing `MultiAgentRun`, `AgentColumn`, `Conflict`, `ConflictTake`, `AgentStats`, `StatPoint`, `CuratorResult`, or `CuratorMerge` exports):
-
-  - `MultiReviewRequest` — body for `POST /pulls/:id/multi-review`:
-    ```typescript
-    export const MultiReviewRequest = z.object({
-      agentIds: z.array(z.string().uuid()).min(1),
-    });
-    export type MultiReviewRequest = z.infer<typeof MultiReviewRequest>;
-    ```
-
-  - `AgentRunSummary` — per-agent status entry within a multi-run result:
-    ```typescript
-    export const AgentRunSummary = z.object({
-      run_id: z.string(),
-      agent_id: z.string().nullable(),
-      agent_name: z.string().nullable(),
-      status: z.enum(['running', 'done', 'failed', 'cancelled']),
-      score: z.number().int().nullable(),
-      finding_count: z.number().int().nullable(),
-      cost_usd: z.number().nullish(),     // .nullish() — rows written before cost tracking lack this
-      duration_ms: z.number().int().nullish(),
-      error: z.string().nullable(),
-    });
-    export type AgentRunSummary = z.infer<typeof AgentRunSummary>;
-    ```
-
-  - `MultiRunRecord` — aggregate response for `GET /multi-runs/:id`:
-    ```typescript
-    export const MultiRunRecord = z.object({
-      id: z.string(),
-      pr_id: z.string(),
-      pr_number: z.number().int().nullish(), // joined from pulls table; nullish for forward compat
-      ran_at: z.string(),
-      agents: z.array(AgentRunSummary),
-      total_cost_usd: z.number().nullable(),   // .nullable() — service always computes this
-      total_duration_ms: z.number().int().nullable(),
-    });
-    export type MultiRunRecord = z.infer<typeof MultiRunRecord>;
-    ```
-
-  - `AgentEstimate` — per-agent estimate for the Configure Run page:
-    ```typescript
-    export const AgentEstimate = z.object({
-      agent_id: z.string(),
-      agent_name: z.string(),
-      estimated_duration_ms: z.number().int().nullable(),
-      estimated_cost_usd: z.number().nullable(),
-      last_finding_summary: z.string().nullable(),
-      has_historical_data: z.boolean(),
-    });
-    export type AgentEstimate = z.infer<typeof AgentEstimate>;
-    ```
-
-  - `FindingGroup` — one cross-agent finding group (file + overlapping line range):
-    ```typescript
-    // Import FindingRecord from './findings.js' at the top of the file
-    export const FindingGroup = z.object({
-      file: z.string(),
-      start_line: z.number().int(),
-      end_line: z.number().int(),
-      agent_verdicts: z.array(z.object({
-        agent_id: z.string().nullable(),
-        agent_name: z.string().nullable(),
-        finding: FindingRecord.nullable(),  // null = "did not flag"
-      })),
-    });
-    export type FindingGroup = z.infer<typeof FindingGroup>;
-    ```
-
-  - `MultiRunFindings` — response for `GET /multi-runs/:id/findings`:
-    ```typescript
-    export const MultiRunFindings = z.object({
-      agents: z.array(z.object({
-        agent_id: z.string().nullable(),
-        agent_name: z.string().nullable(),
-        findings: z.array(FindingRecord),
-      })),
-      groups: z.array(FindingGroup),
-    });
-    export type MultiRunFindings = z.infer<typeof MultiRunFindings>;
-    ```
-
-- [ ] `server/src/vendor/shared/index.ts` — add exports for `MultiReviewRequest`, `AgentRunSummary`, `MultiRunRecord`, `AgentEstimate`, `FindingGroup`, `MultiRunFindings` from `./contracts/observability.js`.
-
-#### 1.5 Mirror contracts to client vendor (update in lockstep)
-
-- [ ] `client/src/vendor/shared/contracts/observability.ts` — append the same six new export blocks from step 1.4 verbatim. Import `FindingRecord` from `./findings.js`.
-- [ ] `client/src/vendor/shared/index.ts` — add the same six exports.
-
-#### 1.6 Multi-runs repository
-
-- [ ] Create `server/src/modules/multi-runs/repository.ts` — plain functions over `Db`; no business logic:
-
-  - `insertMultiRun(db: Db, values: { workspaceId: string; prId: string }): Promise<string>` — inserts a row into `multi_agent_runs`, returns the new `id`.
-
-  - `findMultiRunById(db: Db, workspaceId: string, multiRunId: string): Promise<{ id: string; prId: string; prNumber: number | null; ranAt: Date } | undefined>` — SELECT from `multi_agent_runs` LEFT JOIN `pullRequests` (for the PR number) where `id = multiRunId AND workspace_id = workspaceId`.
-
-  - `getAgentRunsByMultiRunId(db: Db, multiRunId: string): Promise<{ id: string; agentId: string | null; agentName: string | null; status: string | null; score: number | null; findingsCount: number | null; costUsd: string | null; durationMs: number | null; error: string | null }[]>` — SELECT from `agent_runs` LEFT JOIN `agents` where `multi_agent_run_id = multiRunId`; include `agents.name` as `agentName`.
-
-  - `getLastNRunsPerAgent(db: Db, workspaceId: string, agentIds: string[]): Promise<{ agentId: string; costUsd: string | null; durationMs: number | null }[]>` — SELECT from `agent_runs` where `workspace_id = workspaceId AND agent_id IN (agentIds) AND status = 'done' AND cost_usd IS NOT NULL AND duration_ms IS NOT NULL` ORDER BY `ran_at DESC`. Caller groups by `agentId` in JS and slices to the last 10. (Returns all qualifying rows; service layer slices and averages per agent.)
-
-  - `getLastFindingSummaryPerAgent(db: Db, workspaceId: string, agentIds: string[]): Promise<{ agentId: string | null; summary: string | null }[]>` — for each agent, find the most recent `reviews` row (joined via `reviews.run_id → agent_runs.id WHERE agent_runs.workspace_id = workspaceId AND agent_runs.agent_id IN (agentIds)`) and return its `summary` field. Use a subquery or `ROW_NUMBER` window function to get the latest per agent; alternatively use `sql` tagged template. Returns one row per agent (null when no review exists for that agent).
-
-  - `getReviewsAndFindingsByAgentRunIds(db: Db, agentRunIds: string[]): Promise<{ agentRunId: string; agentId: string | null; agentName: string | null; findings: FindingRow[] }[]>` — SELECT from `reviews` LEFT JOIN `findings` LEFT JOIN `agent_runs` LEFT JOIN `agents` where `reviews.run_id IN (agentRunIds)`; group by agentRunId in JS after fetching all rows. Returns one entry per agentRunId even if it has zero findings.
-
-#### 1.7 Multi-runs grouping helpers
-
-- [ ] Create `server/src/modules/multi-runs/helpers.ts`:
-
-  ```typescript
-  /**
-   * Pure function: group findings across agents by file + overlapping line range.
-   * AC-12: two ranges overlap iff start_A <= end_B AND start_B <= end_A.
-   * No LLM call, no DB access, no substance or category check.
-   */
-  export function groupFindingsByFileAndOverlap(
-    agentFindings: { agentId: string | null; agentName: string | null; finding: FindingRecord }[],
-    allAgents: { agentId: string | null; agentName: string | null }[],
-  ): FindingGroup[]
+  post_as: z.preprocess(
+    (v) => (v === 'none' ? 'exit_code_only' : v),
+    z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
+  ),
   ```
 
-  Algorithm:
-  1. Group `agentFindings` by `finding.file` (exact path match).
-  2. Within each file group, use a greedy clustering pass: for each finding not yet assigned, start a new cluster. Merge the next finding into the current cluster if its `[start_line, end_line]` overlaps the cluster's accumulated range (`start_line <= cluster.end_line && finding.start_line <= cluster.end_line` using `a.start_line <= b.end_line && b.start_line <= a.end_line`). After each merge, expand the cluster's `[start_line, end_line]` to the union of all merged ranges.
-  3. For each cluster: `start_line = min(all start_lines in cluster)`, `end_line = max(all end_lines in cluster)`.
-  4. For each cluster, iterate `allAgents`: include the agent's `FindingRecord` if it appears in the cluster, `null` if it does not.
-  5. Return `FindingGroup[]` matching the schema from step 1.4.
-
-  This is a pure, deterministic function — no I/O. Testable in isolation.
-
-#### 1.8 Multi-runs service
-
-- [ ] Create `server/src/modules/multi-runs/service.ts` — `MultiRunsService` class:
-
+- [ ] **`CiExportInput.repo`** — chain a regex validator onto the existing `z.string().min(1)`:
   ```typescript
-  export class MultiRunsService {
-    private repo: MultiRunsRepository;
-    private reviewService: ReviewService;
+  repo: z.string().min(1).regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, 'repo must be owner/name format'),
+  ```
 
-    constructor(private container: Container) {
-      this.repo = new MultiRunsRepository(container.db);
-      this.reviewService = new ReviewService(container);
-    }
-    // ...
+- [ ] Verify `CiExportInputBody = z.input<typeof CiExportInput>` is still exported (it exists in the current file; confirm it remains accurate after the preprocess wrapper — `z.input` resolves preprocess correctly).
+
+#### 1d. Shared Zod contracts — client side mirror
+
+File: `client/src/vendor/shared/contracts/eval-ci.ts`
+
+- [ ] Apply the **identical** three changes from 1c: `AgentManifest.post_as`, `CiExportInput.post_as` preprocess alias, `CiExportInput.repo` regex.
+- [ ] Confirm `CiFailOn` is imported from `'./knowledge.js'` (already present) — no new imports needed for the `post_as` enum (the enum values are string literals).
+
+#### 1e. GitHubClient interface extension
+
+File: `server/src/vendor/shared/adapters.ts`
+
+- [ ] Add the `WorkflowRun` interface before the `GitHubClient` interface:
+  ```typescript
+  export interface WorkflowRun {
+    id: number;
+    html_url: string;
+    created_at: string;
+    status: string | null;
   }
   ```
 
-  Methods:
-
-  - `createMultiRun(workspaceId: string, prId: string, agentIds: string[], logger?: Logger)`:
-    1. Validate PR: call `this.repo.findPull(workspaceId, prId)` (or reuse a lightweight pull lookup via container — use the existing `ReviewRepository.getPull` pattern). Throw `NotFoundError('Pull request not found')` if absent.
-    2. Resolve agents: `Promise.all(agentIds.map(id => container.agentsRepo.getById(workspaceId, id)))`. If any result is `undefined`, throw `AppError('agent_not_found', 'One or more agent IDs not found in this workspace', 422)`.
-    3. Insert multi-run row: `const multiRunId = await this.repo.insertMultiRun(db, { workspaceId, prId })`.
-    4. Kick off reviews: `const { runs } = await this.reviewService.runReview(workspaceId, prId, agents, logger, { multiRunId })`.
-    5. Return `{ multi_run_id: multiRunId, runs }`.
-
-  - `getMultiRun(workspaceId: string, multiRunId: string)`:
-    1. `const row = await this.repo.findMultiRunById(db, workspaceId, multiRunId)` — throw `NotFoundError` if absent.
-    2. `const agentRuns = await this.repo.getAgentRunsByMultiRunId(db, multiRunId)`.
-    3. Compute `total_cost_usd`: sum `parseFloat(ar.costUsd)` for rows where `costUsd` is not null; return `null` if no rows have non-null cost.
-    4. Compute `total_duration_ms`: sum `ar.durationMs` for rows where non-null; return `null` if none.
-    5. Return `MultiRunRecord`-shaped DTO.
-
-  - `getEstimates(workspaceId: string, prId: string)`:
-    1. Fetch all agents: `const agents = await container.agentsRepo.listEnabled(workspaceId)` (all enabled agents in the workspace — per spec, the picker shows all available agents).
-    2. Fetch historical runs: `const rows = await this.repo.getLastNRunsPerAgent(db, workspaceId, agents.map(a => a.id))`.
-    3. Group rows by `agentId` in JS using a `Map`; for each agent, slice to the first 10 rows (already ordered DESC), then compute `avg(costUsd)` and `avg(durationMs)`.
-    4. Fetch last summaries: `const summaries = await this.repo.getLastFindingSummaryPerAgent(db, workspaceId, agents.map(a => a.id))`.
-    5. For each agent: `has_historical_data = rows.length > 0`; if `has_historical_data`, compute averages; else `estimated_duration_ms = null, estimated_cost_usd = null`.
-    6. Return `AgentEstimate[]`.
-
-  - `getFindings(workspaceId: string, multiRunId: string)`:
-    1. Verify multi-run exists (workspace-scoped): `await this.repo.findMultiRunById(db, workspaceId, multiRunId)` — throw `NotFoundError` if absent.
-    2. Get agent runs: `const agentRuns = await this.repo.getAgentRunsByMultiRunId(db, multiRunId)`.
-    3. Get findings: `const rows = await this.repo.getReviewsAndFindingsByAgentRunIds(db, agentRuns.map(r => r.id))`.
-    4. Build `allAgentFindings` flat list: `{ agentId, agentName, finding: FindingRecord }[]` from the rows.
-    5. Build `allAgents`: unique `{ agentId, agentName }` entries from `agentRuns`.
-    6. Call `groupFindingsByFileAndOverlap(allAgentFindings, allAgents)`.
-    7. Return `MultiRunFindings`-shaped DTO: `{ agents: [per-agent findings], groups: [...] }`.
-
-#### 1.9 Multi-runs routes
-
-- [ ] Create `server/src/modules/multi-runs/routes.ts` — Fastify plugin with `ZodTypeProvider`:
-
+- [ ] Add three new method signatures to the `GitHubClient` interface (append after `currentLogin`):
   ```typescript
-  export default async function multiRunsRoutes(appBase: FastifyInstance) {
-    const app = appBase.withTypeProvider<ZodTypeProvider>();
-    const { container } = app;
-    const service = new MultiRunsService(container);
-
-    // POST /pulls/:id/multi-review
-    app.post('/pulls/:id/multi-review',
-      { schema: { params: IdParams, body: MultiReviewRequest },
-        config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
-      async (req) => {
-        const { workspaceId } = await getContext(container, req);
-        return service.createMultiRun(workspaceId, req.params.id, req.body.agentIds, req.log);
-      });
-
-    // GET /multi-runs/:id
-    app.get('/multi-runs/:id', { schema: { params: IdParams } }, async (req) => {
-      const { workspaceId } = await getContext(container, req);
-      return service.getMultiRun(workspaceId, req.params.id);
-    });
-
-    // GET /pulls/:id/agents/estimates
-    app.get('/pulls/:id/agents/estimates', { schema: { params: IdParams } }, async (req) => {
-      const { workspaceId } = await getContext(container, req);
-      return service.getEstimates(workspaceId, req.params.id);
-    });
-
-    // GET /multi-runs/:id/findings
-    app.get('/multi-runs/:id/findings', { schema: { params: IdParams } }, async (req) => {
-      const { workspaceId } = await getContext(container, req);
-      return service.getFindings(workspaceId, req.params.id);
-    });
-  }
+  /** List recent GitHub Actions workflow runs for a specific workflow file. */
+  listWorkflowRuns(repo: RepoRef, workflowFile: string): Promise<WorkflowRun[]>;
+  /** Download a named artifact from a GHA run. Returns the raw JSON string, or null if not found. */
+  downloadArtifact(repo: RepoRef, runId: number, artifactName: string): Promise<string | null>;
+  /** Check if the authenticated token has push (write) access to the repo. */
+  checkWriteAccess(repo: RepoRef): Promise<boolean>;
   ```
 
-  All handlers: call `getContext` before any DB access (workspace-scope enforcement). `POST` validates body via Zod schema — invalid UUIDs or empty `agentIds` reject 422 before the handler runs.
+File: `server/src/adapters/github/octokit.ts`
 
-#### 1.10 Module registration
+- [ ] Implement `listWorkflowRuns`: call `octokit.rest.actions.listWorkflowRuns({ owner: repo.owner, repo: repo.name, workflow_id: workflowFile, per_page: 30 })`; map each run to `WorkflowRun { id, html_url, created_at, status }`.
+- [ ] Implement `downloadArtifact`: call `octokit.rest.actions.listWorkflowRunArtifacts({ owner: repo.owner, repo: repo.name, run_id: runId })`; find artifact by name; if not found return `null`; fetch the download URL with `octokit.rest.actions.downloadArtifact({ owner, repo: repo.name, artifact_id, archive_format: 'zip' })` — note GitHub returns a redirect to a zip; use `fetch` on the redirect URL, unzip the single JSON file, and return its text content. Return `null` on any error.
+- [ ] Implement `checkWriteAccess`: call `octokit.rest.repos.get({ owner: repo.owner, repo: repo.name })`; return `data.permissions?.push === true`; catch 403/404 and return `false`.
 
-- [ ] `server/src/modules/index.ts` — add `import multiRuns from './multi-runs/routes.js';` and add `multiRuns` to the `modules` object. (No `app.ts` change needed — `app.ts` iterates `Object.values(modules)` and registers each; routes declare their own paths.)
+File: `server/src/adapters/mocks.ts`
 
-#### 1.11 Server unit tests
+- [ ] Add stub implementations to the mock GitHub client:
+  - `listWorkflowRuns`: returns `[]`
+  - `downloadArtifact`: returns `null`
+  - `checkWriteAccess`: returns `true`
 
-- [ ] `server/src/modules/multi-runs/helpers.test.ts` — unit tests for `groupFindingsByFileAndOverlap`:
-  - Two findings, same file, overlapping ranges (A: lines 10–20, B: lines 15–25) → 1 group, start=10, end=25.
-  - Two findings, same file, non-overlapping ranges (A: lines 10–20, B: lines 30–40) → 2 groups.
-  - Two findings, different files, same range → 2 groups.
-  - Agent A flags `foo.ts` lines 10–20; agent B has no findings → 1 group with B's `finding = null` (AC-12 "did not flag").
-  - Same file + same range but different substance (e.g., security vs style) → 1 group with both findings (AC-12 edge case 5: no substance filter).
+#### 1f. Client dependency
+
+- [ ] `client/package.json` — add `"jszip": "^3.10.1"` to `dependencies`; run `cd client && pnpm install`
 
 ---
 
-### Phase 2: Run executor concurrency change
+### Phase 2: Server `modules/ci/` (parallel with Phase 3 — requires Phase 1)
 
-**This phase runs in parallel with Phase 1. No dependency on Phase 1.** Touches only `server/src/modules/reviews/run-executor.ts`.
+#### 2a. Module scaffold
 
-#### 2.1 Replace sequential loop with `Promise.allSettled`
+- [ ] Create directory `server/src/modules/ci/`
 
-- [ ] `server/src/modules/reviews/run-executor.ts` — in `executeRuns`, replace the sequential `for (const { agent, runId } of jobs)` loop body with:
+#### 2b. `helpers.ts` — pure generation functions (no DB, no adapters)
 
-  ```typescript
-  await Promise.allSettled(
-    jobs.map(async ({ agent, runId }) => {
-      const agentStart = Date.now();
-      logger?.info(
-        { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
-        `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
-      );
-      const outcome = await this.runOneAgent(
-        workspaceId, pull, repo, diff, planContent, agent, runId, runLog,
-      );
-      logger?.info(
-        { runId, agent: agent.name, findings: outcome.findings.length, grounding: outcome.grounding, durationMs: Date.now() - agentStart },
-        `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
-      );
-    }),
-  );
-  ```
+File: `server/src/modules/ci/helpers.ts`
 
-  Remove the `try/catch` block that was inside the for-loop — `runOneAgent`'s own catch already handles agent failures (persists `status='failed'`, saves trace, completes the bus, and rethrows). With `Promise.allSettled`, the rejection is captured in the settled result and the other agents continue unaffected (AC-6 isolated failure domain preserved).
+- [ ] `agentSlug(name: string): string` — lowercase; replace spaces with `-`; strip non-`[a-z0-9-]` characters; collapse consecutive hyphens.
 
-  Note on safety: `runLog` fans out to all `runIds` during shared pre-work. Each agent's `parentLog.forRun(runId)` call inside `runOneAgent` narrows writes to that agent's channel. Concurrent writes to separate channels on `RunBus` are safe (in-memory Map keyed by runId).
+- [ ] `buildAgentManifest(params: { agent: AgentRow; skillSlugs: string[]; postAs: 'github_review' | 'pr_comment' | 'exit_code_only' }): AgentManifest` — constructs the object and calls `AgentManifest.parse(...)`. Throw if parse fails (malformed agent data would be a server invariant violation).
 
-#### 2.2 Regression verification
+- [ ] `manifestToYaml(manifest: AgentManifest): string` — calls `jsYaml.dump(manifest, { lineWidth: -1, quotingType: '"', forceQuotes: false })`; validates round-trip: `const check = AgentManifest.safeParse(jsYaml.load(yaml)); if (!check.success) throw new Error(...)`. Returns the YAML string.
 
-- [ ] Run `cd server && pnpm test` — confirm all existing review-related tests pass. The change is behavioral (parallel vs sequential) not structural; the test suite's mocked `runOneAgent` path should be unaffected.
+- [ ] `buildWorkflowYaml(params: { slug: string; triggers: string[]; postAs: string }): string` — generates GitHub Actions YAML enforcing all security ACs:
+  - Top-level `permissions: { contents: read, pull-requests: write }` and no other permissions (AC-8)
+  - Trigger: `on: { pull_request: { types: [<triggers>] } }` — only `pull_request`, never `pull_request_target` or `issue_comment` (AC-9, AC-10)
+  - `OPENROUTER_API_KEY` referenced exclusively as `${{ secrets.OPENROUTER_API_KEY }}` (AC-11)
+  - Runner step: `run: node .devdigest/runner/index.js` with env vars `DEVDIGEST_POST_AS: <postAs>`, `GITHUB_REPOSITORY: ${{ github.repository }}`, `PR_NUMBER: ${{ github.event.pull_request.number }}`
+  - Use `jsYaml.dump(workflowObject, { lineWidth: -1 })` to serialize; do NOT hand-build the string with template literals (escaping risk)
 
----
+- [ ] `buildCiBundle(params: { slug: string; manifestYaml: string; skills: Array<{ slug: string; body: string }>; workflowYaml: string | null; runnerBinary: Buffer | null }): CiFile[]` — assembles the file array per AC-2:
+  - `.devdigest/agents/<slug>.yaml` — manifest YAML, `editable: false`
+  - `.devdigest/skills/<skill-slug>.md` per skill — body text, `editable: false`
+  - `.devdigest/memory.jsonl` — empty string contents, `editable: false`
+  - `.devdigest/runner/index.js` — `runnerBinary?.toString('binary') ?? ''`, `editable: false`
+  - `.github/workflows/devdigest-review.yml` — workflow YAML (omitted if `workflowYaml` is null, i.e. non-gha target per AC-7), `editable: true`
 
-### Phase 3: Client API infrastructure + PR-page agent picker
+- [ ] `parseRepoRef(repo: string): RepoRef` — splits on `/` and returns `{ owner: parts[0]!, name: parts[1]! }`. Trusted input (already Zod-regex validated at route boundary).
 
-**Requires Phase 1 complete** (new server endpoints must be reachable). Runs in parallel with Phase 4. Phase 5 depends on this phase's `lib/hooks/multi-runs.ts` and `lib/api.ts` additions — **Phase 3 must commit those files before Phase 5 begins**.
+#### 2c. `types.ts` — module-local types
 
-#### 3.1 New API functions
+File: `server/src/modules/ci/types.ts`
 
-- [ ] `client/src/lib/api.ts` — add the following exported async functions (import types from `@devdigest/shared` — the new contracts from Phase 1):
+- [ ] Define `AgentRow` and `SkillRow` type aliases (using `typeof agents.$inferSelect` and `typeof skills.$inferSelect` from the Drizzle schema) so `repository.ts` and `service.ts` share typed row shapes without importing from other modules.
+- [ ] Define `NewCiRunRow` (the insert shape for `ci_runs` without `id`).
 
-  ```typescript
-  export async function fetchAgentEstimates(prId: string): Promise<AgentEstimate[]> {
-    return apiFetch<AgentEstimate[]>(`/pulls/${prId}/agents/estimates`);
-  }
+#### 2d. `repository.ts` — DB queries (Drizzle only, returns typed rows)
 
-  export async function triggerMultiReview(
-    prId: string,
-    agentIds: string[],
-  ): Promise<{ multi_run_id: string; runs: { run_id: string; agent_id: string; agent_name: string }[] }> {
-    return apiFetch(`/pulls/${prId}/multi-review`, {
-      method: 'POST',
-      body: JSON.stringify({ agentIds }),
-    });
-  }
+File: `server/src/modules/ci/repository.ts`
 
-  export async function fetchMultiRun(multiRunId: string): Promise<MultiRunRecord> {
-    return apiFetch<MultiRunRecord>(`/multi-runs/${multiRunId}`);
-  }
+- [ ] `CiRepository` class; constructor takes `db: Db`.
+- [ ] `findAgentById(agentId: string): Promise<AgentRow | null>` — `SELECT` from `agents` where `id = agentId`.
+- [ ] `findSkillsByAgentId(agentId: string): Promise<SkillRow[]>` — `SELECT skills.* FROM skills JOIN agent_skills ON ... WHERE agent_skills.agent_id = agentId ORDER BY agent_skills.order ASC`. Returns skills in link order.
+- [ ] `findInstallationsByAgent(agentId: string): Promise<CiInstallationRow[]>` — `SELECT * FROM ci_installations WHERE agent_id = agentId`.
+- [ ] `findInstallationsByWorkspace(workspaceId: string): Promise<CiInstallationRow[]>` — joins `ci_installations → agents` filtering by `agents.workspace_id = workspaceId`.
+- [ ] `upsertInstallation(input: { agentId: string; repo: string; targetType: string }): Promise<CiInstallationRow>` — INSERT with `onConflictDoUpdate` if a unique constraint on `(agent_id, repo)` exists; otherwise plain INSERT then SELECT back. Check the existing `ci_installations` schema for constraints.
+- [ ] `findRunsByInstallationIds(ids: string[]): Promise<CiRunRow[]>` — `SELECT * FROM ci_runs WHERE ci_installation_id IN (ids) ORDER BY ran_at DESC`. Returns empty array for empty `ids`.
+- [ ] `findRunById(id: string): Promise<CiRunRow | null>`.
+- [ ] `findRunByInstallationAndUrl(installationId: string, githubUrl: string): Promise<CiRunRow | null>` — deduplication check; `SELECT ... WHERE ci_installation_id = installationId AND github_url = githubUrl LIMIT 1`.
+- [ ] `insertRun(input: NewCiRunRow): Promise<CiRunRow>` — `INSERT INTO ci_runs (...) VALUES (...) RETURNING *`.
 
-  export async function fetchMultiRunFindings(multiRunId: string): Promise<MultiRunFindings> {
-    return apiFetch<MultiRunFindings>(`/multi-runs/${multiRunId}/findings`);
-  }
-  ```
+#### 2e. `service.ts` — CiService (orchestration)
 
-#### 3.2 New TanStack Query hooks
+File: `server/src/modules/ci/service.ts`
 
-- [ ] Create `client/src/lib/hooks/multi-runs.ts` — new file (do not add to `reviews.ts`; separate domain file per ui-architecture hook convention):
+- [ ] `CiService` class; constructor takes `container: Container`.
+- [ ] Constructor body: resolve the agent-runner binary path via `path.resolve(new URL(import.meta.url).pathname, '../../../../../agent-runner/dist/index.js')`; read it with `fs.readFileSync`; store as `private readonly runnerBinary: Buffer | null`; on ENOENT log `container.log?.warn('agent-runner binary not found; runner file will be empty')` and store `null`.
+- [ ] `exportCi(agentId: string, input: CiExportInput, workspaceId: string): Promise<CiExport>`:
+  1. `const repo = new CiRepository(container.db)`
+  2. Load agent via `repo.findAgentById(agentId)` — throw `NotFoundError` if null
+  3. Load linked skills via `repo.findSkillsByAgentId(agentId)`
+  4. `buildAgentManifest({ agent, skillSlugs: skills.map(s => s.slug), postAs: input.post_as })`
+  5. `manifestToYaml(manifest)` — throw on validation failure (returns 422 via error handler)
+  6. If `input.target === 'gha'`: `buildWorkflowYaml({ slug, triggers: input.triggers, postAs: input.post_as })`; else `workflowYaml = null`
+  7. `buildCiBundle({ slug, manifestYaml, skills: skills.map(s => ({ slug: s.slug, body: s.body })), workflowYaml, runnerBinary: this.runnerBinary })`
+  8. If `input.action === 'files'`: return `{ installation: { id: '', agent_id: agentId, repo: input.repo, target_type: input.target, installed_at: new Date().toISOString() }, files, pr_url: null }` — no DB write, no GitHub call
+  9. If `input.action === 'open_pr'` and `input.target === 'gha'`:
+     - `const repoRef = parseRepoRef(input.repo)`
+     - `const github = container.github()`
+     - `const existingPr = await github.findOpenPr(repoRef, 'devdigest/ci')`
+     - `await github.commitFiles(repoRef, { branch: 'devdigest/ci', base: input.base, message: `chore: export DevDigest agent "${agent.name}" to CI`, files: files.map(f => ({ path: f.path, contents: f.contents })) })`
+     - If `existingPr`: `prUrl = existingPr.url`; upsert installation; return with existing URL
+     - If no existing PR: `const newPr = await github.openPullRequest(repoRef, { title: \`Add DevDigest agent: ${agent.name}\`, head: 'devdigest/ci', base: input.base, body: '...' })`; upsert installation; return with new URL
+     - If `commitFiles` throws a 403: rethrow as `new ValidationError('GitHub token lacks write access to this repository', 422)`
+  10. If `input.action === 'open_pr'` and `input.target !== 'gha'`: return `{ installation: null, files, pr_url: null }` (AC-7 non-gha ZIP-only path; no GitHub calls)
 
-  ```typescript
-  export function useAgentEstimates(prId: string | null) {
-    return useQuery({
-      queryKey: ['agent-estimates', prId],
-      queryFn: () => fetchAgentEstimates(prId!),
-      enabled: !!prId,
-    });
-  }
+- [ ] `checkWriteAccess(repo: string): Promise<boolean>`:
+  - `parseRepoRef(repo)` — catch malformed and return `false`
+  - `return container.github().checkWriteAccess(repoRef)` — catch any error and return `false`
 
-  export function useRunMultiReview() {
-    return useMutation({
-      mutationFn: ({ prId, agentIds }: { prId: string; agentIds: string[] }) =>
-        triggerMultiReview(prId, agentIds),
-    });
-  }
+- [ ] `getCiInstallations(agentId: string): Promise<CiInstallation[]>`:
+  - Load via `new CiRepository(container.db).findInstallationsByAgent(agentId)`
+  - Map rows to `CiInstallation` DTO (all string fields, `installed_at.toISOString()`)
 
-  export function useMultiRun(multiRunId: string | null) {
-    return useQuery({
-      queryKey: ['multi-run', multiRunId],
-      queryFn: () => fetchMultiRun(multiRunId!),
-      enabled: !!multiRunId,
-    });
-  }
+- [ ] `getCiRuns(workspaceId: string, agentId?: string): Promise<CiRun[]>`:
+  - Load installations (by agent if `agentId` provided; else all for workspace via `findInstallationsByWorkspace`)
+  - Load runs via `findRunsByInstallationIds(installationIds)`
+  - Build a `Map<installationId, agentName>` from the installations (requires one `findAgentById` per unique `agent_id` — or load agents in a single IN-query)
+  - Enrich each run: `agent = agentNameMap.get(run.ciInstallationId) ?? null`; `duration_s = run.durationMs != null ? run.durationMs / 1000 : null`
+  - Return enriched `CiRun[]` ordered by `ran_at DESC` (already ordered by repository)
 
-  export function useMultiRunFindings(multiRunId: string | null) {
-    return useQuery({
-      queryKey: ['multi-run-findings', multiRunId],
-      queryFn: () => fetchMultiRunFindings(multiRunId!),
-      enabled: !!multiRunId,
-    });
-  }
-  ```
+- [ ] `getCiRun(id: string, workspaceId: string): Promise<CiRun>`:
+  - Load via `findRunById(id)` — throw `NotFoundError` if null
+  - Verify the run's installation belongs to the workspace (load installation, check `agent → workspace_id`) — throw `NotFoundError` if mismatch (treats unauthorized as not-found per spec)
+  - Enrich and return
 
-#### 3.3 Extended RunReviewDropdown
+- [ ] `refreshCiRuns(workspaceId: string): Promise<{ inserted: number; skipped: number }>`:
+  - Load all installations for workspace
+  - For each installation sequentially (spec performance budget: 30s for 10 installations):
+    - `const repoRef = parseRepoRef(installation.repo)`
+    - `const runs = await container.github().listWorkflowRuns(repoRef, 'devdigest-review.yml')`
+    - For each run: check `findRunByInstallationAndUrl(installation.id, run.html_url)` — skip if exists
+    - `const raw = await container.github().downloadArtifact(repoRef, run.id, 'devdigest-result')` — skip if null
+    - Wrap `JSON.parse(raw)` in try-catch; on failure log and `skipped++`
+    - `const parsed = CiResultArtifact.safeParse(json)` — on failure log parse error and `skipped++`
+    - On success: `insertRun({ ciInstallationId: installation.id, prNumber: parsed.data.pr_number ?? null, ranAt: new Date(run.created_at), status: run.status, findingsCount: parsed.data.findings_count, costUsd: parsed.data.cost_usd, githubUrl: run.html_url, source: 'ci', durationMs: parsed.data.duration_ms ?? null })`; `inserted++`
+  - Return `{ inserted, skipped }`
 
-- [ ] `client/src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx` — extend to multi-select picker mode. Key changes (preserve existing single-agent items):
+#### 2f. `routes.ts` — Fastify plugin
 
-  - Add local state: `selectedAgentIds: Set<string>` (empty by default; reset on dropdown close).
-  - Add local state: `open: boolean` (track dropdown open state for lazy estimate fetch).
-  - Call `useAgentEstimates(open ? prId : null)` — lazy-fetch-on-open per INSIGHTS pattern; returns `AgentEstimate[]` or `undefined` while loading.
-  - Call `useRunMultiReview()` for the multi-agent action mutation.
-  - In the items list, before the existing "Run all" item and agent items, insert a **multi-select section**:
-    - One checkbox row per agent: agent name + estimate label. Label format: `"≈ Xs · $X.XX"` when `has_historical_data` is true; `"no history yet"` when false. Clicking a row toggles the agent in `selectedAgentIds`.
-    - A divider.
-    - A `"Run multi-agent review ({N} selected)"` primary action button; disabled when `selectedAgentIds.size === 0`; `aria-disabled` when disabled.
-  - On primary action click:
-    1. Call `runMultiReview.mutateAsync({ prId, agentIds: [...selectedAgentIds] })`.
-    2. On success: `onRunsStarted?.(res.runs.map(r => r.run_id))` then `router.push(`/multi-runs/${res.multi_run_id}`)`.
-    3. `onRunSettled?.()` in the finally block.
-  - Keep existing `"Run all enabled agents"` and per-agent single-run items unchanged (they still call `POST /pulls/:id/review`).
-  - Change `"Configure agents..."` link target from `/agents` to `/multi-runs/configure?prId=${prId}`.
-  - Merged-PR warning: rendered as before — muted, non-blocking.
-  - Accessibility: checkbox rows use `role="checkbox"` + `aria-checked`; the primary action uses `aria-disabled` when disabled.
+File: `server/src/modules/ci/routes.ts`
 
-- [ ] `client/src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/constants.ts` — add `ESTIMATE_COLUMN_WIDTH` or any needed layout constant for the new estimate label column.
+- [ ] Standard `FastifyPluginAsync` export using `.withTypeProvider<ZodTypeProvider>()` pattern (as seen in other modules). Instantiate `new CiService(opts.container)` at plugin level; call `getContext(opts.container, req)` in each handler.
 
-- [ ] `client/messages/en/prReview.json` — add keys under `"runReview"`:
-  - `"runMultiAgentReview"`: `"Run multi-agent review ({count} selected)"`
-  - `"noHistoryYet"`: `"no history yet"`
-  - `"estimateLabel"`: `"≈ {duration}s · ${cost}"`
+- [ ] `POST /agents/:id/export-ci` — params: `{ id: z.string().uuid() }`; body: `CiExportInput`; response `200`: `CiExport`; response `404`: agent not found; response `422`: validation error or GitHub 403. Rate limit: 10/min. Calls `service.exportCi(params.id, body, workspaceId)`.
 
-#### 3.4 PR picker tests
+- [ ] `GET /agents/:id/ci-installations` — params: `{ id: z.string().uuid() }`; response `200`: `z.array(CiInstallation)`; response `404`: agent not found. Calls `service.getCiInstallations(params.id)`.
 
-- [ ] `client/src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.test.tsx` — add/update tests:
-  - Mock `useAgentEstimates` returning 2 agents with `has_historical_data: true`; open dropdown; verify estimate labels render.
-  - One agent with `has_historical_data: false`; verify `"no history yet"` text.
-  - Primary action is disabled at 0 checkboxes selected; enabled after checking 1 agent.
-  - Check 1 agent → click primary action → verify `triggerMultiReview` called with correct `prId` and `agentIds`.
-  - `"Configure agents..."` link href includes `/multi-runs/configure?prId=`.
+- [ ] `GET /ci/runs` — query: `{ agent_id: z.string().uuid().optional() }`; response `200`: `z.array(CiRun)`. Calls `service.getCiRuns(workspaceId, query.agent_id)`.
+
+- [ ] `POST /ci/runs/refresh` — no body; response `200`: `z.object({ inserted: z.number().int(), skipped: z.number().int() })`. Rate limit: 6/min (network-bound; prevent accidental hammering). Calls `service.refreshCiRuns(workspaceId)`.
+
+- [ ] `GET /ci/runs/:id` — params: `{ id: z.string().uuid() }`; response `200`: `CiRun`; response `404`: run not found or not in workspace. Calls `service.getCiRun(params.id, workspaceId)`.
+
+- [ ] `GET /ci/preflight` — query: `{ repo: z.string().min(1).regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/) }`; response `200`: `z.object({ has_write_access: z.boolean() })`. Calls `service.checkWriteAccess(query.repo)`.
+
+#### 2g. Module registration
+
+- [ ] `server/src/modules/index.ts` — add `import ci from './ci/routes.js'` and add `ci` to the `modules` Record (the `for...of` loop in `app.ts` picks it up automatically — no change to `app.ts` needed)
 
 ---
 
-### Phase 4: Multi-Agent Review results page
+### Phase 3: Client `/ci-runs` page + AgentEditor CI tab (parallel with Phase 2 — requires Phase 1)
 
-**Requires Phase 1 complete.** Runs in parallel with Phase 3. Imports from `lib/hooks/multi-runs.ts` and `lib/api.ts` — if running simultaneously with Phase 3, coordinate so Phase 3 commits those files first (or Phase 4 implementer stubs them locally and rebases). The `RunTraceDrawer` is moved to shared `components/` in this phase; the Phase 3 implementer should NOT modify `RunTraceDrawer`.
+#### 3a. New API functions
 
-#### 4.0 Promote RunTraceDrawer to shared components
+File: `client/src/lib/api.ts` — add these exported async functions (all `fetch`-based, consistent with existing pattern):
 
-- [ ] Move `client/src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/` → `client/src/components/RunTraceDrawer/` (entire folder including sub-components `TraceBody/`, `PromptBlock/`, `constants.ts`, `helpers.ts`, `styles.ts`).
-- [ ] Update the import in the PR detail page (`client/src/app/repos/[repoId]/pulls/[number]/page.tsx` or wherever `RunTraceDrawer` is currently imported) to point to the new shared path.
-- [ ] Verify the existing PR detail page tests still pass after the move.
+- [ ] `fetchCiRuns(agentId?: string): Promise<CiRun[]>` — `GET /ci/runs?agent_id={agentId}` (omit query param when `agentId` is undefined)
+- [ ] `fetchCiRun(id: string): Promise<CiRun>` — `GET /ci/runs/{id}`
+- [ ] `refreshCiRuns(): Promise<{ inserted: number; skipped: number }>` — `POST /ci/runs/refresh` with empty body
+- [ ] `exportCi(agentId: string, input: CiExportInputBody): Promise<CiExport>` — `POST /agents/{agentId}/export-ci`
+- [ ] `fetchCiInstallations(agentId: string): Promise<CiInstallation[]>` — `GET /agents/{agentId}/ci-installations`
+- [ ] `checkCiPreflight(repo: string): Promise<{ has_write_access: boolean }>` — `GET /ci/preflight?repo={encodeURIComponent(repo)}`
 
-#### 4.1 Results page route
+#### 3b. New TanStack Query hooks
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/page.tsx` — thin page component. Awaits async `params` (Next.js 15 convention: `const { multiRunId } = await params`). Renders `<MultiRunResultsView multiRunId={multiRunId} />`.
+File: `client/src/lib/hooks/ci.ts` (new file):
 
-#### 4.2 MultiRunResultsView component
+- [ ] `useCiRuns(agentId?: string)` — `useQuery({ queryKey: ['ci-runs', agentId ?? null], queryFn: () => fetchCiRuns(agentId) })`
+- [ ] `useCiInstallations(agentId: string)` — `useQuery({ queryKey: ['ci-installations', agentId], queryFn: () => fetchCiInstallations(agentId) })`
+- [ ] `useRefreshCiRuns()` — `useMutation({ mutationFn: refreshCiRuns, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ci-runs'] }) })`
+- [ ] `useExportCi(agentId: string)` — `useMutation({ mutationFn: (input: CiExportInputBody) => exportCi(agentId, input) })`
+- [ ] `useCiPreflight(repo: string | null)` — `useQuery({ queryKey: ['ci-preflight', repo], queryFn: () => checkCiPreflight(repo!), enabled: !!repo })`
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx`:
-  - Calls `useMultiRun(multiRunId)` and `useMultiRunFindings(multiRunId)`.
-  - Calls `useRunEvents(activeRunIds)` from `lib/hooks/reviews.ts` where `activeRunIds = multiRun?.agents.filter(a => a.status === 'running').map(a => a.run_id) ?? []`. When all SSE streams close (all agents done or failed), invalidate the `useMultiRun` query so the summary line updates.
-  - Local state: `viewMode: 'columns' | 'tabs'` (default `'columns'`), `showOnlyConflicts: boolean` (default `false`), `openTraceRunId: string | null` (default `null`), `openTraceAgentName: string | null` (default `null`).
-  - Renders: `<MultiRunHeader>`, mode toggle, conditional `<ColumnsView>` or `<TabsView>`, `<ConflictsSection>`, and (when `openTraceRunId != null`) `<RunTraceDrawer>` from `client/src/components/RunTraceDrawer/`.
-  - Loading state: show a skeleton or spinner while `isLoading` on `useMultiRun`.
-  - Error state (network failure): render an error message with a retry action; do NOT use an error boundary that hides the header.
-  - All user-visible strings via `useTranslations('multiRuns')`.
+File: `client/src/lib/hooks/index.ts` — add `export * from './ci'`
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/index.ts` — barrel re-export.
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/styles.ts` — Tailwind class strings via `cn()`.
+#### 3c. i18n messages
 
-#### 4.3 MultiRunHeader sub-component
+File: `client/messages/en/agents.json` — add keys under the existing `agents` namespace (do not replace the file; merge new keys):
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/_components/MultiRunHeader/MultiRunHeader.tsx`:
-  - Props: `{ prId: string; prNumber: number | null; agentCount: number; allComplete: boolean; totalDurationMs: number | null; totalCostUsd: number | null; viewMode: 'columns' | 'tabs'; onViewModeChange: (mode: 'columns' | 'tabs') => void }`
-  - Breadcrumb: `"Multi-Agent Review > #<prNumber>"` (or `"Multi-Agent Review"` if `prNumber` is null).
-  - `"Configure run"` link: `<Link href={`/multi-runs/configure?prId=${prId}`}>Configure run</Link>`.
-  - Columns/Tabs toggle: two-button segmented control. Each button's `aria-pressed` reflects whether it is the active mode.
-  - Summary line (AC-16): when `allComplete`, `"N agents · parallel · Xs total · $X.XX"`; when in progress, `"N agents · parallel · running..."`.
+```json
+"editor.tabs.ci": "CI",
+"ci.deploymentSummary": "Active in {count} repo(s)",
+"ci.noInstallations": "No repositories configured yet.",
+"ci.addRepo": "Add repository",
+"ci.updateConfig": "Update CI config",
+"ci.failOn": "Fail CI on",
+"ci.failOn.never": "Never",
+"ci.failOn.critical": "Critical findings",
+"ci.failOn.warning": "Warning findings",
+"ci.failOn.any": "Any findings",
+"ci.runHistory": "CI Run History",
+"ci.wizard.title": "Export to CI",
+"ci.wizard.step1": "Target",
+"ci.wizard.step2": "Preview",
+"ci.wizard.step3": "Configure",
+"ci.wizard.step4": "Install",
+"ci.wizard.openPr": "Open a PR with these files",
+"ci.wizard.copyZip": "Copy files as a ZIP",
+"ci.wizard.noWriteAccess": "The DevDigest GitHub token lacks write access to this repository. Only \"Copy files as a ZIP\" is available.",
+"ci.wizard.branchProtectionHint": "To block merges, you must also set \"Fail CI on\" in this agent's CI tab and add a required status check in your repository's branch protection settings — DevDigest cannot configure branch protection automatically.",
+"ci.wizard.postAs.label": "Post results as",
+"ci.wizard.postAs.github_review": "GitHub review (recommended — can REQUEST_CHANGES)",
+"ci.wizard.postAs.pr_comment": "PR comment",
+"ci.wizard.postAs.exit_code_only": "Exit code only (posts nothing to the PR)",
+"ci.wizard.secretsPanel.title": "Required GitHub Actions secrets",
+"ci.wizard.secretsPanel.openrouterKey": "OPENROUTER_API_KEY",
+"ci.wizard.secretsPanel.openrouterKeyHint": "Create this in your repository Settings → Secrets and variables → Actions",
+"ci.wizard.secretsPanel.githubToken": "GITHUB_TOKEN",
+"ci.wizard.secretsPanel.githubTokenHint": "Auto-provided by GitHub Actions — no setup required"
+```
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/MultiRunHeader/index.ts` — barrel.
+File: `client/messages/en/ci-runs.json` (new file):
 
-#### 4.4 ColumnsView sub-component
+```json
+{
+  "title": "CI Runs",
+  "refresh": "Refresh",
+  "refreshing": "Refreshing…",
+  "table.pr": "PR",
+  "table.repo": "Repository",
+  "table.agent": "Agent",
+  "table.status": "Status",
+  "table.findings": "Findings",
+  "table.cost": "Cost (USD)",
+  "table.duration": "Duration",
+  "table.jobLink": "Job",
+  "table.jobLink.none": "—",
+  "empty": "No CI runs yet. Configure an agent's CI tab and run the export wizard to get started."
+}
+```
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/_components/ColumnsView/ColumnsView.tsx`:
-  - Props: `{ agents: AgentRunSummary[]; agentFindings: MultiRunFindings['agents']; sseStatuses: Record<string, string>; onViewTrace: (runId: string, agentName: string | null) => void }`
-  - One column per agent in a horizontal-scrollable layout.
-  - Column header: agent name + status text. Status = live from `sseStatuses[run_id]` if running, else `agent.status`. Must be visible text (not icon-only) per AC accessibility requirement.
-  - While running: spinner element with accessible text label `"Running"`.
-  - When complete: agent score (numeric), verdict string, finding count.
-  - Findings list: compact titles (not full FindingCard — just file + title, ellipsized if long).
-  - Footer: `"View trace"` link/button; calls `onViewTrace(run_id, agent_name)`.
+#### 3d. CI Runs page
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/ColumnsView/index.ts` — barrel.
+- [ ] `client/src/app/ci-runs/page.tsx` — thin page component; imports and renders `<CiRunsView />`; add `export const metadata = { title: 'CI Runs' }`.
 
-#### 4.5 TabsView sub-component
+- [ ] `client/src/app/ci-runs/_components/CiRunsView/CiRunsView.tsx` — `'use client'` component:
+  - Uses `useCiRuns()` (no agent filter — global view) and `useRefreshCiRuns()`
+  - Renders a Refresh button; on click calls `mutate()` from `useRefreshCiRuns()`; shows loading state while pending
+  - Renders a table with columns per AC-16: PR number, repository (from `CiRun.ci_installation_id` → enriched via service, surfaced as part of the `CiRun` DTO — note: the service enriches `agent` but not `repo` explicitly; the `ci_installation_id` is available; see Gotchas), agent name, status, findings count, cost formatted to 4 decimal places, duration in seconds, job link
+  - `github_url` renders as `<a href={...} target="_blank">View</a>` or `"—"` if null (Edge case 10)
+  - Rows are ordered newest-first (the service returns them in that order)
+  - Uses `useTranslations('ci-runs')` for all visible strings
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/_components/TabsView/TabsView.tsx`:
-  - Props: `{ agents: AgentRunSummary[]; agentFindings: MultiRunFindings['agents']; sseStatuses: Record<string, string>; onViewTrace: (runId: string, agentName: string | null) => void }`
-  - Tab bar: one tab per agent; tab label = agent name + accessible status text.
-  - Active tab content:
-    - Summary card: score, one-line `summary`, verdict, `"View trace"` link with run time (`durationMs`) and cost (`costUsd`).
-    - `FindingCard` list: import `FindingCard` from `client/src/components/RunTraceDrawer/../FindingCard/` — check that `FindingCard` can be used outside the PR detail page context. If `FindingCard` reads from a page-specific React context (e.g., a `prId` or `workspaceId` context), extract or wrap it before use. The implementer must verify `FindingCard`'s internal imports before assuming composability.
+  **Gotcha — `repo` enrichment in `CiRun`:** The current `CiRun` Zod contract (in `eval-ci.ts`) does not include a `repo` field. The service enriches `agent` and `duration_s` but not `repo`. For the CI Runs page to show repository name, the implementer should either: (a) extend `CiRun` with a `repo: z.string().nullish()` field populated by the service via the installation join, or (b) display `ci_installation_id` and let the user look it up. Option (a) is the right user experience — add `repo: z.string().nullish()` to `CiRun` in both `vendor/shared/` files (backward-compatible addition) and populate it in `CiService.getCiRuns`.
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/TabsView/index.ts` — barrel.
+- [ ] `client/src/app/ci-runs/_components/CiRunsView/index.ts` — barrel: `export { CiRunsView } from './CiRunsView'`
 
-#### 4.6 ConflictsSection sub-component
+- [ ] `client/src/app/ci-runs/_components/CiRunsView/CiRunsView.test.tsx` — RTL unit tests (fetch mocked):
+  - Renders table rows from mocked `fetchCiRuns` response
+  - Refresh button calls `refreshCiRuns` mutation
+  - Row with `github_url: null` displays `"—"` in the job column
+  - Empty state renders the correct message when `data` is empty
 
-- [ ] Create `client/src/app/multi-runs/[multiRunId]/_components/ConflictsSection/ConflictsSection.tsx`:
-  - Props: `{ groups: FindingGroup[]; showOnlyConflicts: boolean; onToggle: () => void; allAgentCount: number }`
-  - Toggle: a standard accessible toggle (`<button role="switch" aria-checked={showOnlyConflicts}>`); visible label; description of current state.
-  - Filtered groups: when `showOnlyConflicts = true`, show only groups where `agent_verdicts` contains ≥ 2 distinct verdict values (counting `finding === null` as the string `"did_not_flag"`, any non-null finding as its `severity` string). This is a client-side filter — no extra API call.
-  - Per group row: file path + `"lines N–M"` header. For each agent in `agent_verdicts`: show finding severity + title if finding is non-null; show `"did not flag"` (i18n key: `results.conflicts.didNotFlag`) if null.
-  - When `groups.length === 0` and `allAgentCount < 2`: render a note `"Where agents disagree requires at least two agents with results"`.
+#### 3e. AgentEditor — add CI tab to constants
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/ConflictsSection/index.ts` — barrel.
+File: `client/src/app/agents/[id]/_components/AgentEditor/constants.ts`
 
-#### 4.7 i18n strings for results page
+- [ ] Add `{ key: "ci", labelKey: "editor.tabs.ci", icon: "GitBranch" }` to the `TABS` array, after `"evals"`. The `"GitBranch"` icon must exist in `@devdigest/ui`'s `IconName` type — if it does not, substitute the closest available icon (e.g., `"Terminal"` or `"Workflow"`).
 
-- [ ] Create `client/messages/en/multiRuns.json` with keys (Phase 5 will extend this file):
+#### 3f. Export Wizard component
 
-  ```json
-  {
-    "results": {
-      "title": "Multi-Agent Review",
-      "breadcrumb": "Multi-Agent Review > #{number}",
-      "configureRun": "Configure run",
-      "columnsMode": "Columns",
-      "tabsMode": "Tabs",
-      "summaryRunning": "{count} agents · parallel · running...",
-      "summaryComplete": "{count} agents · parallel · {duration}s · ${cost}",
-      "viewTrace": "View trace",
-      "agent": {
-        "running": "Running",
-        "done": "Done",
-        "failed": "Failed"
-      },
-      "conflicts": {
-        "title": "Where agents disagree",
-        "showOnlyConflicts": "Show only conflicts",
-        "didNotFlag": "did not flag",
-        "requiresMultipleAgents": "Where agents disagree requires at least two agents with results"
-      }
-    }
+Directory: `client/src/app/agents/[id]/_components/AgentEditor/_components/ExportWizard/`
+
+- [ ] `ExportWizard.tsx` — `'use client'` multi-step modal/dialog. Accepts props:
+  ```typescript
+  interface ExportWizardProps {
+    agentId: string;
+    open: boolean;
+    onClose: () => void;
+    prefilledRepo?: string; // for "Update CI config" re-open
   }
   ```
+  Internal state: `step: 1 | 2 | 3 | 4`, `target: CiTarget`, `repo: string`, `base: string`, `triggers: string[]`, `postAs: 'github_review' | 'pr_comment' | 'exit_code_only'`, `files: CiFile[]`, `editedWorkflow: string`.
 
-#### 4.8 Results page tests
+  **Step 1 — Target (`TargetStep`):**
+  - Provider selector: GHA fully enabled; circle/jenkins/cli shown as disabled placeholders with a "(coming soon)" label (per AC-7)
+  - Repo text input (pre-filled from `prefilledRepo` if provided)
+  - Base branch text input (defaults to `"main"`)
+  - "Next" advances to Step 2 and calls `exportCi(agentId, { repo, target, action: 'files', post_as: postAs, triggers, base })` to fetch the preview bundle
 
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.test.tsx`:
-  - Mock `useMultiRun` (2 complete agents), `useMultiRunFindings` (1 shared finding group). Verify Columns mode renders 2 columns.
-  - Toggle to Tabs mode; verify tab count = 2.
-  - Click `"View trace"` for agent A; verify `RunTraceDrawer` receives the correct `runId`.
-  - Click `"View trace"` for agent B; verify drawer `runId` changes.
-  - Render with `groups` where all agents agree; activate `showOnlyConflicts`; verify the group is hidden.
-  - Render with one agent `status = 'running'`; verify accessible label includes `"Running"` text.
-  - All-agents-failed state: 2 failed columns, no error boundary, no findings.
+  **Step 2 — Preview (`PreviewStep`):**
+  - Lists all file paths returned in `files`
+  - For `.github/workflows/devdigest-review.yml`: renders an editable `<textarea>` with a visible `<label id="workflow-label">Workflow YAML</label>` and `aria-labelledby="workflow-label"` on the textarea (per spec accessibility NFR AC-NFR); stores edits in `editedWorkflow`
+  - "Next" advances to Step 3
+
+  **Step 3 — Configure (`ConfigureStep`):**
+  - Trigger checkboxes: `opened` and `synchronize` pre-checked; `reopened` unchecked-by-default but available (per AC-6)
+  - Secrets panel: `OPENROUTER_API_KEY` (must-create) and `GITHUB_TOKEN` (auto-provided, marked ready)
+  - "Post results as" radio group: `github_review` (default), `pr_comment`, `exit_code_only` — no `none` option
+  - Inline branch-protection hint (per AC-6 NFR)
+  - "Next" advances to Step 4 and calls `useCiPreflight(repo)` to begin preflight check
+
+  **Step 4 — Install (`InstallStep`):**
+  - On mount (or on step transition): query `useCiPreflight(repo)` result
+  - If `has_write_access === false`: "Open a PR" button disabled + explanatory message; only "Copy as ZIP" is functional (per AC-22)
+  - If `has_write_access === true`: "Open a PR" button calls `useExportCi` with `action: 'open_pr'` and the (possibly edited) workflow — note: the edited workflow needs to flow back: update the relevant `CiFile` in the files array before submitting
+  - "Copy as ZIP": instantiates `new JSZip()`, adds each file in `files` (using `editedWorkflow` for the workflow file), calls `zip.generateAsync({ type: 'blob' })`, triggers browser download via `URL.createObjectURL`
+  - On "Open a PR" success: shows PR URL as a clickable link; closes wizard on confirmation
+
+  **Step indicators:** rendered as `<ol role="list">` with each `<li>` having `aria-current="step"` on the active step (per spec accessibility NFR).
+
+- [ ] `ExportWizard/index.ts` — barrel: `export { ExportWizard } from './ExportWizard'`
+
+- [ ] `ExportWizard/ExportWizard.test.tsx` — RTL tests (fetch mocked):
+  - Clicking "Next" on Step 1 calls `fetchCiRuns` (mock the export call) and advances to Step 2
+  - Step 2 renders a `<textarea>` with a visible label for the workflow file
+  - Step 3 "Post results as" radio: selecting `exit_code_only` updates internal state; advance to Step 4
+  - Step 4 with preflight `has_write_access: false`: "Open a PR" button is disabled; "Copy as ZIP" is enabled
+  - Step 4 "Copy as ZIP": verifies JSZip `generateAsync` was called (spy on JSZip)
+
+#### 3g. CI Tab component
+
+Directory: `client/src/app/agents/[id]/_components/AgentEditor/_components/CiTab/`
+
+- [ ] `CiTab.tsx` — `'use client'` component. Accepts `{ agentId: string; ciFailOn: string }` props (agent data already loaded by AgentEditor parent).
+  - **Deployment summary** (AC-18): renders count from `useCiInstallations(agentId).data?.length ?? 0` — e.g. "Active in 2 repo(s)"
+  - **Per-repository list** (AC-19): maps installations; each row shows `installation.repo`, `installation.target_type`, `installation.installed_at` formatted as date, last run status (find most recent `CiRun` for this installation from `useCiRuns(agentId)` data, or "No runs yet")
+    - "Add repository" button: sets wizard open with no prefilledRepo
+    - "Update CI config" button per row: sets wizard open with `prefilledRepo={installation.repo}`
+  - **"Fail CI on" selector** (AC-20): `<select>` with options `never`, `critical`, `warning`, `any`; controlled by `ciFailOn` prop; `onChange` calls the existing `useUpdateAgent` mutation with `{ ci_fail_on: newValue }` — reuse whatever agent update hook already exists in `lib/hooks/agents.ts`
+  - **Run history table** (AC-21): sourced from `useCiRuns(agentId)`; columns: PR number, repo, status, findings count, cost, date
+  - Renders `<ExportWizard agentId={agentId} open={wizardOpen} onClose={() => setWizardOpen(false)} prefilledRepo={wizardRepo} />`
+
+- [ ] `CiTab/index.ts` — barrel: `export { CiTab } from './CiTab'`
+
+- [ ] `CiTab/CiTab.test.tsx` — RTL tests:
+  - Renders deployment summary with correct count from mocked `fetchCiInstallations`
+  - "Add repository" button opens wizard (wizard `open` prop becomes `true`)
+  - "Fail CI on" change calls `useUpdateAgent` with the new value
+  - Run history table renders rows from mocked `fetchCiRuns`
+
+#### 3h. Wire CI tab into AgentEditor
+
+File: `client/src/app/agents/[id]/_components/AgentEditor/AgentEditor.tsx`
+
+- [ ] Import `CiTab` from `./_components/CiTab`
+- [ ] In the tab-content switch/render logic, add a branch for `activeTab === 'ci'` that renders `<CiTab agentId={agent.id} ciFailOn={agent.ci_fail_on} />`
 
 ---
 
-### Phase 5: Configure Run page
+### Phase 4: Tests (after Phases 2 and 3 complete)
 
-**Requires Phase 1 complete** (server estimates endpoint). **Requires Phase 3 complete** (provides `useAgentEstimates`, `useRunMultiReview` hooks and API functions). Phase 5 CANNOT start until Phase 3 has committed `lib/hooks/multi-runs.ts` and the `lib/api.ts` additions.
+#### 4a. Server unit tests (hermetic — no DB)
 
-#### 5.1 Configure Run page route
+File: `server/src/modules/ci/ci.test.ts`
 
-- [ ] Create `client/src/app/multi-runs/configure/page.tsx` — thin page. Reads optional `searchParams.prId` (pre-selected PR from the picker's "Configure agents..." link). Awaits `searchParams` (Next.js 15 async API). Renders `<ConfigureRunView initialPrId={prId} />`.
+- [ ] `agentSlug()` — edge cases: consecutive spaces, leading/trailing spaces, special characters, unicode letters (stripped), already-valid slug (unchanged)
+- [ ] `buildWorkflowYaml()` — assert generated YAML: (a) no `pull_request_target` token anywhere; (b) no `issue_comment` token; (c) contains `contents: read` and `pull-requests: write`; (d) `OPENROUTER_API_KEY` appears only as the literal string `${{ secrets.OPENROUTER_API_KEY }}`; (e) top-level `on.pull_request` exists
+- [ ] `manifestToYaml()` — YAML-special characters in `system_prompt` (colons, quotes, newlines, `{braces}`) survive `jsYaml.dump` → `jsYaml.load` → `AgentManifest.safeParse` round-trip without error
+- [ ] `CiService.exportCi()` with `MockGitHubClient`:
+  - `action='files'` → no `commitFiles` call, no `openPullRequest` call, returns `pr_url: null`
+  - `action='open_pr'`, `findOpenPr` returns `null` → `commitFiles` called once, `openPullRequest` called once, `pr_url` matches `openPullRequest` return value
+  - `action='open_pr'`, `findOpenPr` returns existing URL → `commitFiles` called, `openPullRequest` NOT called, `pr_url` matches existing URL (AC-3 deduplication)
+  - `target='circle'` → no GitHub calls, no workflow file in bundle, returns `pr_url: null`
+- [ ] `CiService.refreshCiRuns()` with mock container:
+  - Valid artifact inserted, `inserted: 1, skipped: 0`
+  - Same `github_url` already in `ci_runs` (mock `findRunByInstallationAndUrl` returns existing row) → `skipped: 1, inserted: 0`
+  - `downloadArtifact` returns `null` → `skipped: 1, inserted: 0`
+  - Artifact JSON fails `CiResultArtifact.safeParse` → `skipped: 1, inserted: 0`
+  - `duration_ms` from artifact stored in `insertRun` call argument
 
-#### 5.2 ConfigureRunView component
+#### 4b. Server integration test (DB-backed)
 
-- [ ] Create `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx`:
-  - Props: `{ initialPrId?: string }`
-  - State: `selectedPrId: string | null` (initialized from `initialPrId`), `selectedAgentIds: Set<string>`.
-  - **Step 1 — PR selection**: Use an existing TanStack Query hook (e.g., `usePulls` if it exists, or equivalent) to list PRs for the current workspace. Render a dropdown or searchable list. Pre-select `initialPrId` if provided. On selection, update `selectedPrId` and reset `selectedAgentIds`.
-  - **Step 2 — Agent cards** (rendered once `selectedPrId` is set): Call `useAgentEstimates(selectedPrId)` (lazy per INSIGHTS: `open ? prId : null` pattern — here: `selectedPrId ?? null`).
-    - Per agent card: agent name (heading); `last_finding_summary` as escaped plain text (do NOT use `dangerouslySetInnerHTML`); time estimate `"≈ Xs"` or `"no history yet"` per AC-3; cost estimate `"$X.XX"` or `"no history yet"` per AC-3; a checkbox for selection.
-    - "Select all" control: a single checkbox or button that checks/unchecks all agents. When all are checked and one is unchecked, "Select all" should reflect the intermediate state.
-  - **Footer aggregate estimate** (AC-4): derived from `selectedAgentIds` and `useAgentEstimates` data using `computeAggregateDuration` and `computeAggregateCost` helpers (pure functions in `helpers.ts`):
-    - Duration: `max` of selected agents' `estimated_duration_ms` (parallel execution assumption).
-    - Cost: `sum` of selected agents' `estimated_cost_usd`.
-    - Render: `"≈ Xs · $X.XX · parallel fan-out"`. When any selected agent has `null` estimates, show `"≈ varies · $X.XX · parallel fan-out"` (use available data; omit null components).
-    - Updates live as checkboxes change (no debounce needed — all data is already in React state).
-  - **Submit button**: label `"Run multi-agent review (N)"` where N = `selectedAgentIds.size`. Disabled when `selectedPrId === null` or `selectedAgentIds.size === 0`. On click:
-    1. Call `useRunMultiReview().mutateAsync({ prId: selectedPrId, agentIds: [...selectedAgentIds] })`.
-    2. On success: `router.push(`/multi-runs/${res.multi_run_id}`)`.
-  - **Merged-PR note**: if the selected PR's `state` is `"closed"` or `"merged"`, show the same muted warning used in `RunReviewDropdown` — do not block submission.
-  - All user-visible strings via `useTranslations('multiRuns')` using the `"configure"` key namespace.
+File: `server/src/modules/ci/ci.it.test.ts`
 
-- [ ] `client/src/app/multi-runs/configure/_components/ConfigureRunView/index.ts` — barrel.
-- [ ] `client/src/app/multi-runs/configure/_components/ConfigureRunView/helpers.ts` — pure functions:
-  ```typescript
-  export function computeAggregateDuration(
-    estimates: AgentEstimate[],
-    selectedIds: string[],
-  ): number | null
-  // Returns max(estimated_duration_ms) for selected agents that have non-null duration.
-  // Returns null when all selected agents have null duration or selectedIds is empty.
-
-  export function computeAggregateCost(
-    estimates: AgentEstimate[],
-    selectedIds: string[],
-  ): number | null
-  // Returns sum(estimated_cost_usd) for selected agents that have non-null cost.
-  // Returns null when all selected agents have null cost or selectedIds is empty.
-  ```
-
-#### 5.3 Configure Run i18n strings
-
-- [ ] `client/messages/en/multiRuns.json` — extend (add to the file created in Phase 4):
-  ```json
-  {
-    "configure": {
-      "title": "Configure run",
-      "selectPr": "Select PR",
-      "selectAgents": "Select agents",
-      "selectAll": "Select all",
-      "estimateParallel": "≈ {duration}s · ${cost} · parallel fan-out",
-      "estimateVaries": "≈ varies · parallel fan-out",
-      "noHistory": "no history yet",
-      "run": "Run multi-agent review ({count})",
-      "disabledNoAgents": "Select at least one agent",
-      "disabledNoPr": "Select a PR first"
-    }
-  }
-  ```
-
-#### 5.4 Configure Run tests
-
-- [ ] `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.test.tsx`:
-  - Render with `initialPrId` pre-set; verify Step 2 agent cards appear (mock `useAgentEstimates` returns 2 agents with `has_historical_data: true`).
-  - One agent with `has_historical_data: false`; verify `"no history yet"` for both duration and cost.
-  - Check 2 agents with `estimated_duration_ms: [3000, 5000]`; verify footer shows `"≈ 5s"` (max = 5000 ms = 5s).
-  - Check 2 agents with `estimated_cost_usd: [0.01, 0.02]`; verify footer shows `"$0.03"` (sum).
-  - "Select all" selects all agents; verify `selectedAgentIds` length equals agents count.
-  - Submit disabled when no PR selected; disabled when no agents selected; enabled when both set.
-  - On submit: mock `triggerMultiReview`; verify called with correct `prId` and `agentIds`; verify `router.push` called with `/multi-runs/<multiRunId>`.
-  - `last_finding_summary` is rendered as plain text (textContent); no `dangerouslySetInnerHTML`.
-
-- [ ] `client/src/app/multi-runs/configure/_components/ConfigureRunView/helpers.test.ts`:
-  - `computeAggregateDuration`: max of selected durations; null when all null; correct subset when only some selected.
-  - `computeAggregateCost`: sum of selected costs; null when all null.
+- [ ] `POST /agents/:id/export-ci` with `action='files'` → 200; `files` array contains `.devdigest/agents/`, `.devdigest/memory.jsonl`, `.github/workflows/devdigest-review.yml`; no `ci_installations` row created
+- [ ] `GET /agents/:id/ci-installations` → 200; returns seeded installation rows for the agent
+- [ ] `GET /ci/runs` → 200; returns seeded runs with non-null `agent` field and `duration_s` computed correctly (e.g. `duration_ms: 5000` → `duration_s: 5`)
+- [ ] `POST /ci/runs/refresh` with mock GitHub adapter configured to return one `WorkflowRun` and one valid artifact JSON → 200 `{ inserted: 1, skipped: 0 }`; second identical refresh → `{ inserted: 0, skipped: 0 }` (deduplication)
+- [ ] `GET /ci/preflight?repo=owner/name` → 200 `{ has_write_access: true }` (mock `checkWriteAccess` returns true)
 
 ---
 
 ## Gotchas
 
-- **Migrations never auto-run.** After editing `server/src/db/schema/runs.ts`, run `cd server && pnpm db:generate` and commit the generated file. Then run `cd server && pnpm db:migrate`. Skipping either step produces silent "column does not exist" errors at runtime.
-- **`server/src/db/schema/` is not the SQL file.** Edit the TypeScript schema file; let `pnpm db:generate` produce the SQL. Never hand-edit `server/src/db/migrations/`.
-- **Backward-compatible contracts only.** The new Zod entries in `observability.ts` are purely additive. Do NOT rename, remove, or change the type of any field in the existing `MultiAgentRun`, `AgentColumn`, `Conflict`, `ConflictTake`, `AgentStats`, `StatPoint`, `CuratorResult`, or `CuratorMerge` exports.
-- **Both vendor copies must change in lockstep.** `server/src/vendor/shared/contracts/observability.ts` and `client/src/vendor/shared/contracts/observability.ts` must be updated in the same commit (or at least before `pnpm tsc --noEmit` is run on either package). No tooling enforces this.
-- **Test fixture updates.** Any test that constructs an object of a contract type that gains a required (non-.nullish) field will emit TS2741. Update every hardcoded factory object in `*.test.tsx` files that uses `AgentRunSummary`, `MultiRunRecord`, etc.
-- **`RunTraceDrawer` is moved in Phase 4.** Phase 3 implementer must NOT touch `RunTraceDrawer`. Phase 4 moves it from the PR-detail `_components/` to `client/src/components/RunTraceDrawer/` and updates the PR-detail page's import. Once moved, Phase 5 (Configure Run page) should not import it — that page doesn't need a trace drawer.
-- **`FindingCard` coupling.** Before Phase 4 reuses `FindingCard` in the Tabs view, verify its source imports. If it reads from a page-level React context (e.g., a `prId` context), it cannot be composed directly from the results page; it must be extracted to `client/src/components/FindingCard/` with explicit props. This is an implementer verification step, not assumed.
-- **Agent deleted mid-run** (edge case 4). `agent_runs.agent_id` has `onDelete: 'set null'`. If an agent is deleted while a run is in progress, `agent_id` becomes null. The results page falls back to `agent_name` from `AgentRunSummary` (the server populates it from the join at read time). For runs in progress when the join returns null, fall back to `"Unknown agent"` (or use the trace's `config.agent` once the trace is available via `RunTraceDrawer`).
-- **`ci/` and `agent-runner/` are off-limits.** No tasks in this plan touch those directories. GitHub Actions deployment of agents is a separate initiative.
-- **Security — LLM-generated content.** `FindingCard` fields (`title`, `rationale`, `suggestion`) and `last_finding_summary` are LLM-generated text. Render as escaped markdown (existing FindingCard behavior) or escaped plain text. Never inject into prompts. Never use `dangerouslySetInnerHTML`. The `agentIds[]` from the multi-review request body are UUID-validated by the Zod `.uuid()` refinement at the route boundary; the workspace membership check happens in the service before any DB write — both layers are required (defense-in-depth per security skill A01).
-- **All user-visible strings via i18n.** No hardcoded string literals in JSX. Every label, button text, and status string must be in `messages/en/*.json` and consumed via `useTranslations`.
-- **`Promise.allSettled` and the RunBus.** The parallel executor change (Phase 2) makes concurrent writes to the RunBus. Each agent writes to its own channel (keyed by `runId`). The shared pre-work log (emitted before `Promise.allSettled`) is buffered for all `runIds` and appears in every agent's trace — this is the intended behavior.
-
----
+- **Migrations never auto-run.** Phase 1a must fully complete (`pnpm db:generate` → commit → `pnpm db:migrate`) before the Phase 2 service or Phase 4 integration tests reference `ci_runs.duration_ms`. Skipping this causes a runtime column-not-found error.
+- **`server/src/db/schema/` is a do-not-touch zone for hand-edits.** Phase 1a adds `durationMs` to the Drizzle table definition only; the SQL migration file is generated, never hand-written.
+- **Both `vendor/shared/` mirrors must change in Phase 1 (tasks 1c and 1d).** Any contract in `server/src/vendor/shared/` that changes must receive an identical change in `client/src/vendor/shared/`. Drift is caught only by `pnpm typecheck` in the client.
+- **`AgentManifest` test fixtures must be updated after Phase 1c/1d.** Every hardcoded object typed as `AgentManifest` (output type) needs `post_as: 'github_review'` added, or TS2741 fires. Run `grep -r 'AgentManifest' server/src client/src --include='*.test.*'` to find all affected fixtures.
+- **`agent-runner/dist/index.js` must exist before testing export functionality.** Run `cd agent-runner && pnpm build` (check agent-runner's `package.json` for the build script). If absent, `CiService` logs a warning and the runner file in the bundle has empty contents — integration tests should mock or pre-build.
+- **`CiRun.repo` field.** The current `CiRun` contract lacks a `repo` field. Phase 3d notes the need to add `repo: z.string().nullish()` to both `vendor/shared/` files (backward-compatible, optional). This must be done in Phase 1c/1d alongside the other contract changes, or Phase 3 will need a small patch to Phase 1's output.
+- **Non-`gha` targets (AC-7) have no workflow YAML in the bundle.** `buildCiBundle` skips the `.github/workflows/` entry when `workflowYaml` is null. The Install step must detect `target !== 'gha'` and hide "Open a PR" entirely (not just disable it per AC-22, but structurally absent for non-GHA targets).
+- **ZIP download is client-side only.** Phase 4 tests cannot verify the actual ZIP file contents under vitest/jsdom (no File System API). Spy on `JSZip.prototype.generateAsync` to confirm it is called with the correct files array.
+- **`GitHubClient.downloadArtifact` must handle GitHub's artifact ZIP redirect.** GitHub's artifact download API returns a ZIP file (even for single-file artifacts). The octokit implementation must unzip it to extract `devdigest-result.json`. The `adm-zip` or Node's built-in `zlib` (for gzip streams) may be needed — check the specific Octokit response type. If the added complexity is prohibitive, a simpler approach is to use `octokit.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts')` and then fetch the download URL directly and handle the ZIP; add `adm-zip` to `server/` if needed.
+- **`.github/workflows/` is a do-not-touch zone in this codebase's repo.** The `buildWorkflowYaml` function generates a YAML string that will be committed to the TARGET repository via `GitHubClient.commitFiles` — it never writes to the DevDigest repo's own `.github/workflows/`.
 
 ## Definition of done
 
-- [ ] `cd server && pnpm test` passes (all existing + new unit/integration tests green)
-- [ ] `cd server && pnpm tsc --noEmit` reports zero errors
-- [ ] `cd client && pnpm test` passes (all existing + new component tests green)
-- [ ] `cd client && pnpm tsc --noEmit` reports zero errors
-- [ ] AC-1: PR page Run Review dropdown shows per-agent checkboxes with time-estimate labels; primary action button shows "Run multi-agent review (N selected)" and is disabled when N = 0; "Configure agents..." navigates to `/multi-runs/configure`.
-- [ ] AC-2, AC-3: Configure Run page shows PR selection step then agent cards with name, last-finding summary, and time/cost estimate; an agent with zero completed runs shows `"no history yet"` (not a number).
-- [ ] AC-4: Configure Run footer shows aggregate estimate assuming parallel execution (max duration, sum cost, "parallel fan-out" label) and updates live as checkboxes change.
-- [ ] AC-5: DB query after triggering a multi-agent review confirms one `multi_agent_runs` row and N `agent_runs` rows with `multi_agent_run_id` set to that row's `id`; a single-agent run via the existing path has `multi_agent_run_id = null`.
-- [ ] AC-6: One agent configured to fail; the other completes successfully; `GET /multi-runs/:id` returns both statuses; the results page shows one failed indicator and one completed indicator without an error boundary.
-- [ ] AC-7: Live per-agent status indicators update independently (running → done/failed) on the results page via SSE without a page reload.
-- [ ] AC-8, AC-9: Columns and Tabs modes each display the correct findings per agent; toggling modes switches view without a refetch.
-- [ ] AC-10: "View trace" opens the shared `RunTraceDrawer` for the correct `runId`; clicking "View trace" for a different agent changes the drawer to that agent's `runId`.
-- [ ] AC-11: FindingCards in Tabs mode show Accept, Dismiss, and "Turn into eval case" buttons with SPEC-02 semantics.
-- [ ] AC-12: Same file + overlapping line range → 1 group; different files + same range → 2 groups; one agent flags a location the other does not → the non-flagging agent shows "did not flag" in the group row.
-- [ ] AC-13: "Show only conflicts" toggle hides groups where all agents have the same verdict; deactivating the toggle restores all groups.
-- [ ] AC-14: After a multi-agent review, each participating `agent_runs` row has a non-null `agent_id` matching the selected agent.
-- [ ] AC-15: `GET /multi-runs/:id` returns `id, pr_id, ran_at, agents[](run_id, agent_id, agent_name, status, score, finding_count, cost_usd, duration_ms, error), total_cost_usd, total_duration_ms`.
-- [ ] AC-16: Results page header shows the PR breadcrumb, "Configure run" link, Columns/Tabs toggle, and a summary line with agent count, "parallel" label, total duration (when complete), and total cost.
+- [ ] `pnpm test` passes in `server/` (unit + integration)
+- [ ] `pnpm test` passes in `client/`
+- [ ] `pnpm typecheck` reports no errors in `server/`
+- [ ] `pnpm typecheck` reports no errors in `client/`
+- [ ] **AC-1** — `POST /agents/:id/export-ci` returns a bundle whose `.devdigest/agents/<slug>.yaml` passes `AgentManifest.safeParse` and whose `post_as` field matches the request's `post_as` value
+- [ ] **AC-2** — Returned `files` for `target='gha'` contains exactly the five file categories; no extras
+- [ ] **AC-3** — `action='open_pr'` returns a PR URL; repeating the call returns the same URL without a duplicate PR
+- [ ] **AC-4** — `action='files'` returns the bundle with `pr_url: null` and creates no `ci_installations` row
+- [ ] **AC-5** — Preview step renders all file paths; workflow YAML is in an editable `<textarea>` with a visible `<label>`
+- [ ] **AC-6** — Configure step: `opened` + `synchronize` pre-checked; `github_review` default selected; `exit_code_only` option present; no `none` option; secrets panel lists both secrets; branch-protection hint visible
+- [ ] **AC-7** — CircleCI/Jenkins/CLI targets: wizard completes without error; bundle contains only manifest + skill files; only "Copy as ZIP" is offered
+- [ ] **AC-8/9/10/11** — Generated workflow YAML: `permissions: {contents: read, pull-requests: write}` only; sole trigger is `on: pull_request:`; no `pull_request_target` or `issue_comment`; `OPENROUTER_API_KEY` appears only as `${{ secrets.OPENROUTER_API_KEY }}`
+- [ ] **AC-16** — `/ci-runs` page renders all required columns ordered newest-first; `github_url: null` shows `"—"`
+- [ ] **AC-17** — Refresh inserts new `ci_runs` rows with `duration_ms` populated; repeated refresh inserts zero duplicate rows; invalid artifact is skipped with no malformed row
+- [ ] **AC-18/19/20/21** — Agent CI tab shows installation count; per-repo list with "Add repository" / "Update CI config"; "Fail CI on" selector persists via `PATCH /agents/:id`; run history table
+- [ ] **AC-22** — Install step disables "Open a PR" and shows explanatory message when preflight returns `has_write_access: false`; "Copy as ZIP" remains available

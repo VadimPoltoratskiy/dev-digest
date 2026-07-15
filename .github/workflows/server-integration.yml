@@ -57,6 +57,18 @@ jobs:
         working-directory: reviewer-core
         run: npm ci
 
+      # The ci/ module's CiService reads the ncc-compiled agent-runner binary
+      # from disk at construction time (server/src/modules/ci/service.ts). It
+      # tolerates a missing build (logs a warning, ships an empty runner file
+      # in exported bundles) rather than throwing, so without this step
+      # ci.it.test.ts would silently pass against an empty buffer instead of
+      # the real artifact.
+      - name: Build agent-runner
+        working-directory: agent-runner
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
       # Inlined rather than `pnpm test:integration`: server/package.json is
       # skip-worktree, so we don't rely on the committed file carrying the split
       # script. The `.it.test` filter selects exactly the 12 DB-backed files.

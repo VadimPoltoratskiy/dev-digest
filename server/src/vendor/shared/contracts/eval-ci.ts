@@ -190,6 +190,8 @@ export const AgentManifest = z.object({
   // CI gate policy (see CiFailOn) — when the posted review should BLOCK
   // (REQUEST_CHANGES + fail the check) vs just comment. Default: block on critical.
   ci_fail_on: CiFailOn.default('critical'),
+  // How the CI runner posts its result to the PR. Default: GitHub review (can REQUEST_CHANGES).
+  post_as: z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
 });
 export type AgentManifest = z.infer<typeof AgentManifest>;
 /** Caller-facing input type — `.default()` fields stay optional. */
@@ -197,11 +199,14 @@ export type AgentManifestInput = z.input<typeof AgentManifest>;
 
 /** Request body for `POST /agents/:id/export-ci`. */
 export const CiExportInput = z.object({
-  repo: z.string().min(1), // "owner/name"
+  repo: z.string().min(1).regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, 'repo must be owner/name format'),
   target: CiTarget.default('gha'),
   /** "open_pr" opens a PR with the files; "files" just returns/persists them. */
   action: z.enum(['open_pr', 'files']).default('open_pr'),
-  post_as: z.enum(['github_review', 'pr_comment', 'none']).default('github_review'),
+  post_as: z.preprocess(
+    (v) => (v === 'none' ? 'exit_code_only' : v),
+    z.enum(['github_review', 'pr_comment', 'exit_code_only']).default('github_review'),
+  ),
   triggers: z.array(z.string()).default(['opened', 'synchronize', 'reopened']),
   base: z.string().default('main'),
 });
@@ -227,6 +232,18 @@ export const CiExport = z.object({
 });
 export type CiExport = z.infer<typeof CiExport>;
 
+/** Request body for POST /agents/:id/ci-installations/:installationId/remove-from-repo */
+export const CiRemoveInput = z.object({
+  base: z.string().min(1).optional(),
+});
+export type CiRemoveInput = z.infer<typeof CiRemoveInput>;
+
+/** Response of POST /agents/:id/ci-installations/:installationId/remove-from-repo */
+export const CiRemoval = z.object({
+  pr_url: z.string(),
+});
+export type CiRemoval = z.infer<typeof CiRemoval>;
+
 export const CiRunStatus = z.enum(['succeeded', 'failed', 'no_findings', 'running']);
 export type CiRunStatus = z.infer<typeof CiRunStatus>;
 
@@ -243,6 +260,7 @@ export const CiRun = z.object({
   source: z.string().nullable(),
   agent: z.string().nullish(),
   duration_s: z.number().nullish(),
+  repo: z.string().nullish(),
 });
 export type CiRun = z.infer<typeof CiRun>;
 

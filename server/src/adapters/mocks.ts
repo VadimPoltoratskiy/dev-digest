@@ -9,6 +9,7 @@ import type {
   Embedder,
   GitHubClient,
   RepoRef,
+  WorkflowRun,
   PrMeta,
   PrDetail,
   GitHubReviewPayload,
@@ -16,6 +17,7 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  DeleteFilesPayload,
   IssueMeta,
   GitClient,
   CloneOptions,
@@ -132,6 +134,7 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  public deletedFiles: DeleteFilesPayload[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -230,12 +233,41 @@ export class MockGitHubClient implements GitHubClient {
     return pr ? { url: 'https://github.com/mock/mock/pull/1' } : null;
   }
 
+  async deleteFiles(_repo: RepoRef, payload: DeleteFilesPayload): Promise<{ branch: string }> {
+    this.deletedFiles.push(payload);
+    return { branch: payload.branch };
+  }
+
+  async getDefaultBranch(_repo: RepoRef): Promise<string> {
+    return 'main';
+  }
+
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {
     return { number: n, title: `Issue #${n}`, body: 'mock issue', state: 'open' };
   }
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listWorkflowRuns(_repo: RepoRef, _workflowFile: string): Promise<WorkflowRun[]> {
+    return [];
+  }
+
+  async downloadArtifact(
+    _repo: RepoRef,
+    _runId: number,
+    _artifactName: string,
+  ): Promise<string | null> {
+    return null;
+  }
+
+  async checkWriteAccess(_repo: RepoRef): Promise<boolean> {
+    return true;
+  }
+
+  async listRepoSecretNames(_repo: RepoRef): Promise<string[]> {
+    return ['OPENROUTER_API_KEY'];
   }
 }
 

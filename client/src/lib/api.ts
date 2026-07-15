@@ -9,6 +9,11 @@ import type {
   AgentEvalCompare,
   Brief,
   BriefTimeline,
+  CiExport,
+  CiExportInputBody,
+  CiInstallation,
+  CiRemoval,
+  CiRun,
   ComposeReviewBody,
   ComposeReviewResponse,
   EvalDashboard,
@@ -246,4 +251,68 @@ export function postComposeReview(
   body: ComposeReviewBody,
 ): Promise<ComposeReviewResponse> {
   return api.post<ComposeReviewResponse>(`/pulls/${prId}/compose-review`, body);
+}
+
+// ---- CI API functions ----
+
+/** List all CI runs (optionally filtered by agentId). */
+export function fetchCiRuns(agentId?: string): Promise<CiRun[]> {
+  const q = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : "";
+  return api.get<CiRun[]>(`/ci/runs${q}`);
+}
+
+/** Fetch a single CI run by id. */
+export function fetchCiRun(id: string): Promise<CiRun> {
+  return api.get<CiRun>(`/ci/runs/${id}`);
+}
+
+/** Trigger a refresh of CI runs (ingests new GHA artifacts). */
+export function refreshCiRuns(): Promise<{ inserted: number; skipped: number }> {
+  return api.post<{ inserted: number; skipped: number }>("/ci/runs/refresh");
+}
+
+/** Export CI files for an agent (open PR or return files bundle). */
+export function exportCi(agentId: string, input: CiExportInputBody): Promise<CiExport> {
+  return api.post<CiExport>(`/agents/${agentId}/export-ci`, input);
+}
+
+/** List CI installations for an agent. */
+export function fetchCiInstallations(agentId: string): Promise<CiInstallation[]> {
+  return api.get<CiInstallation[]>(`/agents/${agentId}/ci-installations`);
+}
+
+/**
+ * Stop tracking a CI installation ("Remove from CI"). Only removes
+ * DevDigest's own record — does not touch the target repo's committed files
+ * or workflow.
+ */
+export function removeCiInstallation(agentId: string, installationId: string): Promise<void> {
+  return api.del<void>(`/agents/${agentId}/ci-installations/${installationId}`);
+}
+
+/**
+ * Open a deletion PR in the target repository for a CI installation (SPEC-04).
+ * Deletes the local ci_installations row on success.
+ * Returns 422 when the GitHub token lacks write access (AC-7).
+ */
+export function removeCiFromRepo(
+  agentId: string,
+  installationId: string,
+  body: { base?: string },
+): Promise<CiRemoval> {
+  return api.post<CiRemoval>(
+    `/agents/${agentId}/ci-installations/${installationId}/remove-from-repo`,
+    body,
+  );
+}
+
+/** Preflight response: write access + readiness of the wizard's expected secrets. */
+export interface CiPreflightResult {
+  has_write_access: boolean;
+  secrets: { openrouter_api_key: boolean; github_token: boolean };
+}
+
+/** Preflight check: write access + secret readiness for the given repo. */
+export function checkCiPreflight(repo: string): Promise<CiPreflightResult> {
+  return api.get<CiPreflightResult>(`/ci/preflight?repo=${encodeURIComponent(repo)}`);
 }

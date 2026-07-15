@@ -18,6 +18,7 @@ import why from './why/routes.js';
 import priorPrs from './prior-prs/routes.js';
 import evals from './evals/routes.js';
 import multiRuns from './multi-runs/routes.js';
+import ci from './ci/routes.js';
 
 /**
  * Module registry. Each feature module is a Fastify plugin in
@@ -52,4 +53,5 @@ export const modules: Record<string, FastifyPluginAsync> = {
   priorPrs,
   evals,
   multiRuns,
+  ci,
 };

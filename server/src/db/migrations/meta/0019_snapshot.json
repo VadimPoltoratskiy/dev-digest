@@ -1,5 +1,5 @@
 {
-  "id": "83890fb5-791f-4fe5-b332-794a8bd438a2",
+  "id": "1a266d2c-dde2-4c2e-8a28-b55821f1604b",
   "prevId": "4d123ae9-c9f9-431e-aaad-8492132992ff",
   "version": "7",
   "dialect": "postgresql",
@@ -2755,6 +2755,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -2893,31 +2899,9 @@
           "type": "numeric(12, 8)",
           "primaryKey": false,
           "notNull": false
-        },
-        "multi_agent_run_id": {
-          "name": "multi_agent_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
-      "indexes": {
-        "agent_runs_multi_agent_run_id_idx": {
-          "name": "agent_runs_multi_agent_run_id_idx",
-          "columns": [
-            {
-              "expression": "multi_agent_run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "agent_runs_workspace_id_workspaces_id_fk": {
           "name": "agent_runs_workspace_id_workspaces_id_fk",
@@ -2951,19 +2935,6 @@
           "tableTo": "pull_requests",
           "columnsFrom": [
             "pr_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "agent_runs_multi_agent_run_id_multi_agent_runs_id_fk": {
-          "name": "agent_runs_multi_agent_run_id_multi_agent_runs_id_fk",
-          "tableFrom": "agent_runs",
-          "tableTo": "multi_agent_runs",
-          "columnsFrom": [
-            "multi_agent_run_id"
           ],
           "columnsTo": [
             "id"
