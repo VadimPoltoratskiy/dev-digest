@@ -144,6 +144,17 @@ export function useImportSkillSave() {
   });
 }
 
+/**
+ * Fetch a remote GitHub URL server-side (SSRF-safe allowlist enforced by server)
+ * and return a sanitised preview identical in shape to useImportSkillPreview.
+ */
+export function useImportSkillFetch() {
+  return useMutation({
+    mutationFn: (input: { url: string }) =>
+      api.post<ImportPreviewResult>("/skills/import/fetch", input),
+  });
+}
+
 // ---- Agent ↔ Skill links ----
 
 export function useAgentSkills(agentId: string | null | undefined) {

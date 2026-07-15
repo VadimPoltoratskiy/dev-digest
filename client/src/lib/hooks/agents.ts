@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentSkillCount, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -95,6 +95,14 @@ export function useProviderModels(provider: Provider | null | undefined) {
  * (order = injection order). Full-array replace, same pattern as
  * `useSetAgentSkills`.
  */
+/** Bulk skill counts per agent for the current workspace (used by AgentsListView). */
+export function useAgentSkillCounts() {
+  return useQuery({
+    queryKey: ["agent-skill-counts"],
+    queryFn: () => api.get<AgentSkillCount[]>("/agents/skill-counts"),
+  });
+}
+
 export function useSetAgentContext() {
   const qc = useQueryClient();
   return useMutation({

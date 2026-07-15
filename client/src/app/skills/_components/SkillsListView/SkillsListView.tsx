@@ -32,6 +32,7 @@ export function SkillsListView() {
     searchParams.get("selected"),
   );
   const [importDrawerOpen, setImportDrawerOpen] = React.useState(false);
+  const [initialTab, setInitialTab] = React.useState("file");
 
   const list = filterSkills(skills ?? [], search);
   const selected = skills?.find((s) => s.id === selectedId) ?? null;
@@ -42,6 +43,7 @@ export function SkillsListView() {
         open={importDrawerOpen}
         onClose={() => setImportDrawerOpen(false)}
         onImported={() => refetch()}
+        initialTab={initialTab}
       />
       <div style={s.page}>
         <div style={s.header}>
@@ -66,9 +68,9 @@ export function SkillsListView() {
               </Button>
             }
             items={[
-              { label: t("page.menu.fromFile"), icon: "File", onClick: () => setImportDrawerOpen(true) },
-              { label: t("page.menu.fromUrl"), icon: "Link", onClick: () => setImportDrawerOpen(true) },
-              { label: t("page.menu.community"), icon: "Globe", onClick: () => setImportDrawerOpen(true) },
+              { label: t("page.menu.fromFile"), icon: "File", onClick: () => { setInitialTab("file"); setImportDrawerOpen(true); } },
+              { label: t("page.menu.fromUrl"), icon: "Link", onClick: () => { setInitialTab("url"); setImportDrawerOpen(true); } },
+              { label: t("page.menu.community"), icon: "Globe", onClick: () => { setInitialTab("community"); setImportDrawerOpen(true); } },
             ]}
           />
         </div>

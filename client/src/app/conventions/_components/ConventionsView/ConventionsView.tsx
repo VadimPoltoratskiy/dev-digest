@@ -209,6 +209,7 @@ export function ConventionsView() {
                 candidate={c}
                 onAccept={handleAccept}
                 onDelete={handleDelete}
+                onEditRule={(id, rule) => update.mutate({ convId: id, patch: { rule } })}
                 isPending={pendingId === c.id}
               />
             ))}

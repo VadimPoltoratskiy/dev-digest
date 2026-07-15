@@ -29,6 +29,7 @@ import { searchCatalog } from './community-catalog.js';
  *   POST   /skills/:id/eval-cases/generate      → LLM-draft a case from the rubric (not persisted)
  *   POST   /skills/import                       → preview parsed markdown WITHOUT saving
  *   POST   /skills/import/save                  → save previewed skill (source: imported_url | community)
+ *   POST   /skills/import/fetch                 → fetch a GitHub URL server-side and return a preview
  */
 
 const CreateSkillBody = z.object({
@@ -64,6 +65,11 @@ const ImportPreviewBody = z.object({
   name: z.string().optional(),
 });
 
+/** Fetch-from-URL import — server fetches the URL and returns a sanitised preview. */
+const ImportFetchBody = z.object({
+  url: z.string().url(),
+});
+
 /** Save-after-preview — same fields as create but source is restricted. */
 const ImportSaveBody = z.object({
   name: z.string().min(1),
@@ -95,6 +101,90 @@ function sanitizeImportedBody(raw: string): string {
   return raw
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '');
+}
+
+/**
+ * SSRF mitigation posture for POST /skills/import/fetch:
+ *
+ * Remote URL fetching is restricted to an explicit allowlist of GitHub content
+ * hosts.  "Safe by construction" means we never attempt to reach any host
+ * outside this set regardless of what the caller provides.
+ *
+ *   - Only https:// is accepted (no http:, ftp:, javascript:, …)
+ *   - Credentials embedded in the URL are rejected to prevent auth-forwarding tricks
+ *   - Hostname is exact-matched against the set (not endsWith/contains) to prevent
+ *     bypass via github.com.evil.com or evil-raw.githubusercontent.com
+ *   - Redirects are disabled at the fetch() call site (redirect: 'error') so a
+ *     redirect chain cannot escape the allowlist
+ *   - A 256 KB content cap prevents memory exhaustion from unexpectedly large files
+ *   - An 8 s AbortSignal timeout prevents slow-loris / hanging connections
+ *
+ * Allowed hosts:
+ *   raw.githubusercontent.com   — direct raw file content
+ *   gist.githubusercontent.com  — raw gist content
+ *   github.com                  — blob URLs only, converted to raw before fetch
+ */
+
+const ALLOWED_IMPORT_HOSTS = new Set([
+  'raw.githubusercontent.com',
+  'gist.githubusercontent.com',
+  'github.com',
+]);
+
+const MAX_IMPORT_SIZE_BYTES = 256 * 1024; // 256 KB
+
+/**
+ * Validate and normalise a remote URL before fetching it for skill import.
+ * Throws an `Error` with a user-facing message when the URL is unsafe or
+ * unsupported. The caller maps the error to an HTTP 400 response.
+ *
+ * Export is intentional: unit tests import this function directly.
+ */
+export function resolveImportUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('Only https:// URLs are allowed');
+  }
+
+  if (url.username || url.password) {
+    throw new Error('URLs with embedded credentials are not allowed');
+  }
+
+  // Only the default HTTPS port. `URL.port` is '' when the port is the scheme
+  // default; a non-empty value other than '443' (e.g. :22) would let a caller
+  // probe non-standard ports on the allowlisted CDN hosts.
+  if (url.port && url.port !== '443') {
+    throw new Error('Only the default HTTPS port (443) is supported');
+  }
+
+  const host = url.hostname.toLowerCase();
+  if (!ALLOWED_IMPORT_HOSTS.has(host)) {
+    throw new Error(
+      `Host "${host}" is not supported. Only raw.githubusercontent.com, gist.githubusercontent.com, and github.com blob URLs are allowed.`,
+    );
+  }
+
+  if (host === 'github.com') {
+    // Convert https://github.com/<owner>/<repo>/blob/<ref>/<path...>
+    //      to  https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path...>
+    const blobMatch = url.pathname.match(/^\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+    if (!blobMatch) {
+      throw new Error(
+        'Only github.com blob file URLs are supported ' +
+          '(e.g. https://github.com/owner/repo/blob/main/SKILL.md)',
+      );
+    }
+    const [, owner, repo, ref, path] = blobMatch;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
+  }
+
+  return url.toString();
 }
 
 const VersionParams = z.object({ id: z.string().uuid(), version: z.coerce.number().int() });
@@ -184,6 +274,118 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     });
     reply.status(201);
     return skill;
+  });
+
+  // POST /skills/import/fetch — server-side URL fetch with SSRF allowlist.
+  // Must be registered BEFORE /skills/:id (same reason as the other import routes).
+  app.post(
+    '/skills/import/fetch',
+    {
+      schema: { body: ImportFetchBody },
+      // Tighter cap than the global 120/min: this handler makes an outbound
+      // network request, so it is more expensive than a typical JSON route.
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+    // Auth gate — no-op under the current LocalNoAuthProvider, but keeps this
+    // network-calling route consistent with every other handler so a real
+    // AuthProvider swap gates it automatically.
+    await getContext(app.container, req);
+    // Step 1: Validate URL against the SSRF allowlist and normalise it.
+    let target: string;
+    try {
+      target = resolveImportUrl(req.body.url);
+    } catch (err) {
+      return reply.status(400).send({
+        error: { code: 'invalid_url', message: (err as Error).message },
+      });
+    }
+
+    // Step 2: Fetch with strict redirect handling and a hard timeout.
+    //   redirect: 'error'  — any 3xx causes a reject, preventing redirect-based
+    //                         allowlist bypass where the remote redirects to an
+    //                         internal host.
+    //   AbortSignal.timeout — caps wall-clock time; prevents slow-loris attacks.
+    let res: Response;
+    try {
+      res = await fetch(target, {
+        redirect: 'error',
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Fetch failed';
+      return reply.status(502).send({
+        error: { code: 'fetch_failed', message: `Could not fetch URL: ${msg}` },
+      });
+    }
+
+    if (!res.ok) {
+      return reply.status(502).send({
+        error: {
+          code: 'fetch_error',
+          message: `Remote returned ${res.status} ${res.statusText}`,
+        },
+      });
+    }
+
+    // Step 3: Size guard. Fast-path on Content-Length when present, then stream
+    // the body and abort as soon as the accumulated BYTE count exceeds the cap —
+    // so a chunked (no Content-Length) or multi-byte payload can't buffer past
+    // the limit before we notice (text().length counts UTF-16 units, not bytes).
+    const tooLarge = () =>
+      reply.status(400).send({
+        error: { code: 'content_too_large', message: 'Content exceeds the 256 KB size limit' },
+      });
+
+    const clRaw = res.headers.get('content-length');
+    if (clRaw !== null) {
+      const contentLength = parseInt(clRaw, 10);
+      if (!isNaN(contentLength) && contentLength > MAX_IMPORT_SIZE_BYTES) {
+        return tooLarge();
+      }
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      return reply.status(502).send({
+        error: { code: 'fetch_failed', message: 'Empty response body' },
+      });
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > MAX_IMPORT_SIZE_BYTES) {
+          await reader.cancel();
+          return tooLarge();
+        }
+        chunks.push(value);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Read failed';
+      return reply.status(502).send({
+        error: { code: 'fetch_failed', message: `Could not read URL body: ${msg}` },
+      });
+    }
+    const text = Buffer.concat(chunks).toString('utf8');
+
+    // Step 4: Sanitise and derive metadata — same as the file-based import.
+    const sanitized = sanitizeImportedBody(text);
+    const lastSegment = new URL(target).pathname.split('/').pop() ?? '';
+    const derivedName =
+      extractHeading(sanitized) ||
+      lastSegment.replace(/\.(md|txt|markdown)$/i, '') ||
+      'Imported skill';
+
+    return {
+      name: derivedName,
+      body_preview: sanitized,
+      token_count: estimateTokens(sanitized),
+    };
   });
 
   app.get('/skills/:id', { schema: { params: IdParams } }, async (req) => {

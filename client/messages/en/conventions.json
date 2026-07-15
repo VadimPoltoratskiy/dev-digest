@@ -21,6 +21,9 @@
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "editRule": "Edit rule",
+    "save": "Save",
+    "cancel": "Cancel"
   }
 }

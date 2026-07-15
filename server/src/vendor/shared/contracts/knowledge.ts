@@ -390,6 +390,9 @@ export const AgentSkillLink = z.object({
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
 
+export const AgentSkillCount = z.object({ agent_id: z.string(), count: z.number().int() });
+export type AgentSkillCount = z.infer<typeof AgentSkillCount>;
+
 // The immutable config snapshot captured in `agent_versions` whenever an agent's
 // config changes (everything but `enabled`). Mirrors the shape written by the
 // agents repository — provider/model/prompt/output_schema/strategy/gate/repo_intel

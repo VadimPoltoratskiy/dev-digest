@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -232,6 +232,23 @@ export class AgentsRepository {
     await this.db
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  }
+
+  /**
+   * Bulk count of linked skills per agent for a workspace.
+   * Returns only agents that have at least one skill linked.
+   */
+  async skillCounts(workspaceId: string): Promise<{ agentId: string; count: number }[]> {
+    const rows = await this.db
+      .select({
+        agentId: t.agentSkills.agentId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agentSkills.agentId, t.agents.id))
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agentSkills.agentId);
+    return rows;
   }
 
   // ---- Project Context (agent-level attach) ------------------------------
