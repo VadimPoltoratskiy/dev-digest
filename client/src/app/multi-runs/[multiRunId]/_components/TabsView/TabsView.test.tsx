@@ -56,6 +56,7 @@ vi.mock("@/lib/hooks/reviews", () => ({
     mutate: mockActionMutate,
     isPending: mockIsPendingRef.current,
   }),
+  useLearnFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/lib/hooks/agents-eval", () => ({

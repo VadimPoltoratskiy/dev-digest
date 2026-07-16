@@ -19,6 +19,9 @@ import type {
   EvalDashboard,
   EvalDashboardAgentSummary,
   EvalRunRecord,
+  LearnFromFindingBody,
+  MemoryItem,
+  MemoryRecord,
   MultiRunFindings,
   MultiRunRecord,
   MultiRunSummaryList,
@@ -154,6 +157,14 @@ export function postFindingEvalCase(
   body: { kind: "must_find" | "must_not_flag"; name?: string },
 ): Promise<AgentEvalCase> {
   return api.post<AgentEvalCase>(`/findings/${findingId}/eval-case`, body);
+}
+
+/** POST /findings/:id/learn — create a memory record from a finding. */
+export function postFindingLearn(
+  findingId: string,
+  body: LearnFromFindingBody,
+): Promise<MemoryRecord> {
+  return api.post<MemoryRecord>(`/findings/${findingId}/learn`, body);
 }
 
 /** List all eval cases for an agent (each includes latest_run if ever run). */
@@ -315,4 +326,65 @@ export interface CiPreflightResult {
 /** Preflight check: write access + secret readiness for the given repo. */
 export function checkCiPreflight(repo: string): Promise<CiPreflightResult> {
   return api.get<CiPreflightResult>(`/ci/preflight?repo=${encodeURIComponent(repo)}`);
+}
+
+// ---- Memory API functions ----
+
+export interface MemoryParams {
+  scope?: string;
+  kind?: string;
+  repo?: string;
+  freshness?: string;
+  q?: string;
+}
+
+export function fetchMemory(
+  params: MemoryParams,
+): Promise<{ records: MemoryRecord[]; search_mode?: string }> {
+  const qs = new URLSearchParams();
+  if (params.scope) qs.set("scope", params.scope);
+  if (params.kind) qs.set("kind", params.kind);
+  if (params.repo) qs.set("repo", params.repo);
+  if (params.freshness) qs.set("freshness", params.freshness);
+  if (params.q) qs.set("q", params.q);
+  const q = qs.toString();
+  return api.get<{ records: MemoryRecord[]; search_mode?: string }>(
+    `/memory${q ? `?${q}` : ""}`,
+  );
+}
+
+export function createMemory(
+  body: Partial<MemoryItem> & { repo?: string },
+): Promise<MemoryRecord> {
+  return api.post<MemoryRecord>("/memory", body);
+}
+
+export function patchMemory(
+  id: string,
+  body: Partial<MemoryItem>,
+): Promise<MemoryRecord> {
+  return api.patch<MemoryRecord>(`/memory/${id}`, body);
+}
+
+export function deleteMemory(id: string): Promise<void> {
+  return api.del<void>(`/memory/${id}`);
+}
+
+export async function exportMemory(repo?: string): Promise<string> {
+  const qs = repo ? `?repo=${encodeURIComponent(repo)}` : "";
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/memory/export${qs}`);
+  } catch (e) {
+    throw new ApiError(
+      `Cannot reach the DevDigest engine at ${API_BASE}. Is the API running?`,
+      0,
+      "network_error",
+      e,
+    );
+  }
+  if (!res.ok) {
+    throw new ApiError(`${res.status} ${res.statusText}`, res.status);
+  }
+  return res.text();
 }

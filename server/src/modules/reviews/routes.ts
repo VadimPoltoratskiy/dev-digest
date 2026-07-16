@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest, CreateFindingEvalCaseBody, FindingReplyBody, ComposeReviewBody } from '@devdigest/shared';
+import { RunRequest, CreateFindingEvalCaseBody, FindingReplyBody, ComposeReviewBody, LearnFromFindingBody } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -16,6 +16,7 @@ import { ReviewService } from './service.js';
  *   POST   /findings/:id/(accept|dismiss)              → finding actions
  *   POST   /findings/:id/eval-case  {kind, name?}       → turn finding into agent eval case
  *   POST   /findings/:id/reply      {reply}             → post a GitHub PR review comment
+ *   POST   /findings/:id/learn       {content, scope, kind, confidence?} → memory record
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
 export default async function reviewsRoutes(appBase: FastifyInstance) {
@@ -180,6 +181,18 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
       );
       reply.status(201);
       return evalCase;
+    },
+  );
+
+  // ---- Learn from a finding — create a memory record ----------------------
+  app.post(
+    '/findings/:id/learn',
+    { schema: { params: IdParams, body: LearnFromFindingBody } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(container, req);
+      const record = await service.learnFromFinding(workspaceId, req.params.id, req.body);
+      reply.status(201);
+      return record;
     },
   );
 

@@ -27,6 +27,7 @@ vi.mock("@/lib/hooks/reviews", () => ({
   useDeleteRun: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useDeleteReview: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useFindingAction: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useLearnFromFinding: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useRunEvents: vi.fn(() => ({ events: [], running: false })),
 }));
 

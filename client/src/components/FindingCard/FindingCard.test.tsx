@@ -113,6 +113,85 @@ describe("FindingCard — eval case button", () => {
 });
 
 // ---------------------------------------------------------------------------
+// "Learn" button — only rendered for accepted/dismissed findings (SPEC-09)
+// ---------------------------------------------------------------------------
+
+describe("FindingCard — Learn button", () => {
+  it("does not show Learn button when finding is not accepted or dismissed (AC-2)", () => {
+    renderWithIntl(<FindingCard f={FINDING} defaultExpanded />);
+    expect(screen.queryByText("Learn")).not.toBeInTheDocument();
+  });
+
+  it("shows Learn button when finding is accepted (AC-1)", () => {
+    const accepted: FindingRecord = {
+      ...FINDING,
+      accepted_at: "2026-07-01T00:00:00.000Z",
+      dismissed_at: null,
+    };
+    renderWithIntl(<FindingCard f={accepted} defaultExpanded />);
+    expect(screen.getByText("Learn")).toBeInTheDocument();
+  });
+
+  it("shows Learn button when finding is dismissed (AC-1)", () => {
+    const dismissed: FindingRecord = {
+      ...FINDING,
+      accepted_at: null,
+      dismissed_at: "2026-07-01T00:00:00.000Z",
+    };
+    renderWithIntl(<FindingCard f={dismissed} defaultExpanded />);
+    expect(screen.getByText("Learn")).toBeInTheDocument();
+  });
+
+  it("opens LearnModal on click and calls onLearn with the body on save (AC-3, AC-4)", () => {
+    const onLearn = vi.fn();
+    const accepted: FindingRecord = {
+      ...FINDING,
+      accepted_at: "2026-07-01T00:00:00.000Z",
+      dismissed_at: null,
+    };
+    renderWithIntl(
+      <FindingCard f={accepted} defaultExpanded onLearn={onLearn} />,
+    );
+
+    // Open the modal
+    fireEvent.click(screen.getByText("Learn"));
+
+    // Content field is pre-filled with finding title (AC-3)
+    const textarea = screen.getByDisplayValue("Hardcoded Stripe secret key");
+    expect(textarea).toBeInTheDocument();
+
+    // Click Save
+    fireEvent.click(screen.getByText("Save"));
+
+    // onLearn called with default values (AC-3: scope=repo, kind=learning, content=title)
+    expect(onLearn).toHaveBeenCalledWith({
+      content: "Hardcoded Stripe secret key",
+      scope: "repo",
+      kind: "learning",
+    });
+  });
+
+  it("Learn modal Save is disabled while content is blank (AC-9 guard)", () => {
+    const accepted: FindingRecord = {
+      ...FINDING,
+      accepted_at: "2026-07-01T00:00:00.000Z",
+      dismissed_at: null,
+    };
+    renderWithIntl(<FindingCard f={accepted} defaultExpanded />);
+
+    fireEvent.click(screen.getByText("Learn"));
+
+    // Clear the content textarea
+    const textarea = screen.getByDisplayValue("Hardcoded Stripe secret key");
+    fireEvent.change(textarea, { target: { value: "" } });
+
+    // Save button should be disabled
+    const saveBtn = screen.getByText("Save");
+    expect(saveBtn).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // "Reply to author" — composer, sends via onAction("reply", text)
 // ---------------------------------------------------------------------------
 

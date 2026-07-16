@@ -168,7 +168,7 @@ skill file(s) on demand — never all of them "just in case":
 
 If a task touches both `server/` and `client/`, read both sets.
 
-Write a `PLAN.md` file to the project root or a relevant feature directory. Use this exact structure:
+Write the plan to the repo's `plans/` directory, named after the spec or feature — `plans/PLAN-<SPEC-ID or short-name>.md` (e.g. `plans/PLAN-SPEC-08.md`). Create the `plans/` directory if it does not exist. Do NOT write plan files to the repo root. Use this exact structure:
 
 ---
 

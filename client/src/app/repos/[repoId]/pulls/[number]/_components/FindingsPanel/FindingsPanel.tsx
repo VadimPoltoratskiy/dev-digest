@@ -5,9 +5,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import type { FindingRecord, LearnFromFindingBody } from "@devdigest/shared";
 import { FindingCard } from "@/components/FindingCard";
-import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useFindingAction, useLearnFromFinding } from "../../../../../../../lib/hooks/reviews";
 import { useTurnFindingIntoEvalCase } from "../../../../../../../lib/hooks/agents-eval";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
@@ -30,6 +30,7 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const createEvalCase = useTurnFindingIntoEvalCase();
+  const learnFromFinding = useLearnFromFinding();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
   const [transientHighlightId, setTransientHighlightId] = React.useState<string | null>(null);
@@ -80,10 +81,12 @@ export function FindingsPanel({
               defaultExpanded={i === 0}
               pending={action.isPending}
               evalCasePending={createEvalCase.isPending}
+              learnPending={learnFromFinding.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
               onAction={(act, reply) => action.mutate({ findingId: f.id, action: act, reply, prId })}
               onCreateEvalCase={(kind, name) => createEvalCase.mutate({ findingId: f.id, kind, name })}
+              onLearn={(body) => learnFromFinding.mutate({ findingId: f.id, body: body as LearnFromFindingBody })}
             />
           ))
         )}
