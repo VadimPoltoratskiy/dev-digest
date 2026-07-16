@@ -395,3 +395,6 @@ export const AgentSkillLink = z.object({
   order: z.number().int(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+export const AgentSkillCount = z.object({ agent_id: z.string(), count: z.number().int() });
+export type AgentSkillCount = z.infer<typeof AgentSkillCount>;

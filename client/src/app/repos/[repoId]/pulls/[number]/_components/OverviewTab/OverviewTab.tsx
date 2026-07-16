@@ -4,6 +4,7 @@ import React from "react";
 import { SectionLabel } from "@devdigest/ui";
 import { IntentCard } from "../IntentCard";
 import { PrBriefCard } from "../PrBriefCard";
+import { ReadThisFirstCard } from "./_components/ReadThisFirstCard";
 import { s } from "./styles";
 
 interface OverviewTabProps {
@@ -18,6 +19,7 @@ export function OverviewTab({ prBody, prId, repoFullName, headSha }: OverviewTab
     <>
       {prId && <IntentCard prId={prId} />}
       {prId && <PrBriefCard prId={prId} repoFullName={repoFullName} headSha={headSha} />}
+      {prId && <ReadThisFirstCard prId={prId} />}
       {prBody && (
         <section>
           <SectionLabel icon="MessageSquare">Description</SectionLabel>

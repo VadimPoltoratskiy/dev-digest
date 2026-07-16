@@ -18,17 +18,29 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  highlightedFindingId,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Finding ID to transiently highlight (2 s ring) after a deep-link navigation. */
+  highlightedFindingId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const createEvalCase = useTurnFindingIntoEvalCase();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
+  const [transientHighlightId, setTransientHighlightId] = React.useState<string | null>(null);
+
+  // Apply a 2 s transient highlight whenever the parent signals a new target.
+  React.useEffect(() => {
+    if (!highlightedFindingId) return;
+    setTransientHighlightId(highlightedFindingId);
+    const handle = setTimeout(() => setTransientHighlightId(null), 2000);
+    return () => clearTimeout(handle);
+  }, [highlightedFindingId]);
 
   const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
 
@@ -64,7 +76,7 @@ export function FindingsPanel({
             <FindingCard
               key={f.id}
               f={f}
-              focused={i === focusIdx}
+              focused={i === focusIdx || f.id === transientHighlightId}
               defaultExpanded={i === 0}
               pending={action.isPending}
               evalCasePending={createEvalCase.isPending}

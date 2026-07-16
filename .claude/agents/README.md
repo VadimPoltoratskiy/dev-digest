@@ -71,7 +71,7 @@ command — run them manually as separate follow-ups.
 
 ### `spec-creator`
 **File:** `spec-creator.md`
-**Model:** `claude-sonnet-4-6`
+**Model:** `claude-opus-4-8`
 **Tools:** `Read, Bash, Write, Edit, Agent`
 **Skills preloaded:** `onion-architecture`, `ui-architecture`, `fastify-best-practices`, `next-best-practices`, `security`, `zod`, `mermaid-diagram`
 

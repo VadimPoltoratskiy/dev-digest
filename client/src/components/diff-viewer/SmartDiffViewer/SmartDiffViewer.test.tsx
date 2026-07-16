@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../../../messages/en/shell.json";
 import briefMessages from "../../../../messages/en/brief.json";
@@ -33,13 +33,14 @@ const smartDiff: SmartDiff = {
           additions: 84,
           deletions: 0,
           finding_lines: [2],
+          finding_ids: ["finding-1"],
         },
       ],
     },
     {
       role: "wiring",
       files: [
-        { path: "src/config.ts", pseudocode_summary: null, additions: 4, deletions: 0, finding_lines: [] },
+        { path: "src/config.ts", pseudocode_summary: null, additions: 4, deletions: 0, finding_lines: [], finding_ids: [] },
       ],
     },
     {
@@ -51,6 +52,7 @@ const smartDiff: SmartDiff = {
           additions: 92,
           deletions: 24,
           finding_lines: [],
+          finding_ids: [],
         },
       ],
     },
@@ -69,18 +71,38 @@ describe("SmartDiffViewer", () => {
     expect(screen.getByText("Boilerplate")).toBeInTheDocument();
   });
 
-  it("shows a findings badge and scrolls to the flagged line on click", async () => {
+  it("calls onOpenFinding with the first finding id on badge click and does not scroll the diff", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    renderWithIntl(<SmartDiffViewer files={files} smartDiff={smartDiff} />);
+    const onOpenFinding = vi.fn();
+    renderWithIntl(<SmartDiffViewer files={files} smartDiff={smartDiff} onOpenFinding={onOpenFinding} />);
 
     const badge = screen.getByRole("button", { name: "1 finding" });
     expect(badge).toBeInTheDocument();
     fireEvent.click(badge);
 
-    // The scroll happens inside a requestAnimationFrame callback.
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(onOpenFinding).toHaveBeenCalledWith("finding-1");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("does not render findings badge when finding_ids is empty", () => {
+    // Use the wiring file fixture (finding_ids: []) — badge should not appear.
+    const diffNoFindings: SmartDiff = {
+      groups: [
+        {
+          role: "core",
+          files: [
+            { path: "src/config.ts", pseudocode_summary: null, additions: 4, deletions: 0, finding_lines: [], finding_ids: [] },
+          ],
+        },
+        { role: "wiring", files: [] },
+        { role: "boilerplate", files: [] },
+      ],
+      split_suggestion: { too_big: false, total_lines: 4, proposed_splits: [] },
+    };
+    renderWithIntl(<SmartDiffViewer files={files} smartDiff={diffNoFindings} />);
+    expect(screen.queryByRole("button", { name: /finding/i })).not.toBeInTheDocument();
   });
 
   it("falls back to the plain file list when smartDiff hasn't loaded", () => {

@@ -1,31 +1,34 @@
-# evals suite — the harness eval package (@devdigest/evals).
+# evals orchestrator — the harness eval package (@devdigest/evals).
 #
 # Only runs when the harness/artifacts change. `detect` maps changed files to exactly which
 # tiers need to run (see evals/scripts/ci-detect.mjs): a changed skill → its content-tier eval,
 # a changed agent → its tool-tier eval, CLAUDE.md/agent/engine changes → the workflow tier.
 #
+# This file is a thin orchestrator: it runs `detect` + `quality` (static gate, no model) here, then
+# CALLS the three per-tier reusable workflows by name — eval-skills.yml, eval-agents.yml,
+# eval-workflow.yml — passing the detect outputs as inputs and `secrets: inherit` for the
+# OpenRouter key. Each tier's job-level knobs (continue-on-error, fail-fast, max-parallel) live in
+# its own file; the cross-tier wiring (ordering, gating) lives here.
+#
 # `quality` (static gate, no model) and `skills` (content tier) are required. `agents` and
 # `workflow` (tool tiers) run on google/gemini-2.5-flash via OpenRouter — the only one of the
 # three models the package's own README benchmarked as reliably driving subagent dispatch — but
-# stay informational (continue-on-error) since tool-tier dispatch/activation checks are documented
-# as flaky/indicative on non-Anthropic models (see evals/README.md). The judge's JSON extraction
-# (src/scoring/llm-judge.ts) is bracket-depth-aware with a one-shot retry and an explicit
-# max_tokens ceiling (EVAL_MAX_OUTPUT_TOKENS) so a cheap judge model's malformed or truncated
-# output doesn't fail the case; the workflow tier's positive `activation` assertion is soft (warns,
-# doesn't fail) on non-Anthropic models per the same README caveat.
+# stay informational (continue-on-error, set inside eval-agents.yml / eval-workflow.yml) since
+# tool-tier dispatch/activation checks are documented as flaky/indicative on non-Anthropic models
+# (see evals/README.md). The judge's JSON extraction (src/scoring/llm-judge.ts) is bracket-depth-
+# aware with a one-shot retry and an explicit max_tokens ceiling (EVAL_MAX_OUTPUT_TOKENS) so a cheap
+# judge model's malformed or truncated output doesn't fail the case; the workflow tier's positive
+# `activation` assertion is soft (warns, doesn't fail) on non-Anthropic models per the same README
+# caveat.
 #
-# architecture-reviewer is currently excluded from the `agents` job (see excluded_agents in
+# architecture-reviewer is currently excluded from the `agents` tier (see excluded_agents in
 # evals/agent-evals.config.yaml) — its tool-tier eval was flaky enough on the cheap CI model to not
 # be worth gating merges on. It still runs locally via `pnpm vitest run agents/architecture-reviewer`.
 #
-# `skills` → `agents` → `workflow` are chained via `needs` (not run in parallel off `detect`), so
-# they queue instead of racing each other — evals/README.md documents that concurrent OpenRouter
-# calls under one API key can get throttled and degrade responses to truncated single-turn output.
-# Each still gates on its own `if` (via `always()`, so an upstream skip/failure doesn't skip it).
-#
-# `skills` runs `fail-fast: false` — one flaky/broken skill case must not cancel every other
-# skill's matrix job mid-run (GitHub's default fail-fast did exactly this once, cancelling an
-# already-passing sibling job before it could report success).
+# The three tier calls are chained via `needs` (detect → skills → agents → workflow), so they queue
+# instead of racing each other — evals/README.md documents that concurrent OpenRouter calls under
+# one API key can get throttled and degrade responses to truncated single-turn output. Each still
+# gates on its own `if` (via `always()`, so an upstream skip/failure doesn't skip it).
 name: evals
 
 on:
@@ -35,6 +38,9 @@ on:
       - '.claude/**'
       - 'CLAUDE.md'
       - '.github/workflows/evals.yml'
+      - '.github/workflows/eval-skills.yml'
+      - '.github/workflows/eval-agents.yml'
+      - '.github/workflows/eval-workflow.yml'
 
 permissions:
   contents: read
@@ -42,12 +48,6 @@ permissions:
 concurrency:
   group: evals-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  EVAL_BACKEND: openrouter
-  EVAL_MODEL: google/gemini-2.5-flash
-  EVAL_JUDGE_MODEL: google/gemini-2.5-flash
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
 jobs:
   detect:
@@ -105,110 +105,28 @@ jobs:
       - run: pnpm eval:quality
 
   skills:
-    name: skill evals (${{ matrix.skill }})
+    name: skills tier
     needs: detect
     if: needs.detect.outputs.skills != '[]'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: evals
-    strategy:
-      fail-fast: false
-      matrix:
-        skill: ${{ fromJSON(needs.detect.outputs.skills) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm vitest run "skills/${{ matrix.skill }}"
+    uses: ./.github/workflows/eval-skills.yml
+    with:
+      skills: ${{ needs.detect.outputs.skills }}
+    secrets: inherit
 
   agents:
-    name: agent evals (${{ matrix.agent }})
+    name: agents tier
     needs: [detect, skills]
     if: always() && needs.detect.outputs.agents != '[]'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: evals
-    strategy:
-      max-parallel: 1
-      matrix:
-        agent: ${{ fromJSON(needs.detect.outputs.agents) }}
-    env:
-      OPENROUTER_BASE_URL: http://localhost:4000
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: docker compose -f proxy/docker-compose.yml up -d
-
-      - run: pnpm proxy:wait
-
-      - run: pnpm vitest run "agents/${{ matrix.agent }}"
-
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-
-      - if: always()
-        run: docker compose -f proxy/docker-compose.yml down
+    uses: ./.github/workflows/eval-agents.yml
+    with:
+      agents: ${{ needs.detect.outputs.agents }}
+    secrets: inherit
 
   workflow:
-    name: workflow evals
+    name: workflow tier
     needs: [detect, agents]
     if: always() && needs.detect.outputs.run_workflow == 'true'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    defaults:
-      run:
-        working-directory: evals
-    env:
-      OPENROUTER_BASE_URL: http://localhost:4000
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: docker compose -f proxy/docker-compose.yml up -d
-
-      - run: pnpm proxy:wait
-
-      - run: pnpm eval:workflow
-
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-
-      - if: always()
-        run: docker compose -f proxy/docker-compose.yml down
+    uses: ./.github/workflows/eval-workflow.yml
+    with:
+      run_workflow: ${{ needs.detect.outputs.run_workflow }}
+    secrets: inherit

@@ -31,6 +31,8 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  targetFindingId = null,
+  targetFindingNonce = 0,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -41,6 +43,9 @@ export function ReviewRunAccordion({
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** When this ID belongs to a finding in this run, expand and scroll to it. */
+  targetFindingId?: string | null;
+  targetFindingNonce?: number;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -55,6 +60,22 @@ export function ReviewRunAccordion({
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
+
+  // Finding deep-link: expand this accordion and scroll the target finding into view.
+  const ownsTargetFinding =
+    !!targetFindingId && findings.some((f) => f.id === targetFindingId);
+  React.useEffect(() => {
+    if (ownsTargetFinding) {
+      setOpen(true);
+      requestAnimationFrame(() => {
+        const escaped = CSS.escape(targetFindingId!);
+        document
+          .querySelector(`[data-finding-id="${escaped}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownsTargetFinding, targetFindingId, targetFindingNonce]);
 
   return (
     <div
@@ -152,6 +173,7 @@ export function ReviewRunAccordion({
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            highlightedFindingId={ownsTargetFinding ? targetFindingId : null}
           />
         </div>
       )}

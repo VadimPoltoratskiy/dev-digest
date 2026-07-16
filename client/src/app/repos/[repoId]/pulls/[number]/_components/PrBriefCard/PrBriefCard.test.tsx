@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - usePrBrief returns null     → generate button renders; regenerate button absent
- *   - usePrBrief returns a Brief  → what/why/risk_level/review_focus/risks all render
+ *   - usePrBrief returns a Brief  → what/why/risk_level/risks all render
  *   - Clicking generate           → mutate({}) called
  *   - Clicking regenerate         → mutate({ force: true }) called
  *
@@ -26,18 +26,11 @@ vi.mock("../../../../../../../lib/hooks/brief", () => ({
   useBriefHistory: vi.fn(),
 }));
 
-// review_focus items render as <ReviewFocusItem>, which reads repoId via
-// next/navigation's useParams and lazily fetches via usePriorPrs — both need
-// mocking since this test renders outside a real App Router / QueryClient.
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ repoId: "test-repo-id" }),
-}));
-vi.mock("@/lib/hooks/pr-files", () => ({
-  usePriorPrs: vi.fn(() => ({ data: undefined, isLoading: false })),
-}));
-
 import { PrBriefCard } from "./PrBriefCard";
 import { usePrBrief, useGenerateBrief, useBriefHistory } from "../../../../../../../lib/hooks/brief";
+
+// Note: review_focus now renders in the standalone ReadThisFirstCard block, not
+// here — so this test no longer mocks next/navigation or @/lib/hooks/pr-files.
 
 afterEach(cleanup);
 
@@ -119,7 +112,7 @@ describe("PrBriefCard — no brief yet (usePrBrief returns null)", () => {
 });
 
 describe("PrBriefCard — brief is loaded", () => {
-  it("renders what, why, risk_level badge, review_focus list, and at least one risk with its title and file_refs", () => {
+  it("renders what, why, risk_level badge, and at least one risk with its title and file_refs", () => {
     vi.mocked(usePrBrief).mockReturnValue({
       data: BRIEF_FIXTURE,
       isLoading: false,
@@ -144,16 +137,13 @@ describe("PrBriefCard — brief is loaded", () => {
     // risk_level badge — the string value "medium" must appear as a badge.
     expect(screen.getByText("medium")).toBeInTheDocument();
 
-    // review_focus items — the second one is unique, so getByText is safe.
-    // The first ("src/middleware/rate.ts") also appears in file_refs, so use getAllByText.
-    expect(screen.getAllByText("src/middleware/rate.ts").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("src/api/public/index.ts")).toBeInTheDocument();
-
     // At least one risk title.
     expect(screen.getByText("Rate limit bypass via header")).toBeInTheDocument();
 
-    // The risk's file_ref must appear (same text as review_focus item — at least one).
-    expect(screen.getAllByText("src/middleware/rate.ts").length).toBeGreaterThanOrEqual(2);
+    // The risk's file_ref must still appear inside the risk card. review_focus
+    // no longer renders here (it moved to ReadThisFirstCard), so this is the
+    // sole occurrence of the path.
+    expect(screen.getByText("src/middleware/rate.ts")).toBeInTheDocument();
   });
 });
 

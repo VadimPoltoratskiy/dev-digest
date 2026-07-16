@@ -2,19 +2,22 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, Icon } from "@devdigest/ui";
+import { Button, Icon, Textarea } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
 
 interface ConventionCardProps {
   candidate: ConventionCandidate;
   onAccept: (id: string, accepted: boolean) => void;
   onDelete: (id: string) => void;
+  onEditRule: (id: string, rule: string) => void;
   isPending?: boolean;
 }
 
-export function ConventionCard({ candidate, onAccept, onDelete, isPending }: ConventionCardProps) {
+export function ConventionCard({ candidate, onAccept, onDelete, onEditRule, isPending }: ConventionCardProps) {
   const t = useTranslations("conventions");
   const [isHovered, setIsHovered] = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editText, setEditText] = React.useState(candidate.rule);
 
   const confidence = candidate.confidence ?? 0;
   const confidenceColor =
@@ -31,6 +34,26 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
       window.open(candidate.evidence_path, "_blank", "noopener,noreferrer");
     }
   }
+
+  function handleEditClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditText(candidate.rule);
+    setIsEditing(true);
+  }
+
+  function handleSave(e: React.MouseEvent) {
+    e.stopPropagation();
+    onEditRule(candidate.id, editText.trim());
+    setIsEditing(false);
+  }
+
+  function handleCancel(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditText(candidate.rule);
+    setIsEditing(false);
+  }
+
+  const saveDisabled = !editText.trim() || editText.trim() === candidate.rule.trim();
 
   return (
     <div
@@ -55,10 +78,66 @@ export function ConventionCard({ candidate, onAccept, onDelete, isPending }: Con
         cursor: candidate.evidence_path ? "pointer" : "default",
       }}
     >
-      {/* Rule text */}
-      <div style={{ fontSize: 14, fontStyle: "italic", color: "var(--text-primary)", lineHeight: 1.5 }}>
-        {candidate.rule}
-      </div>
+      {/* Rule text / edit mode */}
+      {isEditing ? (
+        <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Textarea
+            value={editText}
+            onChange={setEditText}
+            rows={3}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={handleCancel}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+                color: "var(--text-secondary)",
+                padding: "4px 12px",
+                borderRadius: 6,
+                fontSize: 13,
+              }}
+            >
+              {t("card.cancel")}
+            </button>
+            <Button
+              kind="primary"
+              size="sm"
+              disabled={saveDisabled}
+              onClick={handleSave}
+            >
+              {t("card.save")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+          <div style={{ fontSize: 14, fontStyle: "italic", color: "var(--text-primary)", lineHeight: 1.5, flex: 1 }}>
+            {candidate.rule}
+          </div>
+          {isHovered && (
+            <button
+              aria-label={t("card.editRule")}
+              title={t("card.editRule")}
+              onClick={handleEditClick}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                padding: "2px 4px",
+                borderRadius: 4,
+                display: "flex",
+                alignItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon.Edit size={13} />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Evidence + confidence row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

@@ -19,14 +19,18 @@ function RoleGroup({
   filesByPath,
   commenting,
   findingLinesByPath,
+  findingIdsByPath,
   onOpenWhy,
+  onOpenFinding,
 }: {
   role: SmartDiffRole;
   filePaths: string[];
   filesByPath: Map<string, PrFile>;
   commenting?: DiffCommentApi;
   findingLinesByPath: Map<string, number[]>;
+  findingIdsByPath: Map<string, string[]>;
   onOpenWhy?: (path: string, line: number) => void;
+  onOpenFinding?: (id: string) => void;
 }) {
   const meta = ROLE_META[role];
   const [open, setOpen] = React.useState(!meta.collapsedByDefault);
@@ -62,9 +66,11 @@ function RoleGroup({
                 file={file}
                 commenting={commenting}
                 findingLines={findingLinesByPath.get(path)}
+                findingIds={findingIdsByPath.get(path)}
                 open={fileOpen[path]}
                 onToggle={(next) => setFileOpen((prev) => ({ ...prev, [path]: next }))}
                 onOpenWhy={onOpenWhy}
+                onOpenFinding={onOpenFinding}
               />
             );
           })}
@@ -79,11 +85,13 @@ export function SmartDiffViewer({
   smartDiff,
   commenting,
   onOpenWhy,
+  onOpenFinding,
 }: {
   files: PrFile[];
   smartDiff: SmartDiff | undefined;
   commenting?: DiffCommentApi;
   onOpenWhy?: (path: string, line: number) => void;
+  onOpenFinding?: (id: string) => void;
 }) {
   if (!smartDiff) {
     // Not loaded yet (or endpoint unreachable) — fall back to the plain list
@@ -95,6 +103,9 @@ export function SmartDiffViewer({
   const groupsByRole = new Map(smartDiff.groups.map((g) => [g.role, g]));
   const findingLinesByPath = new Map(
     smartDiff.groups.flatMap((g) => g.files.map((f) => [f.path, f.finding_lines] as const)),
+  );
+  const findingIdsByPath = new Map(
+    smartDiff.groups.flatMap((g) => g.files.map((f) => [f.path, f.finding_ids ?? []] as const)),
   );
 
   return (
@@ -110,7 +121,9 @@ export function SmartDiffViewer({
             filesByPath={filesByPath}
             commenting={commenting}
             findingLinesByPath={findingLinesByPath}
+            findingIdsByPath={findingIdsByPath}
             onOpenWhy={onOpenWhy}
+            onOpenFinding={onOpenFinding}
           />
         );
       })}

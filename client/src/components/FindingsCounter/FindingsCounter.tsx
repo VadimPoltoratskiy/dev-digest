@@ -78,9 +78,11 @@ function FindingRow({ f }: { f: FindingRecord }) {
 export function FindingsCounter({
   summary,
   prId,
+  findings: findingsProp,
 }: {
   summary: FindingsSummary | null | undefined;
   prId: string | null | undefined;
+  findings?: FindingRecord[];
 }) {
   const t = useTranslations("prReview");
   const [open, setOpen] = React.useState(false);
@@ -89,7 +91,25 @@ export function FindingsCounter({
   const popoverRef = React.useRef<HTMLDivElement>(null);
   const [pos, setPos] = React.useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
-  const { data: reviews, isLoading } = usePrReviews(open ? prId : null);
+  // Per-run mode: keep hook call but make it inert when findings prop is provided.
+  const { data: reviews, isLoading: hookLoading } = usePrReviews(open && !findingsProp ? prId : null);
+
+  // Derive summary from provided findings (per-run mode): count undismissed findings by severity.
+  const derivedSummary: FindingsSummary | null = React.useMemo(() => {
+    if (!findingsProp) return null;
+    const acc: FindingsSummary = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+    for (const f of findingsProp) {
+      if (!f.dismissed_at) {
+        acc[f.severity]++;
+      }
+    }
+    return acc;
+  }, [findingsProp]);
+
+  // Effective values depend on mode: per-run mode uses derived data; PR-list mode uses props + hook.
+  const effectiveSummary = findingsProp !== undefined ? derivedSummary : summary;
+  const isLoading = findingsProp !== undefined ? false : hookLoading;
+  const findings = findingsProp !== undefined ? findingsProp.filter((f) => !f.dismissed_at) : (reviews ? latestBatchFindings(reviews) : []);
 
   // Close on click outside (checks both trigger and portal content).
   React.useEffect(() => {
@@ -104,11 +124,12 @@ export function FindingsCounter({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const hasAny = summary && (summary.CRITICAL > 0 || summary.WARNING > 0 || summary.SUGGESTION > 0);
+  const hasAny = effectiveSummary && (effectiveSummary.CRITICAL > 0 || effectiveSummary.WARNING > 0 || effectiveSummary.SUGGESTION > 0);
+  const interactive = !!(hasAny && (!!prId || findingsProp !== undefined));
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasAny || !prId) return;
+    if (!interactive) return;
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       setPos({ top: rect.bottom + 8, left: rect.left });
@@ -116,8 +137,7 @@ export function FindingsCounter({
     setOpen((o) => !o);
   };
 
-  const findings = reviews ? latestBatchFindings(reviews) : [];
-  const totalCount = summary ? summary.CRITICAL + summary.WARNING + summary.SUGGESTION : 0;
+  const totalCount = effectiveSummary ? effectiveSummary.CRITICAL + effectiveSummary.WARNING + effectiveSummary.SUGGESTION : 0;
   const MAX_SHOWN = 6;
 
   const popover = open && hasAny ? (
@@ -188,8 +208,8 @@ export function FindingsCounter({
     <>
       <div
         ref={triggerRef}
-        role={hasAny && prId ? "button" : undefined}
-        tabIndex={hasAny && prId ? 0 : undefined}
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
         onClick={handleClick}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") handleClick(e as unknown as React.MouseEvent);
@@ -198,13 +218,13 @@ export function FindingsCounter({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          cursor: hasAny && prId ? "pointer" : "default",
+          cursor: interactive ? "pointer" : "default",
           userSelect: "none",
         }}
       >
         {hasAny ? (
           SEV_ORDER.map((sev) => (
-            <SevBadge key={sev} severity={sev} count={summary![sev]} />
+            <SevBadge key={sev} severity={sev} count={effectiveSummary![sev]} />
           ))
         ) : (
           <span style={{ color: "var(--text-muted)", fontSize: 13 }}>—</span>

@@ -54,8 +54,8 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'review_intent',
     label: 'PR Review · Intent',
     description: 'Derives a PR\'s intent, scope, and risk areas before review. Uses a fast flash-class model.',
-    defaultProvider: 'anthropic',
-    defaultModel: 'claude-haiku-4-5-20251001',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'risk_brief',

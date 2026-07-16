@@ -28,15 +28,11 @@ export function registerRunAgent(server: McpServer, client: DevDigestClient) {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify(
-              {
-                pull_id: pullId,
-                runs,
-                note: 'Review is running in the background. Call get_findings with the same owner/repo/pr_number to retrieve results.',
-              },
-              null,
-              2,
-            ),
+            text: JSON.stringify({
+              pull_id: pullId,
+              runs,
+              note: 'Review is running in the background. Call get_findings with the same owner/repo/pr_number to retrieve results.',
+            }),
           },
         ],
       };

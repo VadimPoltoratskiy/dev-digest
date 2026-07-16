@@ -20,6 +20,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [pr-self-review](pr-self-review/SKILL.md) | Workflow | Pre-PR local gate: detect surfaces, apply all domain skills, block on CRITICAL findings |
 | [dependency-checker](dependency-checker/SKILL.md) | Workflow | Cross-package dependency audit: size, drift, internal vs external, Mermaid schematic, P0–P2/Info findings |
+| [workflow-retro](workflow-retro/SKILL.md) | Workflow | Per-branch retro: collect git-diff stats, run touched-package tests, append one ledger table row and one prose section to `docs/retros/ledger.md` |
 
 ## What Are Skills?
 

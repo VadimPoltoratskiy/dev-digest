@@ -17,9 +17,11 @@ interface DiffTabProps {
   canComment?: boolean;
   /** owner/repo — needed by the git-why drawer to link out to the linked PR. */
   repoFullName?: string | null;
+  /** Called when the findings badge is clicked — navigates to the Findings tab. */
+  onOpenFinding?: (findingId: string) => void;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, repoFullName }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, repoFullName, onOpenFinding }: DiffTabProps) {
   const { data: comments } = usePrComments(prId);
   const { data: smartDiff } = useSmartDiff(prId);
   const create = useCreatePrComment(prId);
@@ -87,6 +89,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repoFullName }: D
           smartDiff={smartDiff}
           commenting={commenting}
           onOpenWhy={(path, line) => setWhyTarget({ path, line })}
+          onOpenFinding={onOpenFinding}
         />
       ) : (
         <DiffViewer
