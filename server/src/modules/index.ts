@@ -20,6 +20,7 @@ import evals from './evals/routes.js';
 import multiRuns from './multi-runs/routes.js';
 import ci from './ci/routes.js';
 import memory from './memory/routes.js';
+import agentPerformance from './agent-performance/routes.js';
 
 /**
  * Module registry. Each feature module is a Fastify plugin in
@@ -56,4 +57,5 @@ export const modules: Record<string, FastifyPluginAsync> = {
   multiRuns,
   ci,
   memory,
+  agentPerformance,
 };
