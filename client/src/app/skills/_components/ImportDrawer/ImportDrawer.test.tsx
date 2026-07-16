@@ -8,6 +8,9 @@
  *  4. URL tab: fetch fails → clear error message shown, URL input remains
  *  5. URL tab: "Back" in preview returns to URL input view
  *  6. File tab: preview panel appears after hitting Preview
+ *  7. Community tab: clicking Import opens preview with catalog description pre-filled
+ *  8. Community tab: save sends source='community'
+ *  9. Community tab: filter pills come from useCommunitySkillFacets, not the hardcoded list
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -22,6 +25,7 @@ vi.mock("../../../../lib/hooks/skills", () => ({
   useImportSkillPreview: vi.fn(),
   useImportSkillSave: vi.fn(),
   useSearchCommunitySkills: vi.fn(),
+  useCommunitySkillFacets: vi.fn(),
 }));
 
 import {
@@ -29,6 +33,7 @@ import {
   useImportSkillPreview,
   useImportSkillSave,
   useSearchCommunitySkills,
+  useCommunitySkillFacets,
 } from "../../../../lib/hooks/skills";
 import { ImportDrawer } from "./ImportDrawer";
 
@@ -40,6 +45,16 @@ const PREVIEW_RESULT = {
   name: "No Hardcoded Secrets",
   body_preview: "# No Hardcoded Secrets\n\nNever commit API keys.",
   token_count: 42,
+};
+
+const COMMUNITY_ENTRY = {
+  name: "owasp-top-10-review",
+  description: "Maps diff changes to the OWASP Top 10 with CWE references.",
+  tags: ["security", "owasp"],
+  lang: "any",
+  body: "# OWASP\n…",
+  repo: "secdev/agent-skills",
+  stars: 1240,
 };
 
 // ---- Setup helpers ----
@@ -79,6 +94,12 @@ function setupDefaultMocks(opts: {
   (useSearchCommunitySkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     data: [],
     isLoading: false,
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (useCommunitySkillFacets as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    langs: ["TypeScript"],
+    tags: ["owasp", "react", "cleanup"],
   });
 
   return { fetchMutateAsync, saveMutateAsync };
@@ -288,6 +309,95 @@ describe("ImportDrawer", () => {
       await waitFor(() => {
         expect(screen.getByDisplayValue("No Hardcoded Secrets")).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("Community tab — import path", () => {
+    it("clicking Import opens the preview panel directly (no file-tab round-trip)", async () => {
+      setupDefaultMocks();
+
+      (useSearchCommunitySkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: [COMMUNITY_ENTRY],
+        isLoading: false,
+      });
+
+      renderDrawer({ initialTab: "community" });
+
+      // Click the Import button on the entry card
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Import" }));
+      });
+
+      // Preview panel should show the entry name
+      await waitFor(() => {
+        expect(screen.getByDisplayValue("owasp-top-10-review")).toBeInTheDocument();
+      });
+
+      // Description should be pre-filled with the catalog description (not the skill name)
+      expect(
+        screen.getByDisplayValue("Maps diff changes to the OWASP Top 10 with CWE references."),
+      ).toBeInTheDocument();
+
+      // File-tab body textarea label should NOT be in the document (no round-trip to file tab)
+      expect(screen.queryByText("Skill body (Markdown)")).not.toBeInTheDocument();
+    });
+
+    it("save sends source='community'", async () => {
+      const { saveMutateAsync } = setupDefaultMocks();
+
+      (useSearchCommunitySkills as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        data: [COMMUNITY_ENTRY],
+        isLoading: false,
+      });
+
+      renderDrawer({ initialTab: "community" });
+
+      // Click Import on the entry card
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Import" }));
+      });
+
+      // Wait for the preview panel to appear
+      await waitFor(() => {
+        expect(screen.getByDisplayValue("owasp-top-10-review")).toBeInTheDocument();
+      });
+
+      // Click the save button ("Import skill")
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /import skill/i }));
+      });
+
+      await waitFor(() => {
+        expect(saveMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ source: "community" }),
+        );
+      });
+    });
+
+    it("filter pills come from useCommunitySkillFacets, not the hardcoded list", () => {
+      setupDefaultMocks();
+
+      (useCommunitySkillFacets as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        langs: ["TypeScript"],
+        tags: ["owasp"],
+      });
+
+      renderDrawer({ initialTab: "community" });
+
+      // Pills from facets should be present, plus one "All" pill per filter group
+      expect(screen.getByText("TypeScript")).toBeInTheDocument();
+      expect(screen.getByText("owasp")).toBeInTheDocument();
+      expect(screen.getAllByText("All")).toHaveLength(2);
+
+      // Old hardcoded language pills should NOT be present
+      expect(screen.queryByText("Python")).not.toBeInTheDocument();
+      expect(screen.queryByText("Go")).not.toBeInTheDocument();
+      expect(screen.queryByText("Rust")).not.toBeInTheDocument();
+
+      // Old hardcoded tag pills should NOT be present
+      expect(screen.queryByText("performance")).not.toBeInTheDocument();
+      expect(screen.queryByText("style")).not.toBeInTheDocument();
+      expect(screen.queryByText("test")).not.toBeInTheDocument();
     });
   });
 });

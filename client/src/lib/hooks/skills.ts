@@ -342,3 +342,17 @@ export function useSearchCommunitySkills(
     queryFn: () => api.get<CommunitySkillEntry[]>(`/skills/community${qs ? `?${qs}` : ""}`),
   });
 }
+
+/**
+ * Returns the distinct language and tag values present in the full community
+ * catalog. Derived client-side from an unfiltered catalog fetch so that
+ * active lang/tag filters on the CommunityTab do not shrink the facet set.
+ * No new API endpoint is introduced (per spec Service Contracts).
+ */
+export function useCommunitySkillFacets(): { langs: string[]; tags: string[] } {
+  const { data } = useSearchCommunitySkills(undefined, {});
+  const entries = data ?? [];
+  const langs = [...new Set(entries.map((e) => e.lang).filter((l) => l !== "any"))].sort();
+  const tags = [...new Set(entries.flatMap((e) => e.tags))].sort();
+  return { langs, tags };
+}

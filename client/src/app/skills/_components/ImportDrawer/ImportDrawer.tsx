@@ -3,13 +3,15 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Drawer, Tabs, FormField, TextInput, Textarea, SelectInput, Button } from "@devdigest/ui";
-import type { SkillType } from "@devdigest/shared";
+import type { SkillType, CommunitySkillEntry } from "@devdigest/shared";
 import {
   useImportSkillPreview,
   useImportSkillSave,
   useImportSkillFetch,
   useSearchCommunitySkills,
+  useCommunitySkillFacets,
 } from "../../../../lib/hooks/skills";
+import { tagToType, estimateTokens } from "./helpers";
 
 const SKILL_TYPE_OPTIONS = [
   { value: "rubric", label: "Rubric" },
@@ -37,14 +39,6 @@ export function ImportDrawer({
 }) {
   const t = useTranslations("skills");
   const [tab, setTab] = React.useState(initialTab);
-  const [prefillName, setPrefillName] = React.useState("");
-  const [prefillBody, setPrefillBody] = React.useState("");
-
-  const handleCommunityImport = (name: string, body: string) => {
-    setPrefillName(name);
-    setPrefillBody(body);
-    setTab("file");
-  };
 
   if (!open) return null;
 
@@ -54,16 +48,11 @@ export function ImportDrawer({
         <Tabs tabs={DRAWER_TABS} value={tab} onChange={setTab} />
         <div style={{ marginTop: 20 }}>
           {tab === "file" && (
-            <FileTab
-              onClose={onClose}
-              onImported={onImported}
-              initialName={prefillName}
-              initialBody={prefillBody}
-            />
+            <FileTab onClose={onClose} onImported={onImported} />
           )}
           {tab === "url" && <UrlTab onClose={onClose} onImported={onImported} />}
           {tab === "community" && (
-            <CommunityTab onImportSkill={handleCommunityImport} />
+            <CommunityTab onClose={onClose} onImported={onImported} />
           )}
         </div>
       </div>
@@ -71,7 +60,7 @@ export function ImportDrawer({
   );
 }
 
-// ---- Shared preview panel (used by both FileTab and UrlTab) ----
+// ---- Shared preview panel (used by FileTab, UrlTab, and CommunityTab) ----
 
 /**
  * Shows the sanitised preview returned by the server (/skills/import or
@@ -81,6 +70,9 @@ export function ImportDrawer({
 function ImportPreviewPanel({
   preview,
   initialName,
+  source = "imported_url",
+  initialDescription = "",
+  initialType = "custom",
   onBack,
   onImported,
   onClose,
@@ -88,14 +80,20 @@ function ImportPreviewPanel({
   preview: { name: string; body_preview: string; token_count: number };
   /** Pre-filled name (from user input or derived from URL). Defaults to preview.name. */
   initialName?: string;
+  /** Which import source to tag this skill with. Defaults to "imported_url". */
+  source?: "imported_url" | "community";
+  /** Pre-filled description from the catalog entry. Defaults to "". */
+  initialDescription?: string;
+  /** Pre-selected type derived from catalog tags. Defaults to "custom". */
+  initialType?: SkillType;
   onBack: () => void;
   onImported?: () => void;
   onClose: () => void;
 }) {
   const t = useTranslations("skills");
   const [name, setName] = React.useState(initialName ?? preview.name);
-  const [description, setDescription] = React.useState("");
-  const [type, setType] = React.useState<SkillType>("custom");
+  const [description, setDescription] = React.useState(initialDescription);
+  const [type, setType] = React.useState<SkillType>(initialType);
   const [error, setError] = React.useState<string | null>(null);
 
   const saveMut = useImportSkillSave();
@@ -108,7 +106,7 @@ function ImportPreviewPanel({
         description: description || preview.name,
         type,
         body: preview.body_preview,
-        source: "imported_url",
+        source,
       });
       onImported?.();
       onClose();
@@ -225,22 +223,15 @@ async function resolveDroppedSkill(
 function FileTab({
   onClose,
   onImported,
-  initialName = "",
-  initialBody = "",
 }: {
   onClose: () => void;
   onImported?: () => void;
-  initialName?: string;
-  initialBody?: string;
 }) {
   const t = useTranslations("skills");
-  const [name, setName] = React.useState(initialName);
-  const [body, setBody] = React.useState(initialBody);
+  const [name, setName] = React.useState("");
+  const [body, setBody] = React.useState("");
   const [isDragging, setIsDragging] = React.useState(false);
 
-  // Sync if parent re-fills from community tab.
-  React.useEffect(() => { setName(initialName); }, [initialName]);
-  React.useEffect(() => { setBody(initialBody); }, [initialBody]);
   const [preview, setPreview] = React.useState<{ name: string; body_preview: string; token_count: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -386,25 +377,51 @@ function UrlTab({ onClose, onImported }: { onClose: () => void; onImported?: () 
 
 // ---- Community tab ----
 
-const LANG_FILTERS = ["All", "TypeScript", "Python", "Go", "Rust"] as const;
-const TAG_FILTERS = ["All", "security", "performance", "style", "test"] as const;
-
-function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: string) => void }) {
+function CommunityTab({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported?: () => void;
+}) {
   const t = useTranslations("skills");
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [lang, setLang] = React.useState<string>("All");
   const [tag, setTag] = React.useState<string>("All");
+  const [selectedEntry, setSelectedEntry] = React.useState<CommunitySkillEntry | null>(null);
 
   React.useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(id);
   }, [query]);
 
+  const { langs, tags: catalogTags } = useCommunitySkillFacets();
+  const langFilters = ["All", ...langs];
+  const tagFilters = ["All", ...catalogTags];
+
   const { data: results, isLoading } = useSearchCommunitySkills(debouncedQuery || undefined, {
     lang: lang === "All" ? undefined : lang,
     tag: tag === "All" ? undefined : tag,
   });
+
+  if (selectedEntry) {
+    return (
+      <ImportPreviewPanel
+        preview={{
+          name: selectedEntry.name,
+          body_preview: selectedEntry.body,
+          token_count: estimateTokens(selectedEntry.body),
+        }}
+        source="community"
+        initialDescription={selectedEntry.description}
+        initialType={tagToType(selectedEntry.tags)}
+        onBack={() => setSelectedEntry(null)}
+        onImported={onImported}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -425,7 +442,7 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
       />
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {LANG_FILTERS.map((l) => (
+        {langFilters.map((l) => (
           <button
             key={l}
             onClick={() => setLang(l)}
@@ -444,7 +461,7 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
           </button>
         ))}
         <div style={{ width: 1, background: "var(--border)", margin: "0 2px" }} />
-        {TAG_FILTERS.map((tg) => (
+        {tagFilters.map((tg) => (
           <button
             key={tg}
             onClick={() => setTag(tg)}
@@ -505,8 +522,8 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
                 </span>
               ))}
             </div>
-            <Button kind="primary" size="sm" onClick={() => onImportSkill(entry.name, entry.body)}>
-              Import
+            <Button kind="primary" size="sm" onClick={() => setSelectedEntry(entry)}>
+              {t("community.import")}
             </Button>
           </div>
         ))}
