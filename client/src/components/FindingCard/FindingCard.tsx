@@ -23,6 +23,7 @@ import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
 import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "@/lib/github-urls";
 import { CreateEvalCaseModal } from "./CreateEvalCaseModal";
+import { LearnModal } from "./LearnModal";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -31,8 +32,10 @@ export function FindingCard({
   defaultExpanded,
   onAction,
   onCreateEvalCase,
+  onLearn,
   pending,
   evalCasePending,
+  learnPending,
   repoFullName,
   headSha,
 }: {
@@ -41,14 +44,17 @@ export function FindingCard({
   defaultExpanded?: boolean;
   onAction?: (action: FindingActionKind, reply?: string) => void;
   onCreateEvalCase?: (kind: "must_find" | "must_not_flag", name: string) => void;
+  onLearn?: (body: { content: string; scope: string; kind: string }) => void;
   pending?: boolean;
   evalCasePending?: boolean;
+  learnPending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
   const [evalModalOpen, setEvalModalOpen] = React.useState(false);
+  const [learnModalOpen, setLearnModalOpen] = React.useState(false);
   const [replying, setReplying] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
@@ -130,6 +136,18 @@ export function FindingCard({
                 {t("finding.createEvalCase")}
               </Button>
             )}
+            {muted && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="Brain"
+                disabled={learnPending}
+                onClick={() => setLearnModalOpen(true)}
+                aria-label={t("finding.learn")}
+              >
+                {t("finding.learn")}
+              </Button>
+            )}
             <Button
               kind="ghost"
               size="sm"
@@ -188,6 +206,17 @@ export function FindingCard({
           onSubmit={(kind, name) => {
             onCreateEvalCase?.(kind, name);
             setEvalModalOpen(false);
+          }}
+        />
+      )}
+      {learnModalOpen && (
+        <LearnModal
+          f={f}
+          pending={learnPending}
+          onClose={() => setLearnModalOpen(false)}
+          onSubmit={(body) => {
+            onLearn?.(body);
+            setLearnModalOpen(false);
           }}
         />
       )}

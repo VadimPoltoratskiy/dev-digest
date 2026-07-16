@@ -4,13 +4,15 @@
 
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, API_BASE, postComposeReview } from "../api";
+import { api, API_BASE, postComposeReview, postFindingLearn } from "../api";
 import { notify } from "../toast";
 import type {
   ComposeReviewBody,
   ComposeReviewResponse,
   FindingActionKind,
   Intent,
+  LearnFromFindingBody,
+  MemoryRecord,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -249,6 +251,22 @@ export function useRunEvents(runIds: string[]) {
   }, [key]);
 
   return { events, running };
+}
+
+// ---- Learn from a finding — create a memory record ----
+/**
+ * Mutation: learn from a finding — creates a memory record via the learn endpoint.
+ * On success invalidates the memory list so MemoryView refreshes (AC-11).
+ * Errors surface via MutationCache.onError (providers.tsx) — no local onError.
+ */
+export function useLearnFromFinding() {
+  const qc = useQueryClient();
+  return useMutation<MemoryRecord, Error, { findingId: string; body: LearnFromFindingBody }>({
+    mutationFn: (input) => postFindingLearn(input.findingId, input.body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["memory"] });
+    },
+  });
 }
 
 // ---- Compose review (post a human-curated GitHub PR review) ----

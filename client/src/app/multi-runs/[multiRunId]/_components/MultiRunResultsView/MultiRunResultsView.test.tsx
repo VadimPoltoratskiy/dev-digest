@@ -20,6 +20,7 @@ vi.mock("../../../../../lib/hooks/multi-runs", () => ({
 vi.mock("../../../../../lib/hooks/reviews", () => ({
   useRunEvents: vi.fn(),
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+  useLearnFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../../../../../lib/hooks/agents-eval", () => ({

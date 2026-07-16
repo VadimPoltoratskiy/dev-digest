@@ -19,6 +19,7 @@ import type {
   EvalDashboard,
   EvalDashboardAgentSummary,
   EvalRunRecord,
+  LearnFromFindingBody,
   MemoryItem,
   MemoryRecord,
   MultiRunFindings,
@@ -156,6 +157,14 @@ export function postFindingEvalCase(
   body: { kind: "must_find" | "must_not_flag"; name?: string },
 ): Promise<AgentEvalCase> {
   return api.post<AgentEvalCase>(`/findings/${findingId}/eval-case`, body);
+}
+
+/** POST /findings/:id/learn — create a memory record from a finding. */
+export function postFindingLearn(
+  findingId: string,
+  body: LearnFromFindingBody,
+): Promise<MemoryRecord> {
+  return api.post<MemoryRecord>(`/findings/${findingId}/learn`, body);
 }
 
 /** List all eval cases for an agent (each includes latest_run if ever run). */

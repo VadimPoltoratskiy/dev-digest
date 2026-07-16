@@ -12,6 +12,23 @@
     "cancel": "Cancel",
     "createEvalCase": "Turn into eval case"
   },
+  "learnModal": {
+    "title": "Save lesson to memory",
+    "contentLabel": "Lesson",
+    "scopeLabel": "Scope",
+    "scopeRepo": "This repo",
+    "scopeTeam": "Team",
+    "scopeGlobal": "Global",
+    "kindLabel": "Kind",
+    "kindDecision": "Decision",
+    "kindConvention": "Convention",
+    "kindPreference": "Preference",
+    "kindFact": "Fact",
+    "kindLearning": "Learning",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
   "trifecta": {
     "lethal": "LETHAL TRIFECTA — ALL 3 PRESENT",
     "components": "TRIFECTA COMPONENTS",

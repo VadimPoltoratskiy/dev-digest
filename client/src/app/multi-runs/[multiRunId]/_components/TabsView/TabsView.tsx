@@ -4,9 +4,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import type { AgentRunSummary, MultiRunFindings } from "@devdigest/shared";
+import type { AgentRunSummary, LearnFromFindingBody, MultiRunFindings } from "@devdigest/shared";
 import { FindingCard } from "@/components/FindingCard";
-import { useFindingAction } from "@/lib/hooks/reviews";
+import { useFindingAction, useLearnFromFinding } from "@/lib/hooks/reviews";
 import { useTurnFindingIntoEvalCase } from "@/lib/hooks/agents-eval";
 import { useActiveRepo } from "@/lib/repo-context";
 import { usePullDetail } from "@/lib/hooks/core";
@@ -36,6 +36,7 @@ export function TabsView({
   const qc = useQueryClient();
   const action = useFindingAction();
   const createEvalCase = useTurnFindingIntoEvalCase();
+  const learnFromFinding = useLearnFromFinding();
   const { activeRepo } = useActiveRepo();
   const { data: pr } = usePullDetail(prId);
 
@@ -146,6 +147,7 @@ export function TabsView({
               defaultExpanded={false}
               pending={action.isPending}
               evalCasePending={createEvalCase.isPending}
+              learnPending={learnFromFinding.isPending}
               repoFullName={activeRepo?.full_name}
               headSha={pr?.head_sha}
               onAction={(act, reply) =>
@@ -159,6 +161,9 @@ export function TabsView({
               }
               onCreateEvalCase={(kind, name) =>
                 createEvalCase.mutate({ findingId: f.id, kind, name })
+              }
+              onLearn={(body) =>
+                learnFromFinding.mutate({ findingId: f.id, body: body as LearnFromFindingBody })
               }
             />
           ))}

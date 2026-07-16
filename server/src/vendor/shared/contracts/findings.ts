@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MemoryScope, MemoryKind } from './knowledge.js';
 
 /**
  * Review / Findings contracts.
@@ -99,3 +100,12 @@ export type CreateFindingEvalCaseBody = z.infer<typeof CreateFindingEvalCaseBody
 /** Body for POST /findings/:id/reply. */
 export const FindingReplyBody = z.object({ reply: z.string().min(1) });
 export type FindingReplyBody = z.infer<typeof FindingReplyBody>;
+
+/** Body for POST /findings/:id/learn. */
+export const LearnFromFindingBody = z.object({
+  content: z.string().min(1).max(1000),
+  scope: MemoryScope,
+  kind: MemoryKind,
+  confidence: z.number().min(0).max(1).optional(),
+});
+export type LearnFromFindingBody = z.infer<typeof LearnFromFindingBody>;

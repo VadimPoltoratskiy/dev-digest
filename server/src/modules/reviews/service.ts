@@ -2,6 +2,8 @@ import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
 import type { AgentEvalCase, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import type { ComposeReviewBody, ComposeReviewResponse } from '@devdigest/shared';
+import type { MemoryRecord, LearnFromFindingBody } from '@devdigest/shared';
+import { MemoryService } from '../memory/service.js';
 import { AppError, NotFoundError, ValidationError } from '../../platform/errors.js';
 import type { AgentRow, FindingRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -243,6 +245,49 @@ export class ReviewService {
       expected_output: row.expectedOutput as AgentEvalCase['expected_output'],
       latest_run: null,
     };
+  }
+
+  /**
+   * Turn a finding into a memory record via the Memory create operation so the
+   * write-time curation gate always runs (SPEC-09 AC-10). Never does a direct
+   * insert — all writes go through MemoryService.create.
+   */
+  async learnFromFinding(
+    workspaceId: string,
+    findingId: string,
+    body: LearnFromFindingBody,
+  ): Promise<MemoryRecord> {
+    // 1. Resolve finding → review → pull (identical guard to createFindingEvalCase)
+    const ctx = await this.repo.findingContext(findingId);
+    if (!ctx) throw new NotFoundError('Finding not found');
+
+    const { finding, pull } = ctx;
+
+    // 2. Workspace scope guard — same pattern as actOnFinding / createFindingEvalCase
+    if (pull.workspaceId !== workspaceId) throw new NotFoundError('Finding not found');
+
+    // 3. Build the memory item
+    const confidence = body.confidence ?? finding.confidence;
+    const sources = [
+      {
+        pr: pull.number,
+        context: `finding: ${finding.title} (${finding.file}:${finding.startLine})`,
+      },
+    ];
+
+    // 4. Scope: only repo-scoped records carry repoId (AC-7).
+    //    global + team are both workspace-wide (team is reserve/display in v1).
+    const repoId = body.scope === 'repo' ? pull.repoId : undefined;
+
+    // 5. Delegate to MemoryService so curateContent() runs (AC-10)
+    return new MemoryService(this.container).create(workspaceId, {
+      content: body.content,
+      scope: body.scope,
+      kind: body.kind,
+      confidence,
+      sources,
+      repoId,
+    });
   }
 
   /**

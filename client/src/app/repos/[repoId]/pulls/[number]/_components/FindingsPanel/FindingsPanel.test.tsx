@@ -6,6 +6,7 @@ import messages from "../../../../../../../../messages/en/prReview.json";
 
 vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+  useLearnFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../../../../../../../lib/hooks/agents-eval", () => ({
