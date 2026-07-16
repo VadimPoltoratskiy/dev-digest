@@ -1,464 +1,421 @@
-# Plan: Multi-Agent Review History Page
+# Plan: Review Feedback Fixes — Batch (SPEC-06)
 
 ## Spec reference
+`specs/SPEC-06-review-feedback-fixes.md`
 
-None — planned directly from the approved plan at `/Users/vpolto/.claude/plans/lets-create-multi-agent-composed-karp.md`, per user's direction in the request.
-
-## Execution mode: multi-agent
-
-Three phases; Phase 2 (backend) and Phase 3 (frontend) run in parallel once Phase 1 (foundation) is complete.
-
-**Dependency chain:** Phase 1 must land first because:
-- Phase 2 depends on the DB schema index (migration must be applied before integration tests run) and the `MultiRunSummary`/`MultiRunSummaryList` Zod types (service return type).
-- Phase 3 depends on the same Zod types (the `useMultiRuns` hook is typed against `MultiRunSummaryList`).
-
-Phase 2 and Phase 3 have no dependency on each other and can run concurrently once Phase 1 is merged.
+## Execution mode: single-agent, sequential
+One implementer executes all three concerns top-to-bottom. Concerns 2 and 1 are trivial
+config/doc edits with no code dependencies. Concern 3 is the real work and has internal
+ordering dependencies (move files before updating importers). No parallel phasing is
+warranted for this scope.
 
 ## Goal
-
-Once a multi-agent review run finishes and the user navigates away, there is no way back to its results page. This feature adds: (1) a `GET /multi-runs` list endpoint with real `limit`/`offset` pagination and batch-aggregated status/cost/duration, (2) a `/multi-runs` history page listing past runs for the selected repo, and (3) nav and breadcrumb fixes so the sidebar "Multi-Agent Review" item lands on the new list page instead of jumping straight to Configure.
+Fix three independent gaps: add a `workflow-retro` skill (Workflow catalog scope) so the
+retro ledger process is reproducible and consistent; upgrade the spec-creator agent model
+from `claude-sonnet-4-6` to `claude-opus-4-8` to match the quality gate already used by
+the architecture-reviewer; and move `review_focus` out of the brief card into a standalone
+"Read This First" block on the Overview tab so reviewers see the prioritized reading list
+immediately after the brief, not buried inside it.
 
 ## Modules affected
-
-- `server/` — `db/schema/runs.ts` (new index), `vendor/shared/contracts/observability.ts` (new contracts), `modules/multi-runs/repository.ts` (two new queries), `modules/multi-runs/service.ts` (new list method), `modules/multi-runs/routes.ts` (new GET /multi-runs route)
-- `client/` — `vendor/shared/contracts/observability.ts` (contract mirror), `lib/api.ts` (new fetch function), `lib/hooks/multi-runs.ts` (new hook), new `app/multi-runs/page.tsx` and `_components/MultiRunHistoryView/`, `messages/en/multiRuns.json` (new history keys), `vendor/ui/nav.ts` (href fix), two breadcrumb edits
+- `.claude/` — skill catalog and agent definition files (Concerns 1 and 2; no package build, no tests)
+- `client/` — `OverviewTab` component tree, `PrBriefCard` component, i18n messages, and tests (Concern 3 only)
 
 ## Engineering Insights applied
-
-- **Cost computed from existing columns, no migration for data** (`2026-06-25`): `costUsd` and `durationMs` are already on `agent_runs`; the new batch query reads them directly.
-- **`inArray` + JS Map for batch aggregation without N+1** (`2026-06-25`): `getAgentRunsForMultiRunIds` fetches all child `agent_runs` for the page's multi-run IDs in one `inArray` query; the service groups by `multiAgentRunId` in JS — exact same pattern as `server/src/modules/pulls/routes.ts:131-158`.
-- **`COUNT(*) OVER()` for total without a second query** (prior-prs pattern): `findMultiRuns` includes `sql<number>\`count(*) over()\`` per row, read from `rows[0]?.total` in the service.
-- **`.nullish()` for list-only derived fields; `.nullable()` only when service always supplies** (`2026-06-25`): `pr_number`/`pr_title` are `.nullish()` for forward compat (joined); `total_cost_usd`/`total_duration_ms` are `.nullable()` because the service always computes them (may be `null` when no agent-run rows have cost/duration data yet).
-- **Repo-scoped pages without a repoId column reuse `useActiveRepo()`** (`2026-07-06`): `MultiRunHistoryView` defaults to `useActiveRepo()`, with a switcher via `useRepos()` when more than one repo exists — identical to `ConfigureRunView.tsx` lines 208-219.
-- **`vendor/shared/` is a manual mirror** (`2026-06-25`): both `server/src/vendor/shared/contracts/observability.ts` and `client/src/vendor/shared/contracts/observability.ts` must receive the same additions. No tooling enforces the sync.
+- **TanStack Query cache deduplication** (`client/insights/INSIGHTS.md`, 2026-06-23 Tool Note):
+  `usePrBrief(prId)` called inside `ReadThisFirstCard` shares the same query key as the
+  identical call already in `PrBriefCard` — one `QueryClientProvider` in `app/layout.tsx`
+  means zero additional network requests. Calling the hook twice in the same render tree
+  is the correct pattern; do not prop-drill `data` through `OverviewTab`.
+- **Mock nested-component hooks at the test file boundary** (`client/insights/INSIGHTS.md`,
+  2026-07-15 Recurring Error): `ReadThisFirstCard.test.tsx` must `vi.mock` both
+  `@/lib/hooks/pr-files` (for `usePriorPrs`) and `next/navigation` (for `useParams`)
+  even though those hooks live inside the child `ReviewFocusItem` — jsdom renders the
+  full subtree and both hooks fire.
+- **Brief fixture completeness** (`client/insights/INSIGHTS.md`, 2026-06-25 and 2026-07-06
+  Recurring Errors): the `Brief` Zod type requires all five fields (`what`, `why`,
+  `risk_level`, `risks`, `review_focus`); every test fixture typed as `Brief` must
+  include all five to avoid `TS2741`. The `BRIEF_FIXTURE` in `PrBriefCard.test.tsx` keeps
+  `review_focus: [...]` even after the assertion is removed.
+- **Colocation nesting limit** (`ui-architecture` SKILL.md): sub-components nest inside
+  `_components/<Parent>/_components/<SubName>/`, maximum two levels deep. `ReadThisFirstCard`
+  is level 1 under `OverviewTab`; the moved `ReviewFocusItem` is level 2 under
+  `ReadThisFirstCard`. This is the permitted maximum — do not add a third level.
 
 ## Recommendations
-
-- **`useInfiniteQuery` vs offset accumulation in state**: TanStack's `useInfiniteQuery` is the purpose-built primitive for "load more" pagination, but it would be the only usage in the codebase and requires wiring `getNextPageParam`. The approved plan accepts the simpler approach: `useQuery` for each page, with the component accumulating items in `allItems` state and appending on each Load More click. This keeps the hook API consistent with the other three hooks in `multi-runs.ts`. Tradeoff: slightly more component state management; benefit: zero new patterns introduced.
-- **`innerJoin` vs `leftJoin` in `findMultiRuns`**: Use `innerJoin` on `pullRequests` (not `leftJoin` as `findMultiRunById` uses). The `prId` FK has `onDelete: 'cascade'` — if the PR is deleted, the multi-run is deleted with it, so orphaned multi-runs cannot exist and `innerJoin` is semantically correct. The `eq(t.pullRequests.repoId, repoId)` filter in the WHERE clause only works correctly with an inner join anyway.
+None — the spec is precise and complete; no architectural alternative improves on it.
 
 ## Architecture decisions
+- **`ReadThisFirstCard` as a sub-component of `OverviewTab`** (`ui-architecture` SKILL.md):
+  the component is used exclusively by `OverviewTab`, so it belongs at
+  `OverviewTab/_components/ReadThisFirstCard/` (sub-component rule), not as a sibling of
+  `OverviewTab` in the route's top-level `_components/`.
+- **`ReviewFocusItem` follows its consumer** into `ReadThisFirstCard/_components/ReviewFocusItem/`.
+  A cross-sibling import from `PrBriefCard/_components/` to `OverviewTab/_components/`
+  would violate the colocation boundary and contradict AC-9 (brief card must have no
+  reference to `review_focus` at all).
+- **Duplicate `usePrBrief(prId)` call is intentional**: introducing a shared prop would
+  thread data through `OverviewTab` just to avoid a hook call that costs nothing (cache
+  hit). TanStack Query's deduplication makes this the idiomatic pattern in this codebase
+  (confirmed by the INSIGHTS.md note above).
 
-- **New Zod querystring schema defined inline in routes.ts** — `ListMultiRunsQuery` with `repoId: z.string().uuid()` (required), `limit: z.coerce.number().int().min(1).max(100).default(20)`, `offset: z.coerce.number().int().min(0).default(0)`. `z.coerce` is required for querystring numbers — URL values arrive as strings, and Fastify's Zod provider does not auto-coerce without it. Per fastify-best-practices: schema-first validation, never hand-roll `.parse()` in a handler.
-- **`repoId` is required in the querystring** — the endpoint is always one-repo-at-a-time per the approved plan's scope decision. This avoids a large cross-repo scan and is consistent with how the client always fetches per active repo.
-- **Repository functions remain pure query functions; service holds all aggregation logic** — per onion-architecture layer boundaries: repositories return raw typed rows, services compute DTOs. `getAgentRunsForMultiRunIds` returns raw rows with `multiRunId: string | null`; the service's JS grouping ignores null values (they cannot appear given the `inArray` filter, but the type is nullable in the schema).
-- **`MultiRunSummary.status` is `z.enum(['running', 'done', 'failed'])` — excludes `'cancelled'`** — following the approved plan's definition. A multi-run that has zero agent_runs (a pathological race) is treated as `'running'` by the service's status logic.
-- **New page lives at `client/src/app/multi-runs/page.tsx`** — a thin async RSC, following the same pattern as `configure/page.tsx` and `[multiRunId]/page.tsx`. The `MultiRunHistoryView` client component is colocated at `client/src/app/multi-runs/_components/MultiRunHistoryView/` per ui-architecture colocation rules.
-- **`nav.ts` edit is a deliberate exception to the vendor/ui do-not-touch rule** — `nav.ts` defines app-specific navigation structure (not a UI primitive like a Button or Badge). The policy exists to prevent modifying `@devdigest/ui` primitives; this is application configuration that happens to live in the same folder. Changing one href is safe and explicitly required by the approved plan.
+---
 
 ## Tasks
 
-### Phase 1: Foundation — DB schema index + Zod contracts
+### Step A — Concern 2: spec-creator model upgrade (2 line edits, ~2 minutes)
 
-**Must complete and be available to implementers of Phase 2 and Phase 3 before those phases start.**
+These are the simplest changes; do them first to confirm the change and move on.
 
-- [ ] `server/src/db/schema/runs.ts` — add compound index on `multiAgentRuns` table. Change the table definition's second argument from an empty object `{}` to a `(t) => ({...})` callback (mirroring the `agentRuns` table's pattern at lines 43-49). Add: `multiRunWorkspaceRanAtIdx: index('multi_agent_runs_workspace_id_ran_at_idx').on(t.workspaceId, t.ranAt)`. The column `workspaceId` is the equality filter; `ranAt` is the sort key for DESC pagination — composite order matches the query plan.
+- [ ] **`.claude/agents/spec-creator.md`, line 20** — change `model: claude-sonnet-4-6`
+  to `model: claude-opus-4-8`. No other line in this file changes.
 
-- [ ] Run `cd server && pnpm db:generate` — verify a new migration file appears under `server/src/db/migrations/`. Commit it.
+- [ ] **`.claude/agents/README.md`, line 74** — change `**Model:** claude-sonnet-4-6`
+  to `**Model:** claude-opus-4-8`. No other line in this file changes.
 
-- [ ] Run `cd server && pnpm db:migrate` — applies the new index migration.
-
-- [ ] `server/src/vendor/shared/contracts/observability.ts` — append the following two schemas after the existing `MultiRunFindings` export (line 222). New additions only; no existing field is changed:
-
-  ```typescript
-  /** One row in the GET /multi-runs list response. */
-  export const MultiRunSummary = z.object({
-    id: z.string().uuid(),
-    pr_id: z.string().uuid(),
-    /** Joined from pulls table; nullish for forward compat. */
-    pr_number: z.number().int().nullish(),
-    /** Joined from pulls table; nullish for forward compat. */
-    pr_title: z.string().nullish(),
-    ran_at: z.string(),
-    agent_count: z.number().int(),
-    status: z.enum(['running', 'done', 'failed']),
-    /** nullable: service always computes (null when no agent_runs have cost data yet). */
-    total_cost_usd: z.number().nullable(),
-    /** nullable: service always computes (null when no agent_runs have duration data yet). */
-    total_duration_ms: z.number().int().nullable(),
-  });
-  export type MultiRunSummary = z.infer<typeof MultiRunSummary>;
-
-  /** Paginated response for GET /multi-runs. */
-  export const MultiRunSummaryList = z.object({
-    items: z.array(MultiRunSummary),
-    total: z.number().int(),
-  });
-  export type MultiRunSummaryList = z.infer<typeof MultiRunSummaryList>;
-  ```
-
-- [ ] `client/src/vendor/shared/contracts/observability.ts` — apply the identical additions (same two schemas, same types). Both vendor copies must stay in lockstep.
-
-- [ ] Run `cd server && pnpm typecheck` and `cd client && pnpm typecheck` — verify no errors from the new contract definitions before handing off to Phase 2 and Phase 3 implementers.
+Spot-check: `grep -rn "claude-sonnet-4-6" .claude/agents/` must return zero matches.
 
 ---
 
-### Phase 2: Backend API
+### Step B — Concern 1: workflow-retro skill (2 files)
 
-**Depends on Phase 1. Runs in parallel with Phase 3.**
+**B-1. Create the skill file**
 
-- [ ] `server/src/modules/multi-runs/repository.ts` — add the following two plain query functions (before the `MultiRunsRepository` class), then add their corresponding class methods.
+- [ ] **Create `.claude/skills/workflow-retro/SKILL.md`** — new file. Pattern: the existing
+  `.claude/skills/engineering-insights/SKILL.md` frontmatter block plus a numbered
+  workflow checklist body.
 
-  **Function 1 — `findMultiRuns`:** Add `sql` and `desc` to the existing `drizzle-orm` import at line 1.
-
-  ```typescript
-  export async function findMultiRuns(
-    db: Db,
-    workspaceId: string,
-    repoId: string,
-    { limit, offset }: { limit: number; offset: number },
-  ): Promise<{
-    id: string;
-    prId: string;
-    prNumber: number | null;
-    prTitle: string | null;
-    ranAt: Date;
-    total: number;
-  }[]> {
-    return db
-      .select({
-        id: t.multiAgentRuns.id,
-        prId: t.multiAgentRuns.prId,
-        prNumber: t.pullRequests.number,
-        prTitle: t.pullRequests.title,
-        ranAt: t.multiAgentRuns.ranAt,
-        total: sql<number>`count(*) over()`,
-      })
-      .from(t.multiAgentRuns)
-      .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.multiAgentRuns.prId))
-      .where(
-        and(
-          eq(t.multiAgentRuns.workspaceId, workspaceId),
-          eq(t.pullRequests.repoId, repoId),
-        ),
-      )
-      .orderBy(desc(t.multiAgentRuns.ranAt))
-      .limit(limit)
-      .offset(offset);
-  }
+  Required frontmatter (YAML block):
+  ```yaml
+  ---
+  name: workflow-retro
+  description: >
+    Guides the developer through the per-branch retro process at merge or feature
+    completion: collect git-diff statistics, run tests only for touched packages
+    (record "—" for untouched ones), and append one ledger table row plus one prose
+    section to docs/retros/ledger.md.
+  allowed-tools: Read, Write, Edit, Bash
+  ---
   ```
 
-  **Function 2 — `getAgentRunsForMultiRunIds`:**
+  Required body — a numbered checklist that covers all four steps from AC-2, shaped
+  around the flowchart in the spec's Architecture section:
 
-  ```typescript
-  export async function getAgentRunsForMultiRunIds(
-    db: Db,
-    multiRunIds: string[],
-  ): Promise<{
-    multiRunId: string | null;
-    status: string | null;
-    costUsd: string | null;
-    durationMs: number | null;
-  }[]> {
-    if (multiRunIds.length === 0) return [];
-    return db
-      .select({
-        multiRunId: t.agentRuns.multiAgentRunId,
-        status: t.agentRuns.status,
-        costUsd: t.agentRuns.costUsd,
-        durationMs: t.agentRuns.durationMs,
-      })
-      .from(t.agentRuns)
-      .where(inArray(t.agentRuns.multiAgentRunId, multiRunIds));
-  }
+  1. **Collect branch diff statistics.** Run `git diff --stat main..<branch>` (substitute
+     the actual branch name). Record: total files changed, total lines inserted, total
+     lines deleted. These fill the `Files changed` and `+/- lines` columns.
+
+  2. **Identify touched packages and run their tests.** Inspect the diff output for file
+     paths that belong to `server/`, `client/`, `reviewer-core/`, or `e2e/`. For each
+     **touched** package, run `pnpm test` inside that package directory and record the
+     pass count and file count (e.g., "295 passed (33 files)"). For each **untouched**
+     package, write `—` in its test column — do not run its tests. The row may be
+     written once at least one package's test results are recorded.
+
+  3. **Append one new row to the ledger table** in `docs/retros/ledger.md`. Columns in
+     order: `Branch`, `Files changed`, `+/- lines`, `Server tests`, `Client tests`,
+     `Key mechanism` (one-line summary of the core mechanism), `Notes`. Never overwrite
+     or reformat existing rows.
+
+  4. **Append one prose section below the table** (immediately after the last existing
+     prose section). The section follows the structure of the existing
+     `emdash/multi-agent-review-mbw10` entry in `docs/retros/ledger.md`:
+     - An H2 heading with the branch name.
+     - A feature-summary paragraph (what was added and what it enables).
+     - A bold `**Key mechanism**` sub-section with file names and function names for the
+       core technical approach.
+     - A bold `**Gaps / follow-ups**` sub-section listing any known gaps or next steps,
+       or "none blocking at time of writing" if there are none.
+     Never overwrite or reformat existing prose sections.
+
+**B-2. Add catalog row**
+
+- [ ] **`.claude/skills/README.md`** — insert a new row in the catalog table under the
+  Workflow scope (after the existing `dependency-checker` row). Exact format to match
+  the adjacent rows:
+
+  ```markdown
+  | [workflow-retro](workflow-retro/SKILL.md) | Workflow | Per-branch retro: collect git-diff stats, run touched-package tests, append one ledger table row and one prose section to `docs/retros/ledger.md` |
   ```
-
-  **`MultiRunsRepository` class additions** — add these two methods inside the class:
-
-  ```typescript
-  findMultiRuns(
-    workspaceId: string,
-    repoId: string,
-    opts: { limit: number; offset: number },
-  ): Promise<{ id: string; prId: string; prNumber: number | null; prTitle: string | null; ranAt: Date; total: number }[]> {
-    return findMultiRuns(this.db, workspaceId, repoId, opts);
-  }
-
-  getAgentRunsForMultiRunIds(
-    multiRunIds: string[],
-  ): Promise<{ multiRunId: string | null; status: string | null; costUsd: string | null; durationMs: number | null }[]> {
-    return getAgentRunsForMultiRunIds(this.db, multiRunIds);
-  }
-  ```
-
-- [ ] `server/src/modules/multi-runs/service.ts` — add `MultiRunSummary, MultiRunSummaryList` to the existing `@devdigest/shared` import at line 2. Then add the following method to `MultiRunsService` (after `getEstimates`):
-
-  ```typescript
-  async listMultiRuns(
-    workspaceId: string,
-    repoId: string,
-    { limit, offset }: { limit: number; offset: number },
-  ): Promise<MultiRunSummaryList> {
-    const rows = await this.repo.findMultiRuns(workspaceId, repoId, { limit, offset });
-    if (rows.length === 0) return { items: [], total: 0 };
-
-    // COUNT(*) OVER() returns a bigint string from Postgres — coerce explicitly.
-    const total = Number(rows[0]!.total);
-    const multiRunIds = rows.map((r) => r.id);
-
-    // Batch-fetch all child agent_runs (one round-trip, no N+1).
-    const agentRunRows = await this.repo.getAgentRunsForMultiRunIds(multiRunIds);
-
-    // Group by multiRunId in JS (same pattern as pulls/routes.ts costByPr block).
-    type AgentRunMini = { status: string | null; costUsd: string | null; durationMs: number | null };
-    const agentRunsMap = new Map<string, AgentRunMini[]>();
-    for (const ar of agentRunRows) {
-      if (!ar.multiRunId) continue; // null cannot occur given inArray filter
-      const list = agentRunsMap.get(ar.multiRunId) ?? [];
-      list.push(ar);
-      agentRunsMap.set(ar.multiRunId, list);
-    }
-
-    const items: MultiRunSummary[] = rows.map((row) => {
-      const childRuns = agentRunsMap.get(row.id) ?? [];
-
-      // Status: running > failed > done. Zero child runs = still setting up => running.
-      let status: 'running' | 'done' | 'failed';
-      if (childRuns.length === 0 || childRuns.some((r) => !r.status || r.status === 'running')) {
-        status = 'running';
-      } else if (childRuns.some((r) => r.status === 'failed')) {
-        status = 'failed';
-      } else {
-        status = 'done';
-      }
-
-      // Sum cost and duration (mirrors getMultiRun aggregation at service.ts:98-111).
-      let totalCostUsd: number | null = null;
-      let totalDurationMs: number | null = null;
-      for (const ar of childRuns) {
-        if (ar.costUsd !== null) {
-          const parsed = parseFloat(ar.costUsd);
-          if (!isNaN(parsed)) totalCostUsd = (totalCostUsd ?? 0) + parsed;
-        }
-        if (ar.durationMs !== null) {
-          totalDurationMs = (totalDurationMs ?? 0) + ar.durationMs;
-        }
-      }
-
-      return {
-        id: row.id,
-        pr_id: row.prId,
-        pr_number: row.prNumber ?? null,
-        pr_title: row.prTitle ?? null,
-        ran_at: row.ranAt.toISOString(),
-        agent_count: childRuns.length,
-        status,
-        total_cost_usd: totalCostUsd,
-        total_duration_ms: totalDurationMs,
-      };
-    });
-
-    return { items, total };
-  }
-  ```
-
-- [ ] `server/src/modules/multi-runs/routes.ts` — add the `GET /multi-runs` handler. Import `z` from `'zod'` if not already in scope (check existing imports; `MultiReviewRequest` is imported from `@devdigest/shared`, not from `zod` directly, so `z` may not be imported). Add above the existing `POST /pulls/:id/multi-review` handler:
-
-  ```typescript
-  const ListMultiRunsQuery = z.object({
-    repoId: z.string().uuid(),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
-    offset: z.coerce.number().int().min(0).default(0),
-  });
-
-  // GET /multi-runs?repoId=&limit=&offset=
-  app.get(
-    '/multi-runs',
-    { schema: { querystring: ListMultiRunsQuery } },
-    async (req) => {
-      const { workspaceId } = await getContext(container, req);
-      return service.listMultiRuns(workspaceId, req.query.repoId, {
-        limit: req.query.limit,
-        offset: req.query.offset,
-      });
-    },
-  );
-  ```
-
-- [ ] `server/src/modules/multi-runs/service.test.ts` — add unit test cases for `listMultiRuns`:
-  - Returns `{ items: [], total: 0 }` when `findMultiRuns` returns an empty array.
-  - Correctly derives `status: 'running'` when any child agent_run has a null or `'running'` status.
-  - Correctly derives `status: 'failed'` when all child runs are terminal but at least one is `'failed'`.
-  - Correctly derives `status: 'done'` when all child runs have `status === 'done'`.
-  - Sums `total_cost_usd` and `total_duration_ms` from child rows; both are `null` when no child rows have those values.
-  - Coerces `total` correctly with `Number(rows[0]!.total)` (stub the repo to return `total: '42'` as a string).
-
-- [ ] `server/src/modules/multi-runs/routes.test.ts` — add unit test cases for `GET /multi-runs`:
-  - Returns 422 when `repoId` is missing.
-  - Returns 422 when `repoId` is not a valid UUID.
-  - Returns 422 when `limit` is `0` or `101`.
-  - Returns the mocked `MultiRunSummaryList` on a valid request.
-  - Applies default `limit=20` and `offset=0` when those params are omitted.
-
-- [ ] `server/src/modules/multi-runs/repository.it.test.ts` — add integration test cases for `findMultiRuns`:
-  - Returns an empty array for a repo with no multi-runs.
-  - Returns rows ordered by `ranAt` DESC.
-  - `total` correctly reflects the full count when the result set is larger than the page (insert 3 runs, fetch with `limit=1`, verify `total=3` and `items.length=1`).
-  - Filters by `repoId` — runs for a different repo in the same workspace are excluded.
 
 ---
 
-### Phase 3: Frontend
+### Step C — Concern 3: "Read This First" block (all sub-steps in order)
 
-**Depends on Phase 1 (for `MultiRunSummary`/`MultiRunSummaryList` types). Runs in parallel with Phase 2.**
+> Prerequisite: complete Steps A and B first (they touch different files; no technical
+> dependency, but sequencing keeps the diff reviewable). Within Step C, the sub-steps
+> below have ordering dependencies as marked.
 
-- [ ] `client/src/lib/api.ts` — add `MultiRunSummaryList` to the existing type import block at the top of the file (line 22). Add the following exported function in the "Multi-Agent Review API functions" section (after `fetchMultiRunFindings`):
+**C-1. Add the i18n key** (no dependencies; do first inside C)
 
-  ```typescript
-  /** Fetch paginated multi-agent run history for a repo. */
-  export function fetchMultiRuns(
-    repoId: string,
-    limit: number,
-    offset: number,
-  ): Promise<MultiRunSummaryList> {
-    return apiFetch<MultiRunSummaryList>(
-      `/multi-runs?repoId=${encodeURIComponent(repoId)}&limit=${limit}&offset=${offset}`,
-    );
-  }
-  ```
-
-- [ ] `client/src/lib/hooks/multi-runs.ts` — add `MultiRunSummaryList` to the type import block at line 12. Add `fetchMultiRuns` to the `import` from `'../api'` at line 11. Append at the end of the file:
-
-  ```typescript
-  /**
-   * Paginated multi-agent run history for a repo.
-   * Pass `repoId = null` to disable (lazy-fetch-on-active-repo pattern).
-   */
-  export function useMultiRuns(
-    repoId: string | null,
-    { limit, offset }: { limit: number; offset: number },
-  ) {
-    return useQuery<MultiRunSummaryList>({
-      queryKey: ['multi-runs', repoId, limit, offset],
-      queryFn: () => fetchMultiRuns(repoId!, limit, offset),
-      enabled: !!repoId,
-    });
-  }
-  ```
-
-- [ ] `client/messages/en/multiRuns.json` — add a `"history"` section as a sibling of `"results"` and `"configure"`:
-
+- [ ] **`client/messages/en/brief.json`** — add `"readThisFirst": "Read This First"` as a
+  direct child of the `"block"` object (alongside `"intent"`, `"blast"`, `"risks"`,
+  `"history"`, `"brief"`). This is an additive change; all existing keys remain. Result
+  in context:
   ```json
-  "history": {
-    "title": "Multi-Agent Review",
-    "configureRun": "Configure run",
-    "emptyTitle": "No runs yet",
-    "emptyBody": "No multi-agent review runs for this repo yet.",
-    "loadMore": "Load more",
-    "errorTitle": "Failed to load history",
-    "errorBody": "Could not load multi-agent run history.",
-    "columns": {
-      "pr": "PR",
-      "agents": "Agents",
-      "status": "Status",
-      "cost": "Cost",
-      "duration": "Duration",
-      "ranAt": "Run at"
-    },
-    "status": {
-      "running": "Running",
-      "done": "Done",
-      "failed": "Failed"
-    }
+  "block": {
+    "intent": "Intent",
+    "blast": "Blast radius",
+    "risks": "Risks",
+    "history": "PR history",
+    "readThisFirst": "Read This First",
+    "brief": { ... }
   }
   ```
 
-- [ ] `client/src/app/multi-runs/page.tsx` — NEW thin RSC page (no params needed; `MultiRunHistoryView` reads repo from context):
+**C-2. Move ReviewFocusItem to its new location** (do before C-3, C-4, C-5)
 
+The component moves from:
+```
+client/src/app/repos/[repoId]/pulls/[number]/_components/
+  PrBriefCard/_components/ReviewFocusItem/
+```
+to:
+```
+client/src/app/repos/[repoId]/pulls/[number]/_components/
+  OverviewTab/_components/ReadThisFirstCard/_components/ReviewFocusItem/
+```
+
+Below, `OLD_BASE` = `..._components/PrBriefCard/_components/ReviewFocusItem/` and
+`NEW_BASE` = `..._components/OverviewTab/_components/ReadThisFirstCard/_components/ReviewFocusItem/`.
+
+- [ ] **Create `NEW_BASE/ReviewFocusItem.tsx`** — copy from `OLD_BASE`. File contents are
+  unchanged; no import inside it references its own folder path.
+
+- [ ] **Create `NEW_BASE/styles.ts`** — copy from `OLD_BASE`. Contents unchanged.
+
+- [ ] **Create `NEW_BASE/index.ts`** — copy from `OLD_BASE`. Contents unchanged
+  (`export { ReviewFocusItem } from "./ReviewFocusItem";`).
+
+- [ ] **Create `NEW_BASE/ReviewFocusItem.test.tsx`** — copy from `OLD_BASE`, then update
+  the `briefMessages` relative import. The depth increases from 10 `../` to 12 `../`:
+  - **Remove:** `../../../../../../../../../../messages/en/brief.json`
+  - **Replace with:** `../../../../../../../../../../../../messages/en/brief.json`
+
+  Path derivation (new location → `client/` in 12 steps):
+  `ReviewFocusItem/` → `_components/` (RTF's _components) → `ReadThisFirstCard/` →
+  `_components/` (OT's _components) → `OverviewTab/` → `_components/` (route _components) →
+  `[number]/` → `pulls/` → `[repoId]/` → `repos/` → `app/` → `src/` → `client/`
+  All other imports (`@/lib/hooks/pr-files`, `next/navigation`, `./ReviewFocusItem`, etc.)
+  are unchanged — they use absolute `@/` aliases or relative `./` imports that still resolve.
+
+- [ ] **Delete the old location.** Remove all four files from `OLD_BASE`:
+  `ReviewFocusItem.tsx`, `styles.ts`, `index.ts`, `ReviewFocusItem.test.tsx`.
+
+- [ ] **Delete the now-empty folder** `PrBriefCard/_components/` (was only containing
+  `ReviewFocusItem/`; no other sub-components remain per `ls` output).
+
+**C-3. Create ReadThisFirstCard** (depends on C-2 for the ReviewFocusItem import)
+
+- [ ] **Create `OverviewTab/_components/ReadThisFirstCard/ReadThisFirstCard.tsx`** — new
+  component. Requirements:
+  - `"use client"` directive at top.
+  - Props: `{ prId: string }`.
+  - Imports: `useTranslations` from `next-intl`; `SectionLabel` from `@devdigest/ui`;
+    `usePrBrief` from `@/lib/hooks/brief`; `ReviewFocusItem` from
+    `./_components/ReviewFocusItem`.
+  - Logic: call `usePrBrief(prId)`. Guard: if `isLoading`, or `!data`, or
+    `data.review_focus.length === 0` — return `null`. No fallback UI, no placeholder.
+  - Rendered JSX: a `<section>` containing `<SectionLabel icon="BookOpen">` (or any
+    relevant icon from `@devdigest/ui`) whose text is `t("block.readThisFirst")`, followed
+    by a `<ul>` with `{data.review_focus.map((item, i) => (<ReviewFocusItem key={i} prId={prId} path={item} />))}`.
+  - Inline style for the `<ul>` may reuse the same list style pattern as
+    `PrBriefCard.tsx` line 84 (`style={s.list}`) — define a local `styles.ts` if needed,
+    or use an inline style object directly.
+
+- [ ] **Create `OverviewTab/_components/ReadThisFirstCard/index.ts`** — barrel:
+  ```typescript
+  export { ReadThisFirstCard } from "./ReadThisFirstCard";
+  ```
+
+- [ ] **Create `OverviewTab/_components/ReadThisFirstCard/styles.ts`** — only if the
+  component needs any inline style constants for the wrapper or list. May be a minimal
+  file with one `s.list` object, or omitted if no wrapper styles are needed.
+
+**C-4. Wire ReadThisFirstCard into OverviewTab** (depends on C-3)
+
+- [ ] **`OverviewTab/OverviewTab.tsx`**:
+  - Add import: `import { ReadThisFirstCard } from "./_components/ReadThisFirstCard";`
+  - After the `{prId && <PrBriefCard prId={prId} repoFullName={repoFullName} headSha={headSha} />}` line and **before** the `{prBody && <section>…</section>}` block, add:
+    ```tsx
+    {prId && <ReadThisFirstCard prId={prId} />}
+    ```
+  - The `prId &&` guard matches the same conditional pattern used for `IntentCard` and
+    `PrBriefCard`; `ReadThisFirstCard` itself also guards on absent/loading brief data
+    internally (AC-8), so this outer guard only handles the case where `prId` itself is
+    absent. Both guards are required.
+
+**C-5. Remove review_focus from PrBriefCard** (depends on C-2 to avoid a broken import)
+
+- [ ] **`PrBriefCard/PrBriefCard.tsx`**:
+  - Remove line 9: `import { ReviewFocusItem } from "./_components/ReviewFocusItem";`
+  - Remove the entire review-focus block (currently lines 80–90):
+    ```tsx
+    {/* Review focus */}
+    {data.review_focus.length > 0 && (
+      <>
+        <div style={s.sectionLabel}>{t("block.brief.reviewFocus.label")}</div>
+        <ul style={s.list}>
+          {data.review_focus.map((item, i) => (
+            <ReviewFocusItem key={i} prId={prId} path={item} />
+          ))}
+        </ul>
+      </>
+    )}
+    ```
+  - No other changes. The `s.list` style constant in `PrBriefCard/styles.ts` will become
+    unused; leave it as-is (removing it is low-risk but unnecessary and risks merge noise).
+
+**C-6. Update PrBriefCard tests** (depends on C-5 — after removal the mocks become dead)
+
+- [ ] **`PrBriefCard/PrBriefCard.test.tsx`**:
+  - **Remove** the `vi.mock("next/navigation", ...)` block (currently lines 32–33).
+    It was only needed because `ReviewFocusItem` calls `useParams`; `PrBriefCard` itself
+    does not.
+  - **Remove** the `vi.mock("@/lib/hooks/pr-files", ...)` block (currently lines 34–37).
+    It was only needed because `ReviewFocusItem` calls `usePriorPrs`.
+  - In the `"PrBriefCard — brief is loaded"` describe block, **remove** the two
+    review_focus rendering assertions (currently lines 147–151 and 155–157):
+    ```typescript
+    // REMOVE:
+    // review_focus items — the second one is unique, so getByText is safe.
+    // The first ("src/middleware/rate.ts") also appears in file_refs, so use getAllByText.
+    expect(screen.getAllByText("src/middleware/rate.ts").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("src/api/public/index.ts")).toBeInTheDocument();
+
+    // REMOVE (the comment about "same text as review_focus item"):
+    // The risk's file_ref must appear (same text as review_focus item — at least one).
+    expect(screen.getAllByText("src/middleware/rate.ts").length).toBeGreaterThanOrEqual(2);
+    ```
+    **Replace** that last assertion with a simpler one that only checks the file_ref as
+    rendered inside the risk card (one occurrence, not two):
+    ```typescript
+    // The risk's file_ref must still appear in the risk card.
+    expect(screen.getByText("src/middleware/rate.ts")).toBeInTheDocument();
+    ```
+  - Keep the `BRIEF_FIXTURE` as-is with `review_focus: ["src/middleware/rate.ts", "src/api/public/index.ts"]` — the `Brief` type requires the field. The test simply no longer asserts its rendered output.
+  - Keep all other tests (generate, regenerate, degraded banner, history toggle,
+    backward-compat schema test) entirely unchanged.
+
+**C-7. Add ReadThisFirstCard tests** (depends on C-3)
+
+- [ ] **Create `OverviewTab/_components/ReadThisFirstCard/ReadThisFirstCard.test.tsx`** —
+  new colocated test file.
+
+  Mock setup (vi.mock calls are hoisted by Vitest, declare at top before component import):
+  ```typescript
+  vi.mock("@/lib/hooks/brief", () => ({
+    usePrBrief: vi.fn(),
+  }));
+  vi.mock("@/lib/hooks/pr-files", () => ({
+    usePriorPrs: vi.fn(() => ({ data: undefined, isLoading: false })),
+  }));
+  vi.mock("next/navigation", () => ({
+    useParams: () => ({ repoId: "test-repo-id" }),
+  }));
+  ```
+
+  Import `briefMessages` using the path relative to this file's directory (10 `../` to
+  reach `client/`):
+  ```typescript
+  import briefMessages from "../../../../../../../../../../messages/en/brief.json";
+  ```
+  Path derivation: `ReadThisFirstCard/` → `_components/` (OT) → `OverviewTab/` →
+  `_components/` (route) → `[number]/` → `pulls/` → `[repoId]/` → `repos/` → `app/` →
+  `src/` → `client/` (10 steps).
+
+  Wrap all renders in:
   ```tsx
-  /* Multi-Agent Review history page — /multi-runs.
-     Thin page: no params/searchParams needed. MultiRunHistoryView reads active repo from context. */
-
-  import { MultiRunHistoryView } from "./_components/MultiRunHistoryView";
-
-  export default function MultiRunsPage() {
-    return <MultiRunHistoryView />;
-  }
+  <NextIntlClientProvider locale="en" messages={{ brief: briefMessages }}>
+    <ReadThisFirstCard prId="pr-1" />
+  </NextIntlClientProvider>
   ```
 
-- [ ] `client/src/app/multi-runs/_components/MultiRunHistoryView/MultiRunHistoryView.tsx` — NEW `"use client"` component. Key behaviors:
-
-  - Crumb: `[{ label: "Multi-Agent Review", href: "/multi-runs" }]` (single level — this IS the list page).
-  - Repo picker: copy of `ConfigureRunView.tsx` lines 208-219: `useActiveRepo()` for the default, `useRepos()` to populate the `<select>`, select is only shown when `repos.length > 1`. Changing the repo resets `currentOffset` to 0 and clears `allItems`.
-  - Pagination state: `const LIMIT = 20`, `const [currentOffset, setCurrentOffset] = React.useState(0)`, `const [allItems, setAllItems] = React.useState<MultiRunSummary[]>([])`.
-  - Query: `const { data, isLoading, isError } = useMultiRuns(selectedRepoId, { limit: LIMIT, offset: currentOffset })`.
-  - Items accumulation via `useEffect` on `[data, currentOffset]`: when `currentOffset === 0`, replace `allItems` with `data.items`; otherwise append. This handles both initial load and repo-change reset (repo change always resets `currentOffset` to 0, which triggers the replace branch).
-  - Render branches (early returns): loading first page (`isLoading && allItems.length === 0`), error, empty state (`allItems.length === 0` after load), normal table.
-  - Table: header row (`t("history.columns.pr")`, `.agents`, `.status`, `.cost`, `.duration`, `.ranAt`). Each run row: PR number + title or fallback, agent count, status badge (`t("history.status.running/done/failed")`), `total_cost_usd` formatted as `$X.XXXX` (null shown as `—`), `total_duration_ms` formatted as `Xs` (null shown as `—`), `ranAt` as `new Date(item.ran_at).toLocaleString()`. Entire row is clickable: `onClick={() => router.push(\`/multi-runs/${item.id}\`)}`.
-  - Page header: `<h1>{t("history.title")}</h1>` on left; "Configure run" primary `<button>` on right that calls `router.push(\`/multi-runs/configure?repoId=${selectedRepoId ?? ''}\`)`.
-  - Load more: `{allItems.length < (data?.total ?? 0) && !isLoading && <button onClick={() => setCurrentOffset(prev => prev + LIMIT)}>{t("history.loadMore")}</button>}`.
-  - Empty state: `t("history.emptyTitle")`, `t("history.emptyBody")`, "Configure run" link button.
-  - Style conventions: inline `style` objects using `CSSProperties` with `satisfies` (matching `ConfigureRunView.tsx` pattern), or extracted to `styles.ts`.
-
-- [ ] `client/src/app/multi-runs/_components/MultiRunHistoryView/index.ts` — NEW barrel:
-
+  Minimal `Brief` fixture for the non-empty test (all 5 required fields):
   ```typescript
-  export { MultiRunHistoryView } from './MultiRunHistoryView';
+  const BRIEF_FIXTURE: Brief = {
+    what: "Adds rate limiting.",
+    why: "Prevents DoS.",
+    risk_level: "low",
+    risks: [],
+    review_focus: ["src/a.ts", "src/b.ts"],
+  };
   ```
 
-- [ ] `client/src/app/multi-runs/_components/MultiRunHistoryView/styles.ts` — NEW (recommended). Extract `s.page`, `s.heading`, `s.tableCard`, `s.headRow`, `s.headCell`, `s.dataRow`, `s.dataCell`, `s.configureBtn` style objects here. Follows the pattern of `client/src/app/repos/[repoId]/pulls/styles.ts`.
+  **Test case (a) — AC-12(a):** when `usePrBrief` returns `{ data: null, isLoading: false }`:
+  - Assert the component renders nothing: `expect(document.body.textContent).toBe("")`
+    or `expect(container.firstChild).toBeNull()`.
+  - Cover `data: undefined` in the same test or a second it-block (same code path).
 
-- [ ] `client/src/app/multi-runs/_components/MultiRunHistoryView/MultiRunHistoryView.test.tsx` — NEW RTL tests. Required:
-  - Renders `"Multi-Agent Review"` heading.
-  - Repo `<select>` is NOT rendered when `useRepos` returns a single repo.
-  - Repo `<select>` IS rendered when `useRepos` returns two repos.
-  - Shows empty-state title when `useMultiRuns` returns `{ items: [], total: 0 }`.
-  - Renders one row per item when data is returned (verify PR number and status text visible).
-  - "Configure run" button href includes the active `repoId`.
-  - "Load more" button is visible when `total > items.length`; hidden when `total === items.length`.
-  - Clicking a row calls `router.push` with `/multi-runs/:id`.
-  - `vi.mock('@/lib/hooks/multi-runs', ...)`, `vi.mock('@/lib/hooks', ...)`, `vi.mock('@/lib/repo-context', ...)`.
+  **Test case (b) — AC-12(b):** when `usePrBrief` returns
+  `{ data: { ...BRIEF_FIXTURE, review_focus: [] }, isLoading: false }`:
+  - Assert no "Read This First" heading renders.
+  - `expect(screen.queryByText("Read This First")).not.toBeInTheDocument()`
 
-- [ ] `client/src/vendor/ui/nav.ts` — line 43: change the `href` for the `"multi-agent"` nav item from `"/multi-runs/configure"` to `"/multi-runs"`. No other field changes.
+  **Test case (c) — AC-12(c):** when `usePrBrief` returns
+  `{ data: BRIEF_FIXTURE, isLoading: false }` (two items in `review_focus`):
+  - Assert the "Read This First" heading renders:
+    `expect(screen.getByText("Read This First")).toBeInTheDocument()`
+  - Assert exactly 2 toggle buttons (one per `ReviewFocusItem`):
+    `expect(screen.getAllByRole("button")).toHaveLength(2)`
 
-- [ ] `client/src/app/multi-runs/configure/_components/ConfigureRunView/ConfigureRunView.tsx` — update `crumb` at line 317. Change from one level to two:
-
-  ```typescript
-  // Before:
-  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
-
-  // After:
-  const crumb = [
-    { label: "Multi-Agent Review", href: "/multi-runs" },
-    { label: "Configure run" },
-  ];
-  ```
-
-- [ ] `client/src/app/multi-runs/[multiRunId]/_components/MultiRunResultsView/MultiRunResultsView.tsx` — update `crumb` href at line 25 AND in the loading-state render branch (line 94) AND in the error-state render branch (line 129). All three must change from `"/multi-runs/configure"` to `"/multi-runs"`:
-
-  ```typescript
-  // Before (all three occurrences):
-  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs/configure" }];
-
-  // After (all three occurrences):
-  const crumb = [{ label: "Multi-Agent Review", href: "/multi-runs" }];
-  ```
+  **Optional test case (d) — AC-8 loading path:**
+  when `usePrBrief` returns `{ data: undefined, isLoading: true }`:
+  - Assert renders nothing (same code path as absent data).
 
 ---
 
 ## Gotchas
 
-- **Migrations never auto-run.** Phase 1 must run `pnpm db:generate` then `pnpm db:migrate` before any integration test in Phase 2. The `repository.it.test.ts` integration tests start their own Postgres via testcontainers and apply migrations — the committed migration file must exist before those tests can run.
-- **`COUNT(*) OVER()` returns a bigint string from Postgres.** `rows[0]?.total` must be coerced with `Number(...)` in the service — the TypeScript annotation `sql<number>` is compile-time only; the runtime value is a string. `prior-prs/service.ts:29` documents this exactly.
-- **`vendor/shared/` is a manual mirror.** If `server/src/vendor/shared/contracts/observability.ts` is edited and `client/src/vendor/shared/contracts/observability.ts` is not updated, `pnpm typecheck` in the client will fail with "Cannot find name 'MultiRunSummary'".
-- **`z.coerce` on querystring numbers is mandatory.** Without it, `req.query.limit` arrives as the string `"20"` and Zod rejects it as not a number. The existing querystring number params in the codebase (e.g. eval routes) all use `z.coerce`.
-- **`nav.ts` is in `client/src/vendor/ui/`** — this edit is a deliberate exception. Only the `href` field of the `"multi-agent"` entry changes. The active-match logic in `client/src/components/app-shell/helpers.ts:28` already uses `pathname.startsWith("/multi-runs")` covering all three sub-routes — no change to `helpers.ts` is needed.
-- **`MultiRunResultsView.tsx` has three `crumb` declarations** (one at line 25 for the normal render, one at line 94 inside the loading early return, one at line 129 inside the error early return). All three must be updated, or the breadcrumb will show the old href in loading/error states.
-- **Test fixtures for `MultiRunSummary` must include `total_cost_usd` and `total_duration_ms`** as `null` (not `undefined`) — they are `.nullable()` not `.nullish()`. Passing `undefined` will cause TS2741 when the fixture is typed against `MultiRunSummary`.
-- **`db/schema/` must never be hand-edited for migration SQL.** Only the `runs.ts` schema file changes (adding the index call); `pnpm db:generate` produces the migration SQL.
+- **No server or Zod contract changes.** `review_focus` remains in `Brief` at
+  `server/src/vendor/shared/contracts/brief.ts` and its client mirror. Do not touch
+  either vendor file.
+- **briefMessages relative import depth changes on move.** `ReviewFocusItem.test.tsx`
+  increases from 10 `../` (old location) to 12 `../` (new location). Getting this wrong
+  produces `ERR_MODULE_NOT_FOUND` at test runtime, not a TypeScript error — it will look
+  like a Vitest resolution failure, not a type error.
+- **Empty `_components/` folder.** After the move, `PrBriefCard/_components/` will be
+  empty. Delete it; an empty `_components/` folder is misleading and may confuse future
+  contributors into thinking there are sub-components hiding there.
+- **Do not remove `s.list` from `PrBriefCard/styles.ts`.** The style becomes unused after
+  the JSX block is removed. Leave it — TypeScript does not error on unused style objects,
+  removing it risks spurious merge conflicts, and it does no harm.
+- **`client/src/vendor/` is do-not-touch.** No changes needed or permitted there.
+- **`block.brief.reviewFocus.*` sub-keys must remain.** They are consumed by `ReviewFocusItem`
+  in its new location. Only `block.readThisFirst` is added; nothing is removed from
+  `brief.json`.
+- **The `prId` prop guard in `OverviewTab.tsx` is not sufficient on its own.** `prId`
+  can be defined while `review_focus` is empty or the brief is loading. `ReadThisFirstCard`
+  must perform its own internal guard (returns null when loading/absent/empty) to satisfy
+  AC-8. Both guards are required.
+
+---
 
 ## Definition of done
 
-- [ ] `cd server && pnpm test` passes (unit + integration suites).
-- [ ] `cd client && pnpm test` passes.
-- [ ] `cd server && pnpm typecheck` reports no errors.
-- [ ] `cd client && pnpm typecheck` reports no errors.
-- [ ] `cd server && pnpm db:generate` produces no new migration (schema is in sync with what was generated in Phase 1).
-- [ ] Manual: click "Multi-Agent Review" in the sidebar — the history page loads at `/multi-runs` and the sidebar item is highlighted (active state).
-- [ ] Manual: trigger a multi-run, navigate away, click "Multi-Agent Review" — the finished run appears in the list with correct PR title, agent count, status, cost, and duration.
-- [ ] Manual: click a run row — navigates to `/multi-runs/:id` and loads the results view correctly.
-- [ ] Manual: "Configure run" button on the history page links to `/multi-runs/configure?repoId=...` and pre-selects the correct repo.
-- [ ] Manual: "Load more" appears when more than 20 runs exist; clicking it appends the next page without replacing the first 20.
-- [ ] Manual: the repo switcher (shown only when >1 repo) changes the list; offset resets to 0.
-- [ ] Manual: breadcrumbs — Configure run page shows "Multi-Agent Review > Configure run"; Results page shows "Multi-Agent Review" linking back to `/multi-runs`.
-- [ ] Manual: sidebar "Multi-Agent Review" item is active on all three routes (`/multi-runs`, `/multi-runs/configure`, `/multi-runs/:id`).
+### Concern 2 — AC-4, AC-5
+- [ ] `grep -n "claude-sonnet-4-6" .claude/agents/spec-creator.md` — zero matches.
+- [ ] `grep -n "claude-sonnet-4-6" .claude/agents/README.md` — zero matches.
+- [ ] Both files contain `claude-opus-4-8` in the model position.
+
+### Concern 1 — AC-1, AC-2, AC-3
+- [ ] `.claude/skills/workflow-retro/SKILL.md` exists with YAML frontmatter containing
+  `name`, `description`, and `allowed-tools` fields (AC-1).
+- [ ] Skill body contains a checklist directing: (a) git-diff statistics collection,
+  (b) per-touched-package test runs with `—` for untouched packages, (c) one ledger
+  table row appended, (d) one prose section appended (summary + mechanism + Gaps/follow-ups)
+  — with an explicit "never overwrite existing rows" instruction (AC-2).
+- [ ] `.claude/skills/README.md` has a new `workflow-retro` row under the Workflow scope
+  with a linked name and a one-line description (AC-3).
+
+### Concern 3 — AC-6 through AC-12
+- [ ] `cd client && pnpm test` passes with zero failures (all existing and new tests green) (AC-12).
+- [ ] `cd client && pnpm typecheck` (or `pnpm tsc --noEmit`) reports zero errors.
+- [ ] `ReadThisFirstCard.tsx` exists at `OverviewTab/_components/ReadThisFirstCard/ReadThisFirstCard.tsx` (AC-6, AC-7).
+- [ ] `ReviewFocusItem.tsx` no longer exists at `PrBriefCard/_components/ReviewFocusItem/ReviewFocusItem.tsx`; it exists at `OverviewTab/_components/ReadThisFirstCard/_components/ReviewFocusItem/ReviewFocusItem.tsx` (AC-9, AC-12).
+- [ ] `PrBriefCard.tsx` contains no import of `ReviewFocusItem` and no reference to `data.review_focus` in its JSX (AC-9).
+- [ ] `OverviewTab.tsx` renders `<ReadThisFirstCard prId={prId} />` between `<PrBriefCard .../>` and the description `<section>` (AC-6).
+- [ ] `client/messages/en/brief.json` contains `"readThisFirst": "Read This First"` under `block` and all `block.brief.reviewFocus.*` keys remain unchanged (AC-11).
+- [ ] `PrBriefCard.test.tsx` contains no assertions on `review_focus` item paths (`src/api/public/index.ts` is no longer asserted; `src/middleware/rate.ts` appears at most once as a risk file_ref assertion) (AC-12).
+- [ ] `ReadThisFirstCard.test.tsx` exists colocated at `OverviewTab/_components/ReadThisFirstCard/` and passes tests for: no-render when brief null, no-render when `review_focus` empty, correct item count when `review_focus` non-empty (AC-12).
+- [ ] `ReviewFocusItem.test.tsx` passes in its new location with the updated 12-`../` `briefMessages` import (AC-12, AC-10).
