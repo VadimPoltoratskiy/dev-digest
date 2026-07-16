@@ -17,7 +17,7 @@ description: >
   Verification section (per-AC check recipe) as part of the spec. Use proactively
   before brainstorm/implementation-planner on any feature where requirements aren't
   already unambiguous and testable.
-model: claude-sonnet-4-6
+model: claude-opus-4-8
 tools: Read, Bash, Write, Edit, Agent
 skills:
   - onion-architecture
