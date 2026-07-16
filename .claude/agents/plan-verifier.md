@@ -98,7 +98,7 @@ List any file that was modified but is not mentioned in any plan task. This is n
 
 # Step 3 — Write VERIFICATION.md
 
-Write the report to `VERIFICATION.md` in the same directory as the `PLAN.md` being verified.
+Write the report to the repo's `verifications/` directory, named to mirror the plan — `verifications/VERIFICATION-<SPEC-ID or plan name>.md` (e.g. a plan at `plans/PLAN-SPEC-08.md` → `verifications/VERIFICATION-SPEC-08.md`). Create the `verifications/` directory if it does not exist. Do NOT write the report to the repo root.
 
 ```markdown
 # Verification Report: [Plan Name from PLAN.md]
