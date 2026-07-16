@@ -1,34 +1,26 @@
-# DevDigest
+# DevDigest — starter
 
-Local-first AI pull-request review studio. DevDigest imports pull requests from
-GitHub, reviews them with configurable LLM agents, and turns everything around
-that loop into a product: a skills lab for prompt engineering, multi-agent
-reviews with conflict detection, an eval pipeline that gates agent quality,
-persistent reviewer memory, CI export, and performance analytics over every
-run. Everything runs on your machine; the only outbound calls are to GitHub
-(PR data) and your LLM provider.
+Local-first AI pull-request review. This is the **course starter template**: a
+minimal-but-working tool that does exactly one thing end to end — **import a PR
+and run an agent review on it**. Every later course lesson adds one feature back
+(see [_What you build in the course_](#what-you-build-in-the-course)).
 
-## Packages
+Several standalone packages (no monorepo workspace — each has its own
+`package.json` and lockfile; cross-package code is shared through tsconfig path
+aliases, not published modules):
 
-Standalone packages — no monorepo workspace; each has its own `package.json`
-and lockfile. Cross-package code is shared through tsconfig path aliases, not
-published modules.
-
-| Folder           | Package                     | What it is                                                    | Port |
-|------------------|-----------------------------|---------------------------------------------------------------|------|
-| `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector) — the orchestrator  | 3001 |
-| `client/`        | `@devdigest/web`            | Next.js 15 web app — the studio UI                            | 3000 |
-| `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → grounded findings   | —    |
-| `evals/`         | `@devdigest/evals`          | Eval harness for skills, subagents, and workflow behavior     | —    |
-| `mcp-server/`    | `devdigest-mcp`             | MCP server exposing DevDigest data to AI assistants           | —    |
-| `agent-runner/`  | —                           | Headless review runner bundled into exported CI workflows     | —    |
-| `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser, no LLM)             | —    |
-| `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package (mirrored to client) | —  |
+| Folder           | Package                     | What it is                                            | Port |
+|------------------|-----------------------------|-------------------------------------------------------|------|
+| `server/`        | `@devdigest/api`            | Fastify API + Drizzle/Postgres (pgvector)             | 3001 |
+| `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
+| `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
+| `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
+| `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
 `repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
-the repo map into reviews) lives inside the server at
-[`server/src/modules/repo-intel`](server/src/modules/repo-intel).
-Only **Postgres** runs in Docker; API and web run on the host via `pnpm dev`.
+project context into reviews) lives inside the server at
+[`server/src/modules/repo-intel`](server/src/modules/repo-intel). Only
+**Postgres** runs in Docker; the API and web app run on the host via `pnpm dev`.
 
 ## Architecture
 
@@ -38,203 +30,63 @@ flowchart LR
     WEB["client/<br/>Next.js · :3000"]
     API["server/<br/>Fastify · :3001"]
     PG[("Postgres<br/>pgvector")]
-    WEB -->|"REST /pulls /agents /skills /evals /memory …"| API
+    WEB -->|"REST /repos /pulls /agents /runs …"| API
     API --> PG
   end
 
-  API --> CLONE["git clone (add repo)"]
-  CLONE --> INDEX["repo-intel<br/>symbols + import graph → repo map"]
-  INDEX -->|review context| ENGINE
+  CLONE["git clone (add repo)"] --> INDEX["repo-intel<br/>index symbols + import graph<br/>→ repo map"]
+  API --> CLONE
+  INDEX -->|"repo map = review context"| ENGINE
 
-  ENGINE["reviewer-core/<br/>diff + context → prompt → LLM<br/>→ findings → grounding gate"]
-  LLM["LLM providers<br/>OpenAI · Anthropic · OpenRouter"]
-  API -->|"run review (single or multi-agent)"| ENGINE
+  ENGINE["reviewer-core/<br/>diff + repo map → prompt → LLM<br/>→ structured findings → grounding gate"]
+  LLM["LLM<br/>OpenAI · Anthropic · OpenRouter"]
+  API -->|"run review"| ENGINE
   ENGINE --> LLM
 
-  MCP["mcp-server/<br/>tools for AI assistants"] -.-> API
-  RUNNER["agent-runner/<br/>headless CI reviews"] -->|ingest results| API
-  GH["GitHub<br/>PRs · reviews · Actions"]
-  API <--> GH
-  RUNNER --- GH
-
   SHARED["@devdigest/shared<br/>Zod contracts"]
-  SHARED -.->|one schema, every package| WEB
+  SHARED -.->|"one schema, every package"| WEB
   SHARED -.-> API
   SHARED -.-> ENGINE
 ```
 
-The core loop: **add a repo** → server clones it and `repo-intel` indexes it →
-**import PRs** → open a PR and **run a review** → `reviewer-core` assembles a
-prompt from the diff, the repo map, project context, skills, conventions, and
-memory, calls the LLM, validates every finding against the diff (the
-**grounding gate** drops hallucinated line references), and persists structured
-findings with severity and score.
+The review flow end to end: **add a repo** → server clones it and `repo-intel`
+indexes it (the **Indexed** badge) → **import PRs** from GitHub → open a PR and
+**Review** → `reviewer-core` assembles a prompt from the diff + the repo map,
+calls the LLM, validates every finding against the diff (the **grounding gate**
+drops hallucinated line references), and persists structured findings with a
+severity and score. All local; the only outbound calls are to GitHub (PR data)
+and the LLM (via OpenRouter).
 
 Each package has its own README with deeper diagrams:
 [`client`](client/docs/README.md) (UI route map) ·
 [`server`](server/docs/README.md) (API map) ·
 [`reviewer-core`](reviewer-core/docs/README.md) (review pipeline) ·
-[`evals`](evals/README.md) (eval tiers) ·
 [`e2e`](e2e/docs/README.md).
 
-## What has been built
+## What works on day 1
 
-The repo started as a minimal import-a-PR-and-review-it tool. Everything below
-was added on top, feature by feature (specs for the later work live in
-[`specs/`](specs/), with matching plans in [`plans/`](plans/) and verification
-reports in [`verifications/`](verifications/)).
+- **Local launch** — one command brings up Postgres (Docker) + API + web.
+- **Settings** — store your LLM API key (OpenAI / Anthropic) and GitHub token.
+- **Add repository** — paste a repo URL; the server clones and indexes it.
+- **Import pull requests** — pull open PRs and their diff, commits, body, and linked issue.
+- **View diff** — GitHub-like diff in the browser.
+- **Agents** — two built-in reviewers (General + Security); create/edit your own (model + system prompt).
+- **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
 
-```mermaid
-timeline
-  title Feature history
-  Review UX : Run cost & model pricing : Severity filter : Accept / dismiss findings
-  Skills Lab : Skill editor + versions : Per-agent skill ordering : Conventions extractor : URL / file / community import
-  PR understanding : PR Intent layer : Smart Diff + finding deep-links : Blast Radius (+ AI explanation)
-  Context & history : Project Context Folder : Onboarding generator : Why+Risk Brief + timeline : git-why blame drawer : Prior PRs per file
-  Quality gates : Eval pipeline (3 tiers) : Eval dashboard + case editor : Eval-from-finding : Mutation testing
-  Scale-out : Multi-agent review : Compose Review → GitHub : Export to CI + agent-runner : MCP server + CLI
-  Intelligence : Run trace / live log : Persistent memory + Learn : Per-agent stats : Agent Performance dashboard
-```
+## What you build in the course
 
-### Review experience
+These are intentionally **not** in the starter — each lesson adds one back:
 
-- **Structured findings** with severity (CRITICAL / WARNING / SUGGESTION),
-  score, category, rationale, and suggestions; severity filtering; per-finding
-  **accept / dismiss** actions that feed every quality metric downstream.
-- **Smart Diff** — the diff view understands findings: badges on annotated
-  lines, deep links from a finding straight to its diff location.
-- **PR Intent layer** — a cheap classifier extracts the PR's intent, in/out of
-  scope, and risk areas before the review, keeping the reviewer on-topic.
-- **Blast Radius** — deterministic impact map of a change computed from the
-  `repo-intel` import graph, with an optional one-call AI explanation.
-- **Model pricing** — configurable per-model pricing powers all cost math.
-
-### PR understanding & context
-
-- **Why+Risk Brief** — an LLM-generated "read this first" card per PR (with an
-  oversized-PR caveat and a **timeline** of briefs across the PR's commits).
-- **git-why blame drawer** — per-line history: who changed this line, in which
-  PR, and why — including historical refs beyond the current checkout.
-- **Prior PRs per file** — every reviewed file links to the PRs that touched it.
-- **Project Context Folder** — curated project docs injected into reviews.
-- **Onboarding generator** — generates a newcomer tour of the codebase.
-
-### Skills Lab
-
-- **Skills** — reusable prompt fragments with a full editor, version history,
-  restore, and stats. Agents compose an ordered list of skills (drag to
-  reorder — order controls prompt assembly).
-- **Conventions extractor** — mines the repo for team conventions and turns
-  them into reviewable, editable convention records.
-- **Import** — bring skills in by URL, file drag-and-drop, or from a community
-  catalog (source-tagged, metadata-preserving).
-- **Agents** — build reviewers from model + system prompt + skills + context
-  docs, with config version history and per-agent gates for CI.
-
-### Multi-agent review
-
-```mermaid
-sequenceDiagram
-  participant U as Reviewer
-  participant API as server
-  participant RC as reviewer-core
-  participant LLM
-
-  U->>API: POST /pulls/:id/multi-review (agentIds)
-  par one run per agent
-    API->>RC: review(diff, agent A context)
-    RC->>LLM: prompt A
-    LLM-->>RC: findings A
-    RC-->>API: grounded findings A
-  and
-    API->>RC: review(diff, agent B context)
-    RC->>LLM: prompt B
-    LLM-->>RC: findings B
-    RC-->>API: grounded findings B
-  end
-  API-->>U: columns per agent + cross-agent groups + conflicts
-  U->>API: Compose Review (curate findings)
-  API->>API: post real GitHub PR review
-```
-
-- **Parallel fan-out** — run several agents on one PR from a Configure Run
-  page (with per-agent duration/cost estimates from history).
-- **Cross-agent grouping & conflicts** — findings on the same file/line are
-  grouped; disagreements between agents surface as explicit conflicts.
-- **Compose Review** — curate the merged findings and post them as a real
-  GitHub pull-request review.
-
-### Observability & performance
-
-- **Run Trace / Live Log** — every run persists a full trace document (config,
-  prompt assembly, context pulled, token/cost stats) streamed live over SSE.
-- **Per-agent Stats tab** — runs, findings, accept/dismiss rates, cost,
-  latency, severity breakdown, and a recent-runs trend for one agent.
-- **Agent Performance dashboard** — a global screen answering "which agents
-  earn their keep": summary cards (total runs, total cost with period delta,
-  pooled accept rate, most-active agent), an accept-rate-sorted table with
-  expandable trends and deep links into each agent's Stats tab, and cost
-  breakdowns by agent and by model. Period presets (30d / 7d / 1d) plus a
-  custom UTC date range; both surfaces share one aggregation, so their numbers
-  always agree. Read-only over saved runs — never triggers a model call.
-
-### Memory
-
-- **Structured memory records** — decisions, conventions, preferences, facts,
-  and learnings with scope and confidence, managed in a `/memory` UI.
-- **Review injection** — curated memory is injected into local reviews
-  (trusted slot), with strict provenance handling for untrusted sources.
-- **Learn from findings** — one click turns a review finding into a memory
-  record, so accepted knowledge compounds across sessions.
-
-### CI, MCP & CLI
-
-- **Export to CI** — a wizard generates a GitHub Actions workflow bundle
-  (including the headless `agent-runner`) for any agent, commits it to the
-  target repo, tracks installations, and supports clean removal.
-- **CI Runs** — runs executed in GitHub Actions are ingested back and appear
-  alongside local runs (`source: ci`).
-- **MCP server** (`mcp-server/`) — exposes DevDigest data as MCP tools so AI
-  assistants can query repos, PRs, and findings.
-- **CLI** — `devdigest review` runs a review from the terminal.
-
-### Eval pipeline
-
-Prompt artifacts (skills, subagents, workflow instructions) are tested like
-code — three content tiers plus a static gate, each with its own CI workflow:
-
-| Tier | Command | Checks |
-|------|---------|--------|
-| static | `pnpm eval:quality` | SKILL.md structure gate, no model needed |
-| skills | `pnpm eval:skills` | skill content against graded cases |
-| agents | `pnpm eval:agents` | subagent tool-use behavior |
-| workflow | `pnpm eval:workflow` | live-harness end-to-end workflow behavior |
-
-Plus an **Eval Dashboard** in the studio: case editor, metric trend charts,
-LLM-assisted case generation, and a "create eval from finding" flow that turns
-review mistakes into regression cases. `reviewer-core` additionally has a
-mutation-testing suite. See [`evals/README.md`](evals/README.md).
-
-### Spec-driven development workflow
-
-Features are built through a subagent pipeline checked into `.claude/`:
-
-```mermaid
-flowchart LR
-  REQ([feature request]) --> SPEC["spec-creator<br/>SPEC-NN.md (EARS ACs)"]
-  SPEC --> PLAN["implementation-planner<br/>PLAN-NN.md (phases)"]
-  PLAN --> IMPL["implementer(s)<br/>parallel per phase"]
-  IMPL --> PV{"plan-verifier<br/>mechanical gate"}
-  PV -->|gaps| IMPL
-  PV -->|pass| AR{"architecture-reviewer<br/>layer & placement rules"}
-  AR -->|findings| IMPL
-  AR -->|pass| SEC["security-reviewer"] --> PR([pr-self-review → PR])
-```
-
-Artifacts land in [`specs/`](specs/), [`plans/`](plans/), and
-[`verifications/`](verifications/). Domain skills (onion-architecture,
-ui-architecture, drizzle-orm-patterns, …) encode the project's rules, and the
-eval pipeline above gates changes to any of these prompt artifacts.
+| Lesson | You build |
+|--------|-----------|
+| L01 | Run cost badge · severity filter on findings |
+| L02 | Skills in the product · Conventions extractor |
+| L03 | Intent layer · Smart Diff |
+| L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
+| L05 | Project Context Folder · Onboarding generator · PR Brief card |
+| L06 | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI |
+| L07 | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
+| L08 | Plugin export/import · Agent performance dashboard · weekly digest |
 
 ## Prerequisites
 
@@ -279,12 +131,11 @@ cd ../client && pnpm install && pnpm dev               # web on :3000
 `server/`: `dev` · `build` · `db:migrate` · `db:seed` · `db:generate` · `test` · `typecheck`
 (unit/integration split: `pnpm exec vitest run --exclude '**/*.it.test.ts'` / `pnpm exec vitest run .it.test`)
 `client/`: `dev` · `build` · `start` · `test` · `typecheck`
-`evals/`: `eval:quality` · `eval:skills` · `eval:agents` · `eval:workflow`
 
 ## Testing & CI
 
-One test suite per package, each gated by its own GitHub Actions workflow with
-a path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
+One test suite per package, each gated by its own GitHub Actions workflow with a
+path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 
 | Suite | Workflow | Needs Docker |
 |-------|----------|--------------|
@@ -293,14 +144,10 @@ a path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | server integration (real Postgres) | `server-integration.yml` | yes |
 | reviewer-core (engine) | `reviewer-core.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
-| evals static gate | `evals.yml` | no |
-| eval content tiers | `eval-skills.yml` · `eval-agents.yml` · `eval-workflow.yml` | no |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers
 Postgres); everything else is hermetic. The browser e2e flows live in
-[`e2e/`](e2e/docs/README.md) and run deterministically (no LLM). Agent and
-workflow eval tiers run on a non-Anthropic model in CI and are intentionally
-`continue-on-error` — see [`evals/README.md`](evals/README.md).
+[`e2e/`](e2e/docs/README.md) and run deterministically (no LLM).
 
 ## Troubleshooting
 
@@ -310,5 +157,5 @@ workflow eval tiers run on a non-Anthropic model in CI and are intentionally
   host port in `docker-compose.yml`.
 - **`vector` type errors** — the pgvector extension is enabled by migration `0000`;
   make sure migrations ran against the Dockerized DB, not a different one.
-- **Reset everything** — `docker compose down -v` drops the volume **and every
-  imported repo/review**, then re-run `./scripts/dev.sh`.
+- **Reset everything** — `docker compose down -v` drops the volume, then re-run
+  `./scripts/dev.sh`.
