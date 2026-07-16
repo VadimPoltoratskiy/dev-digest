@@ -11,6 +11,7 @@ import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import { PlanExtractor } from './plan-extractor.js';
+import { MemoryService } from '../memory/service.js';
 
 // Project Context — caps on how much attached spec/docs/insights content gets
 // injected into the prompt per run. Mirrors conventions/service.ts's
@@ -218,6 +219,35 @@ export class ReviewRunExecutor {
         runLog.info(`Intent available: "${intent.intent.slice(0, 80)}…"`);
       }
 
+      // ---- Memory retrieval — inject relevant context (AC-16) ---------------
+      // Retrieve relevant memory records from the local DB. This is additive:
+      // failures (DB down, embedder disabled) return empty arrays — the run
+      // always continues. Memory from the local DB is TRUSTED (write-time curate
+      // gate in MemoryService) and injected via the trusted 'memory' prompt slot.
+      let memoryStrings: string[] = [];
+      let pulledIds: string[] = [];
+      try {
+        const result = await runLog.step(
+          'Retrieving relevant memory',
+          async () => {
+            const memSvc = new MemoryService(this.container);
+            // Use the raw unified diff text (capped at 2000 chars) as the
+            // semantic query input. UnifiedDiff.raw holds the full patch text.
+            const diffText = diff.raw.slice(0, 2000);
+            return memSvc.retrieve(workspaceId, pull.repoId, diffText);
+          },
+          { kind: 'tool' },
+        );
+        memoryStrings = result.strings;
+        pulledIds = result.pulledIds;
+        if (pulledIds.length > 0) {
+          runLog.info(`Memory: ${pulledIds.length} record(s) pulled into prompt`);
+        }
+      } catch {
+        // Retrieval failure must never break a review — continue with empty memory.
+        runLog.info('Memory retrieval failed — continuing without memory context');
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -249,6 +279,8 @@ export class ReviewRunExecutor {
         ...(planContent ? { planContent } : {}),
         // Intent block — trusted structured output from the classifier.
         ...(intent ? { intent } : {}),
+        // Trusted local memory — write-time curated; omitted when empty (AC-19).
+        ...(memoryStrings.length > 0 ? { memory: memoryStrings } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -315,7 +347,10 @@ export class ReviewRunExecutor {
           ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
         })),
         raw_output: outcome.raw,
-        memory_pulled: [],
+        // memory_pulled stores the formatted injection strings as MemoryPulled
+        // records in the trace (AC-17). The pr field is omitted (not available
+        // here without re-fetching rows; UUID IDs are in pulledIds for bumpLastUsed).
+        memory_pulled: memoryStrings.map((text) => ({ text })),
         specs_read: attachedPaths,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
@@ -337,6 +372,18 @@ export class ReviewRunExecutor {
       });
       runLog.info('Run complete; trace persisted');
       this.container.runBus.complete(runId);
+
+      // Fire-and-forget: advance last_used_at on pulled memory records (AC-18).
+      // Goes through MemoryService to respect the onion layer boundary (no direct
+      // repository access from run-executor) and to ensure workspace scoping.
+      // Never awaited — a failure here must not affect the run result.
+      if (pulledIds.length > 0) {
+        new MemoryService(this.container)
+          .bumpLastUsed(workspaceId, pulledIds)
+          .catch((err: unknown) =>
+            runLog.info(`Failed to bump memory last_used_at: ${(err as Error).message}`),
+          );
+      }
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
     } catch (err) {

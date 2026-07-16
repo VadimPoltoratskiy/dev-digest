@@ -14,7 +14,9 @@
       "scope": "Scope",
       "kind": "Kind",
       "freshness": "Freshness",
-      "showStale": "Show stale (>60d)"
+      "showStale": "Show stale (>60d)",
+      "scopeAll": "All scopes",
+      "kindAll": "All kinds"
     }
   },
   "scope": {
@@ -35,12 +37,19 @@
     "usedDayAgo": "used 1d ago",
     "usedDaysAgo": "used {days}d ago"
   },
+  "searchMode": {
+    "semantic": "semantic",
+    "text": "text"
+  },
   "detail": {
     "edit": "Edit",
     "delete": "Delete",
     "contentLabel": "Content",
     "kindLabel": "Kind",
     "scopeLabel": "Scope",
+    "confidenceLabel": "Confidence (0–1)",
+    "lastUsedLabel": "Last used",
+    "deleteConfirm": "Delete this memory record?",
     "save": "Save",
     "cancel": "Cancel",
     "stat": {

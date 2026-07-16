@@ -30,7 +30,8 @@ Capture Progress:
 - [ ] Step 3: Quality-check each entry (see standards below)
 - [ ] Step 4: Read the existing INSIGHTS.md for each module (if it exists)
 - [ ] Step 5: Append new entries; do not overwrite existing ones
-- [ ] Step 6: Confirm entries are concrete, dated, and non-redundant
+- [ ] Step 6: Emit structured memory records (if studio running)
+- [ ] Step 7: Confirm entries are concrete, dated, and non-redundant
 ```
 
 ### Step 1 — Identify touched modules
@@ -118,7 +119,29 @@ Example:
 Switched to `Promise.allSettled()` — partial failures are logged and retried next cycle.
 ```
 
-### Step 6 — Final check
+### Step 6 — Emit structured memory records (AC-26)
+
+For each module touched, distill 1–3 entries into structured memory records
+by calling `POST /memory` (local DevDigest studio must be running):
+
+- **kind**: one of `decision`, `convention`, `preference`, `fact`, `learning`
+- **scope**: `repo` (module-specific) or `global` (cross-module)
+- **confidence**: 0.0–1.0 — how certain/stable is this learning?
+- **sources**: include context string (e.g. "SPEC-08 implementation session") and
+  PR number if applicable
+- **content**: same text as the INSIGHTS.md entry, condensed to ≤ 200 chars
+
+Example curl (when studio is running on :3001):
+```bash
+curl -s -X POST http://localhost:3001/memory \
+  -H "Content-Type: application/json" \
+  -d '{"content":"...","scope":"repo","kind":"learning","confidence":0.85,"sources":[{"context":"session 2026-07-16"}]}'
+```
+
+Or use the Memory tab in the UI. INSIGHTS.md is still updated first — this step
+is additive. If the studio is not running, skip this step without error.
+
+### Step 7 — Final check
 
 Before finishing, verify:
 - [ ] Every entry includes a file name, function name, or CLI command

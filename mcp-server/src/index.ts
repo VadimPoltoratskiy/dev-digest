@@ -4,6 +4,7 @@ import { DEFAULT_BASE_URL, makeClient } from './client.js';
 import { registerGetBlastRadius } from './tools/get-blast-radius.js';
 import { registerGetConventions } from './tools/get-conventions.js';
 import { registerGetFindings } from './tools/get-findings.js';
+import { registerGetMemory } from './tools/get-memory.js';
 import { registerListAgents } from './tools/list-agents.js';
 import { registerRunAgent } from './tools/run-agent.js';
 
@@ -22,6 +23,7 @@ async function main() {
   registerRunAgent(server, client);
   registerGetFindings(server, client);
   registerGetConventions(server, client);
+  registerGetMemory(server, client);
   registerGetBlastRadius(server, client);
 
   const transport = new StdioServerTransport();

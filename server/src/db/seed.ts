@@ -1085,6 +1085,74 @@ index 0000000..3333333 100644
     }
   }
 
+  // ---- demo memory rows for acme/payments-api (SPEC-08) ----
+  // 5 idempotent rows, keyed by (workspaceId, kind, scope, content).
+  // Insertions only happen if no matching row already exists.
+  const memoryRows: Array<typeof t.memory.$inferInsert> = [
+    {
+      workspaceId,
+      repoId,
+      scope: 'repo',
+      kind: 'fact',
+      content: 'bucketKey() generates the rate-limit bucket identifier from req.ip + req.path; changing this signature breaks existing limit state',
+      confidence: 0.9,
+      sources: [{ context: 'PR #482' }] as unknown[],
+    },
+    {
+      workspaceId,
+      repoId,
+      scope: 'repo',
+      kind: 'fact',
+      content: 'Stripe webhook idempotency key must be sourced from Stripe-Signature header, not body hash; body hash is not replay-safe',
+      confidence: 0.85,
+      sources: [{ pr: 482, context: 'payments-api' }] as unknown[],
+    },
+    {
+      workspaceId,
+      repoId: null,
+      scope: 'team',
+      kind: 'decision',
+      content: 'Team decided not to adopt tRPC — REST is the standard; new endpoints use Fastify + Zod route schemas',
+      confidence: 0.95,
+      sources: [{ context: 'team retro 2025-Q3' }] as unknown[],
+    },
+    {
+      workspaceId,
+      repoId,
+      scope: 'repo',
+      kind: 'convention',
+      content: 'Migrations never auto-run on boot — always cd server && pnpm db:migrate before starting the server',
+      confidence: 1.0,
+      sources: [{ context: 'CLAUDE.md' }] as unknown[],
+    },
+    {
+      workspaceId,
+      repoId: null,
+      scope: 'global',
+      kind: 'preference',
+      content: 'Group related DB columns near their FK, not alphabetically; improves readability of schema files',
+      confidence: 0.8,
+      sources: [{ context: 'PR #482 review' }] as unknown[],
+    },
+  ];
+
+  for (const row of memoryRows) {
+    const [existing] = await db
+      .select()
+      .from(t.memory)
+      .where(
+        and(
+          eq(t.memory.workspaceId, row.workspaceId!),
+          eq(t.memory.kind, row.kind!),
+          eq(t.memory.scope, row.scope!),
+          eq(t.memory.content, row.content),
+        ),
+      );
+    if (!existing) {
+      await db.insert(t.memory).values(row);
+    }
+  }
+
   return { workspaceId, userId };
 }
 

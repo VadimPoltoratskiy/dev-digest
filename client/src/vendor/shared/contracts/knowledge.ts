@@ -198,6 +198,18 @@ export const MemoryItem = z.object({
 });
 export type MemoryItem = z.infer<typeof MemoryItem>;
 
+/**
+ * Full memory record as returned by the API — extends MemoryItem with
+ * server-side identity and timestamp fields. MemoryItem is unchanged so
+ * the CI runner and JSONL export continue to work unmodified.
+ */
+export const MemoryRecord = MemoryItem.extend({
+  id: z.string().uuid(),
+  updated_at: z.string().datetime(),
+  last_used_at: z.string().datetime().nullable(),
+});
+export type MemoryRecord = z.infer<typeof MemoryRecord>;
+
 // ---- Skills ----
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
