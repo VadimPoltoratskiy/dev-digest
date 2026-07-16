@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Icon, Badge } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
-import { parsePatch, lineAnchorId, type Line } from "../helpers";
+import { parsePatch, type Line } from "../helpers";
 import {
   buildThreads,
   keysForLine,
@@ -34,19 +34,25 @@ export function FileCard({
   file,
   commenting,
   findingLines,
+  findingIds,
   open: openProp,
   onToggle,
   onOpenWhy,
+  onOpenFinding,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
   /** Line numbers the latest review flagged in this file (Smart Diff badge). */
   findingLines?: number[];
+  /** Finding IDs for the badge — clicking navigates to the Findings tab. */
+  findingIds?: string[];
   /** Controlled open state — falls back to internal state when omitted. */
   open?: boolean;
   onToggle?: (open: boolean) => void;
   /** Opens the git-why blame drawer for a line in this file. */
   onOpenWhy?: (path: string, line: number) => void;
+  /** Navigates to the first finding in the Findings tab. */
+  onOpenFinding?: (id: string) => void;
 }) {
   const t = useTranslations("shell");
   const [openState, setOpenState] = React.useState(
@@ -97,25 +103,19 @@ export function FileCard({
             {commentCount}
           </span>
         )}
-        {!!findingLines?.length && (
+        {!!findingIds?.length && (
           <button
             type="button"
-            title="Jump to the first flagged line"
-            aria-label={`${findingLines.length} finding${findingLines.length === 1 ? "" : "s"}`}
+            title="Jump to the first finding"
+            aria-label={`${findingIds.length} finding${findingIds.length === 1 ? "" : "s"}`}
             onClick={(e) => {
               e.stopPropagation();
-              const firstLine = findingLines[0]!;
-              if (!open) setOpen(true);
-              requestAnimationFrame(() => {
-                document
-                  .getElementById(lineAnchorId(file.path, firstLine))
-                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
-              });
+              onOpenFinding?.(findingIds[0]!);
             }}
             style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
           >
             <Badge icon="AlertTriangle" color="var(--warn)" bg="var(--warn-bg)">
-              {findingLines.length} finding{findingLines.length === 1 ? "" : "s"}
+              {findingIds.length} finding{findingIds.length === 1 ? "" : "s"}
             </Badge>
           </button>
         )}

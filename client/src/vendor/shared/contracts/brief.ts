@@ -120,6 +120,7 @@ export const SmartDiffFile = z.object({
   additions: z.number().int(),
   deletions: z.number().int(),
   finding_lines: z.array(z.number().int()),
+  finding_ids: z.array(z.string()).optional().default([]),
 });
 export type SmartDiffFile = z.infer<typeof SmartDiffFile>;
 

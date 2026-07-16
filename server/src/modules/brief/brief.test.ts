@@ -112,6 +112,7 @@ const MOCK_SMART_DIFF: SmartDiff = {
           additions: 50,
           deletions: 0,
           finding_lines: [],
+          finding_ids: [],
         },
       ],
     },

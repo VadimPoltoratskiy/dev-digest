@@ -21,6 +21,8 @@ interface FindingsTabProps {
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Deep-link target from a badge click in the Diff tab. */
+  findingTarget?: { id: string; n: number } | null;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
   onRunDone: () => void;
@@ -37,6 +39,7 @@ export function FindingsTab({
   cancelMutation,
   repoFullName,
   headSha,
+  findingTarget,
   onOpenTrace,
   onDelete,
   onRunDone,
@@ -176,6 +179,8 @@ export function FindingsTab({
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
+            targetFindingId={findingTarget?.id ?? null}
+            targetFindingNonce={findingTarget?.n ?? 0}
           />
         ))
       )}

@@ -17,27 +17,30 @@ vi.mock("@/lib/hooks/why", () => ({
   useWhyTimeline: vi.fn(() => ({ data: undefined, isLoading: false })),
 }));
 
-const smartDiff: SmartDiff = {
+const smartDiffBase: SmartDiff = {
   groups: [
     {
       role: "core",
       files: [
-        { path: "src/a.ts", pseudocode_summary: null, additions: 1, deletions: 0, finding_lines: [] },
+        { path: "src/a.ts", pseudocode_summary: null, additions: 1, deletions: 0, finding_lines: [], finding_ids: [] },
       ],
     },
     { role: "wiring", files: [] },
     {
       role: "boilerplate",
       files: [
-        { path: "package-lock.json", pseudocode_summary: null, additions: 2, deletions: 0, finding_lines: [] },
+        { path: "package-lock.json", pseudocode_summary: null, additions: 2, deletions: 0, finding_lines: [], finding_ids: [] },
       ],
     },
   ],
   split_suggestion: { too_big: false, total_lines: 3, proposed_splits: [] },
 };
 
+// We need a mutable reference so we can swap data per-test.
+let mockSmartDiffData: SmartDiff | undefined = smartDiffBase;
+
 vi.mock("@/lib/hooks/core", () => ({
-  useSmartDiff: vi.fn(() => ({ data: smartDiff })),
+  useSmartDiff: vi.fn(() => ({ data: mockSmartDiffData })),
 }));
 
 const files: PrFile[] = [
@@ -55,12 +58,14 @@ function renderWithIntl(ui: React.ReactElement) {
 
 describe("DiffTab", () => {
   it("defaults to smart order — boilerplate collapsed, not shown", () => {
+    mockSmartDiffData = smartDiffBase;
     renderWithIntl(<DiffTab prId="pr-1" filesCount={2} files={files} />);
     expect(screen.getByText("src/a.ts")).toBeInTheDocument();
     expect(screen.queryByText("package-lock.json")).not.toBeInTheDocument();
   });
 
   it("switches to original order and shows every file ungrouped", () => {
+    mockSmartDiffData = smartDiffBase;
     renderWithIntl(<DiffTab prId="pr-1" filesCount={2} files={files} />);
     fireEvent.click(screen.getByText("Original order"));
     expect(screen.getByText("src/a.ts")).toBeInTheDocument();
@@ -68,6 +73,7 @@ describe("DiffTab", () => {
   });
 
   it("opens the WhyDrawer when the git-why hover trigger is clicked", () => {
+    mockSmartDiffData = smartDiffBase;
     renderWithIntl(<DiffTab prId="pr-1" filesCount={2} files={files} repoFullName="acme/payments-api" />);
     fireEvent.click(screen.getByText("Original order"));
 
@@ -80,5 +86,39 @@ describe("DiffTab", () => {
 
     expect(screen.getByText("git-why")).toBeInTheDocument();
     expect(screen.getByText("src/a.ts:1")).toBeInTheDocument();
+  });
+
+  it("calls onOpenFinding when findings badge is clicked", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const onOpenFinding = vi.fn();
+
+    mockSmartDiffData = {
+      groups: [
+        {
+          role: "core",
+          files: [
+            {
+              path: "src/a.ts",
+              pseudocode_summary: null,
+              additions: 1,
+              deletions: 0,
+              finding_lines: [1],
+              finding_ids: ["f1"],
+            },
+          ],
+        },
+        { role: "wiring", files: [] },
+        { role: "boilerplate", files: [] },
+      ],
+      split_suggestion: { too_big: false, total_lines: 1, proposed_splits: [] },
+    };
+
+    renderWithIntl(
+      <DiffTab prId="pr-1" filesCount={1} files={[files[0]!]} onOpenFinding={onOpenFinding} />,
+    );
+
+    const badge = screen.getByRole("button", { name: /1 finding/i });
+    fireEvent.click(badge);
+    expect(onOpenFinding).toHaveBeenCalledWith("f1");
   });
 });

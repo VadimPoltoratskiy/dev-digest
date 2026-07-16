@@ -5,6 +5,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Modal, FormField, TextInput, SelectInput, Button } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
@@ -34,7 +35,12 @@ export function CreateEvalCaseModal({
 
   const canSave = name.trim().length > 0;
 
-  return (
+  // Portal to <body>: this modal is only shown on accepted/dismissed findings,
+  // whose FindingCard is dimmed with opacity < 1 — rendering inline would make
+  // the modal translucent. Same pattern as FindingsCounter.
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <Modal
       width={480}
       title={t("findingEvalModal.title")}
@@ -76,6 +82,7 @@ export function CreateEvalCaseModal({
           </div>
         </FormField>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }

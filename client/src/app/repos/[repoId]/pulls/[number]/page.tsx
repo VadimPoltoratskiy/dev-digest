@@ -68,6 +68,14 @@ export default function PRDetailPage() {
   };
   const setTab = (t: string) => setParam("tab", t);
 
+  // Finding deep-link: clicking a findings badge in the diff switches to the
+  // Findings tab and scrolls the target finding card into view.
+  const [findingTarget, setFindingTarget] = React.useState<{ id: string; n: number } | null>(null);
+  const handleOpenFinding = (id: string) => {
+    setTab("findings");
+    setFindingTarget((p) => ({ id, n: (p?.n ?? 0) + 1 }));
+  };
+
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
   const allFindings: FindingRecord[] = React.useMemo(
@@ -150,6 +158,7 @@ export default function PRDetailPage() {
             repoFullName={repoFullName}
             headSha={pr.head_sha}
             cancelMutation={cancel}
+            findingTarget={findingTarget}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {
               if (window.confirm("Delete this run from history? (its logs are removed too)"))
@@ -171,6 +180,7 @@ export default function PRDetailPage() {
             files={pr.files}
             canComment={pr.status === "open"}
             repoFullName={repoFullName}
+            onOpenFinding={handleOpenFinding}
           />
         )}
 
