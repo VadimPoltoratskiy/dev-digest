@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { DEFAULT_BASE_URL, makeClient } from './client.js';
+import { z } from 'zod';
+import { makeClient } from './client.js';
+import { loadConfig } from './config.js';
 import { registerGetBlastRadius } from './tools/get-blast-radius.js';
 import { registerGetConventions } from './tools/get-conventions.js';
 import { registerGetFindings } from './tools/get-findings.js';
@@ -12,9 +14,19 @@ process.on('unhandledRejection', (err) => {
   process.exit(1);
 });
 
+function loadConfigOrExit() {
+  try {
+    return loadConfig();
+  } catch (err) {
+    const message = err instanceof z.ZodError ? err.issues.map((i) => i.message).join('; ') : String(err);
+    process.stderr.write(`[devdigest-mcp] invalid config: ${message}\n`);
+    process.exit(1);
+  }
+}
+
 async function main() {
-  const baseUrl = process.env['DEVDIGEST_API_URL'] ?? DEFAULT_BASE_URL;
-  const client = makeClient(baseUrl);
+  const { apiBaseUrl } = loadConfigOrExit();
+  const client = makeClient(apiBaseUrl);
 
   const server = new McpServer({ name: 'devdigest', version: '0.0.0' });
 

@@ -15,7 +15,7 @@ export function registerListAgents(server: McpServer, client: DevDigestClient) {
       const raw = await client.get<unknown[]>('/agents');
       const agents = AgentSummary.array().parse(raw).slice(0, MAX_AGENTS);
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ agents, total: raw.length }, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify({ agents, total: raw.length }) }],
       };
     },
   );

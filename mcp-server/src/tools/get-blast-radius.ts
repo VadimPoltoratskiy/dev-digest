@@ -31,7 +31,7 @@ export function registerGetBlastRadius(server: McpServer, client: DevDigestClien
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify({ repo: `${owner}/${repo}`, ...blast }, null, 2),
+            text: JSON.stringify({ repo: `${owner}/${repo}`, ...blast }),
           },
         ],
       };

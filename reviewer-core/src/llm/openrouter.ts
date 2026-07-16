@@ -69,7 +69,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     // For json_object mode the model needs the schema in the prompt.
     if (this.id !== 'openai') {
-      const schemaHint = `\n\nRespond with ONLY a JSON object matching this JSON Schema (no prose, no fences):\n${JSON.stringify(jsonSchema.schema, null, 2)}`;
+      const schemaHint = `\n\nRespond with ONLY a JSON object matching this JSON Schema (no prose, no fences):\n${JSON.stringify(jsonSchema.schema)}`;
       const last = messages[messages.length - 1];
       if (last?.role === 'user') {
         messages[messages.length - 1] = { ...last, content: last.content + schemaHint };

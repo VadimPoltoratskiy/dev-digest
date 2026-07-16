@@ -54,7 +54,7 @@ export function registerGetFindings(server: McpServer, client: DevDigestClient) 
 
       if (status === 'running') {
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ status, runs: summary }, null, 2) }],
+          content: [{ type: 'text' as const, text: JSON.stringify({ status, runs: summary }) }],
         };
       }
 

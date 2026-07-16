@@ -28,16 +28,12 @@ export function registerGetConventions(server: McpServer, client: DevDigestClien
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify(
-              {
-                repo: `${owner}/${repo}`,
-                conventions,
-                total: filtered.length,
-                truncated: filtered.length > conventions.length,
-              },
-              null,
-              2,
-            ),
+            text: JSON.stringify({
+              repo: `${owner}/${repo}`,
+              conventions,
+              total: filtered.length,
+              truncated: filtered.length > conventions.length,
+            }),
           },
         ],
       };
