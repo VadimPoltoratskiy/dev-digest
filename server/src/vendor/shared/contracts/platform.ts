@@ -163,6 +163,10 @@ export const Repo = z.object({
   clone_path: z.string().nullable(),
   last_polled_at: z.string().nullable(),
   created_by: z.string().nullable(),
+  /** Last successful PR-list sync from GitHub. .nullish() — rows/DTOs predating sync tracking omit it. */
+  pr_synced_at: z.string().nullish(),
+  /** Short reason the last PR-list sync failed; null/absent while sync is healthy. */
+  pr_sync_error: z.string().nullish(),
 });
 export type Repo = z.infer<typeof Repo>;
 

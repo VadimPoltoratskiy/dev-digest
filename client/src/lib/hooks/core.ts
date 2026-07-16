@@ -69,6 +69,10 @@ export function useRepos() {
   return useQuery({
     queryKey: ["repos"],
     queryFn: () => api.get<Repo[]>("/repos"),
+    // Keep repo-level sync health (pr_sync_error / pr_synced_at) fresh while
+    // the app is open — the PR list's stale-sync banner reads from this query.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 

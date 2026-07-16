@@ -20,6 +20,7 @@ import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
 import { s } from "./styles";
 import { PRRow } from "./_components/PRRow";
 import { FilterBar } from "./_components/FilterBar";
+import { SyncStatusBanner } from "./_components/SyncStatusBanner";
 
 /** Open PRs carry a derived review status; everything else is merged/closed. */
 const OPEN_STATUSES = new Set(["needs_review", "reviewed", "stale"]);
@@ -84,6 +85,8 @@ export default function PullsPage() {
           <AutoTriggerStatus on={false} />
         </div>
       </div>
+
+      <SyncStatusBanner repo={activeRepo} />
 
       <div style={s.tableCard}>
         <FilterBar
