@@ -14,7 +14,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PriorPr } from "@devdigest/shared";
-import briefMessages from "../../../../../../../../../../messages/en/brief.json";
+import briefMessages from "../../../../../../../../../../../../messages/en/brief.json";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ repoId: "test-repo-id" }),

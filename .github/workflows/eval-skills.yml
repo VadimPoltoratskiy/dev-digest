@@ -1,0 +1,51 @@
+# Skill content-tier evals — reusable workflow, called by evals.yml (never triggered directly).
+# The caller's `detect` job passes the JSON array of skills to run; an empty array is gated out
+# at the call site. `fail-fast: false` so one flaky/broken skill case cannot cancel every other
+# skill's matrix job mid-run (GitHub's default fail-fast did exactly this once, cancelling an
+# already-passing sibling job before it could report success).
+name: eval-skills
+
+on:
+  workflow_call:
+    inputs:
+      skills:
+        description: JSON array of skill names to run (from evals detect job)
+        required: true
+        type: string
+    secrets:
+      OPENROUTER_API_KEY:
+        required: false
+
+env:
+  EVAL_BACKEND: openrouter
+  EVAL_MODEL: google/gemini-2.5-flash
+  EVAL_JUDGE_MODEL: google/gemini-2.5-flash
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+jobs:
+  skills:
+    name: skill evals (${{ matrix.skill }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evals
+    strategy:
+      fail-fast: false
+      matrix:
+        skill: ${{ fromJSON(inputs.skills) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm vitest run "skills/${{ matrix.skill }}"

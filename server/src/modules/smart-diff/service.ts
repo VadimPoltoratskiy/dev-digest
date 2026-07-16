@@ -34,15 +34,18 @@ export class SmartDiffService {
     let totalLines = 0;
     for (const f of files) {
       const role = classifyFile(f.path);
-      const findingLines = [
-        ...new Set(findings.filter((fd) => fd.file === f.path).map((fd) => fd.start_line)),
-      ].sort((a, b) => a - b);
+      const matchingFindings = findings.filter((fd) => fd.file === f.path);
+      const findingLines = [...new Set(matchingFindings.map((fd) => fd.start_line))].sort(
+        (a, b) => a - b,
+      );
+      const findingIds = matchingFindings.map((fd) => fd.id);
       byRole.get(role)!.push({
         path: f.path,
         pseudocode_summary: null,
         additions: f.additions,
         deletions: f.deletions,
         finding_lines: findingLines,
+        finding_ids: findingIds,
       });
       totalLines += f.additions + f.deletions;
     }

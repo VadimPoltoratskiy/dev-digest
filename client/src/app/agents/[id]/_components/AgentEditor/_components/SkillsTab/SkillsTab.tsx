@@ -25,6 +25,11 @@ export function SkillsTab({ agentId }: { agentId: string }) {
 
   const [addOpen, setAddOpen] = React.useState(false);
 
+  /** Index of the row currently being dragged (-1 = none) */
+  const [dragSrc, setDragSrc] = React.useState<number | null>(null);
+  /** Index of the row the dragged item is currently hovering over */
+  const [dragOver, setDragOver] = React.useState<number | null>(null);
+
   if (isLoading) return <Skeleton height={200} />;
   if (isError) return <ErrorState body="Could not load skills." onRetry={() => refetch()} />;
 
@@ -48,6 +53,24 @@ export function SkillsTab({ agentId }: { agentId: string }) {
     newOrder[idx] = newOrder[idx + 1]!;
     newOrder[idx + 1] = tmp;
     setSkills.mutate({ agentId, skillIds: newOrder });
+  };
+
+  const resetDragState = () => {
+    setDragSrc(null);
+    setDragOver(null);
+  };
+
+  const handleDrop = (targetIdx: number) => {
+    if (dragSrc === null || dragSrc === targetIdx) {
+      resetDragState();
+      return;
+    }
+    // Remove the source id and splice it into the target position.
+    const ids = sorted.map((l) => l.skill_id);
+    const [removed] = ids.splice(dragSrc, 1);
+    ids.splice(targetIdx, 0, removed!);
+    setSkills.mutate({ agentId, skillIds: ids });
+    resetDragState();
   };
 
   return (
@@ -77,6 +100,22 @@ export function SkillsTab({ agentId }: { agentId: string }) {
           onMoveDown={() => moveDown(idx)}
           onUnlink={() => unlinkSkill.mutate({ agentId, skillId: link.skill_id })}
           onToggle={(enabled) => toggleSkill.mutate({ id: link.skill_id, enabled })}
+          isDragOver={dragOver === idx}
+          onDragStart={(e) => {
+            setDragSrc(idx);
+            // dataTransfer is non-null per spec; guard for jsdom test environments
+            // where synthetic DragEvents may not carry a DataTransfer object.
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(idx);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            handleDrop(idx);
+          }}
+          onDragEnd={resetDragState}
         />
       ))}
 
@@ -130,6 +169,11 @@ function LinkedSkillRow({
   onMoveDown,
   onUnlink,
   onToggle,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   link: AgentSkillLink;
   allSkills: Skill[];
@@ -139,12 +183,33 @@ function LinkedSkillRow({
   onMoveDown: () => void;
   onUnlink: () => void;
   onToggle: (enabled: boolean) => void;
+  isDragOver: boolean;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
 }) {
   const skill = allSkills.find((sk) => sk.id === link.skill_id);
   const typeColor = skill ? (TYPE_COLORS[skill.type] ?? "var(--text-secondary)") : "var(--text-secondary)";
 
+  const rowStyle = isDragOver
+    ? { ...s.skillRow, ...s.skillRowDragOver }
+    : s.skillRow;
+
   return (
-    <div style={s.skillRow}>
+    <div
+      style={rowStyle}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
+      {/* Drag handle */}
+      <button style={s.dragHandle} aria-label="Drag to reorder" tabIndex={-1}>
+        <Icon.Menu size={14} />
+      </button>
+
       {/* Order position number */}
       <span
         style={{

@@ -6,7 +6,6 @@ import { Icon, SectionLabel, MonoLink } from "@devdigest/ui";
 import { usePrBrief, useGenerateBrief } from "../../../../../../../lib/hooks/brief";
 import { githubBlobUrl } from "../../../../../../../lib/github-urls";
 import { BriefHistory } from "../BriefHistory";
-import { ReviewFocusItem } from "./_components/ReviewFocusItem";
 import { s } from "./styles";
 import type { CSSProperties } from "react";
 
@@ -76,18 +75,6 @@ export function PrBriefCard({ prId, repoFullName, headSha }: PrBriefCardProps) {
             {data.risk_level}
           </span>
         </div>
-
-        {/* Review focus */}
-        {data.review_focus.length > 0 && (
-          <>
-            <div style={s.sectionLabel}>{t("block.brief.reviewFocus.label")}</div>
-            <ul style={s.list}>
-              {data.review_focus.map((item, i) => (
-                <ReviewFocusItem key={i} prId={prId} path={item} />
-              ))}
-            </ul>
-          </>
-        )}
 
         {/* Risks */}
         {data.risks.length > 0 && (

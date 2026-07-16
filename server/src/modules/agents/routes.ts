@@ -85,6 +85,13 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     return service.list(workspaceId);
   });
 
+  // IMPORTANT: must be registered BEFORE /agents/:id so Fastify does not
+  // absorb the literal segment "skill-counts" as a uuid param.
+  app.get('/agents/skill-counts', async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    return service.skillCounts(workspaceId);
+  });
+
   app.get('/agents/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     const agent = await service.get(workspaceId, req.params.id);

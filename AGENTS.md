@@ -26,6 +26,10 @@ cd server && pnpm test    # unit + integration
 cd client && pnpm test    # vitest + jsdom
 cd reviewer-core && pnpm test  # hermetic units
 cd e2e && ./scripts/e2e.sh     # hermetic browser e2e
+cd evals && pnpm eval:quality  # static SKILL.md gate (no model)
+cd evals && pnpm eval:skills   # skill content-tier evals
+cd evals && pnpm eval:agents   # subagent tool-tier evals
+cd evals && pnpm eval:workflow # live-harness workflow-tier evals
 ```
 
 ## Cross-cutting gotchas — not guessable from code
@@ -48,6 +52,15 @@ cd e2e && ./scripts/e2e.sh     # hermetic browser e2e
 - Touching UI routes or data hooks → read `client/docs/README.md`
 - Running e2e → read `e2e/docs/README.md`
 - Hit unexpected/gotcha behavior in a module → read that module's `AGENTS.md` (dedicated `## Gotchas` section)
-- Touching the evals harness or its CI gating → read `evals/README.md`
+- Touching a skill, agent, `CLAUDE.md`, or the evals harness → run the matching eval before pushing (which change → which run):
+
+  | Changed file | Run |
+  |---|---|
+  | `.claude/skills/<name>/**` or `evals/skills/<name>/**` | `pnpm eval:skills` (that skill) |
+  | `.claude/agents/<name>.md` or `evals/agents/<name>/**` | `pnpm eval:agents` (that agent) |
+  | `CLAUDE.md`, `.claude/CLAUDE.md`, any `.claude/agents/*.md`, `evals/workflow/**`, `evals/src/**` | `pnpm eval:workflow` |
+  | any `.claude/**` or `evals/**` | `pnpm eval:quality` (static gate; always, in CI) |
+
+  A changed artifact with no written evals is a visible SKIP, not a failure. Rows mirror `evals/scripts/ci-detect.mjs` — keep them in sync. Deep dive: read `evals/README.md`.
 - Before working in a module → read that module's `insights/INSIGHTS.md`; treat as high-confidence guidance
 - On session end → run `/engineering-insights` to update the relevant module's `insights/INSIGHTS.md`; do not skip

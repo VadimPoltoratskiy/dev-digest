@@ -54,4 +54,22 @@ export const s = {
   } satisfies CSSProperties,
   addSection: { marginTop: 20 } satisfies CSSProperties,
   addLabel: { fontSize: 13, fontWeight: 600, marginBottom: 8 } satisfies CSSProperties,
+  /** Drag handle — cursor:grab, visually matches the other icon buttons */
+  dragHandle: {
+    cursor: "grab",
+    color: "var(--text-muted)",
+    display: "flex",
+    padding: 3,
+    borderRadius: 4,
+    background: "none",
+    border: "none",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  /** Applied to the row that is currently the drop target.
+   *  Uses the full `border` shorthand (not longhand) so it overrides the
+   *  `border` shorthand in `skillRow` without React's shorthand-conflict warning. */
+  skillRowDragOver: {
+    border: "1px dashed var(--accent, #6366f1)",
+    opacity: 0.8,
+  } satisfies CSSProperties,
 } as const;

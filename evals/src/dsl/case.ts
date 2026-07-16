@@ -81,6 +81,22 @@ export function activated(result: Result, skill: string): boolean {
 // OpenRouter Skin slug ("anthropic/claude-sonnet-5").
 const IS_ANTHROPIC_MODEL = EVAL_MODEL.startsWith("claude-") || EVAL_MODEL.startsWith("anthropic/");
 
+/**
+ * A positive "did the model take action X" expectation (read a routed doc, engage a skill).
+ * On non-Anthropic CI models this is indicative-not-blocking per evals/README.md — a capable
+ * model may answer directly, or (observed on gemini-2.5-flash) ask for the path instead of
+ * invoking the Read tool. Warn instead of failing on those backends; stay a hard assert on
+ * Anthropic (the real on-disk harness the tier actually gates).
+ */
+function assertActionOrWarn(condition: boolean, caseName: string, message: string): void {
+  if (!IS_ANTHROPIC_MODEL && !condition) {
+    // eslint-disable-next-line no-console
+    console.warn(`[indicative, not blocking] ${caseName}: ${message}`);
+    return;
+  }
+  expect(condition, message).toBe(true);
+}
+
 // --- Runners ----------------------------------------------------------------
 
 type Task = (prompt: string, artifact: string, opts?: RunOptions) => Promise<Result>;
@@ -185,17 +201,22 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           for (const sub of c.expectSubagents ?? []) {
             expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(sub);
           }
+          // Positive doc-read / skill-engagement checks are soft on non-Anthropic CI models
+          // (indicative-not-blocking, evals/README.md) — same treatment as the `activation` case.
+          // Subagent dispatch stays a hard assert (the CI model drives it reliably per README).
           for (const skill of c.expectSkills ?? []) {
-            expect(
+            assertActionOrWarn(
               activated(result, skill),
+              c.name,
               `skill ${skill} not engaged | skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
-            ).toBe(true);
+            );
           }
           for (const file of c.expectFilesRead ?? []) {
-            expect(
+            assertActionOrWarn(
               result.filesRead.some((f) => f.includes(file)),
+              c.name,
               `${file} not read | reads: ${result.filesRead.join(", ")}`,
-            ).toBe(true);
+            );
           }
           expect(result.isError).toBe(false);
         } finally {

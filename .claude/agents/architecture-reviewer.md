@@ -6,7 +6,7 @@ description: >
   layer boundaries (routes → service → repository → adapters), frontend placement
   rules (ui-architecture), RSC boundaries (next-best-practices), and security
   patterns. Returns a structured finding report. NEVER writes or modifies files.
-model: claude-sonnet-4-6
+model: claude-opus-4-8
 tools: Read, Bash
 skills:
   - onion-architecture

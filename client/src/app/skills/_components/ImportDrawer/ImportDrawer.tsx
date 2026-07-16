@@ -3,8 +3,15 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Drawer, Tabs, FormField, TextInput, Textarea, SelectInput, Button } from "@devdigest/ui";
-import type { SkillType } from "@devdigest/shared";
-import { useImportSkillPreview, useImportSkillSave, useSearchCommunitySkills } from "../../../../lib/hooks/skills";
+import type { SkillType, CommunitySkillEntry } from "@devdigest/shared";
+import {
+  useImportSkillPreview,
+  useImportSkillSave,
+  useImportSkillFetch,
+  useSearchCommunitySkills,
+  useCommunitySkillFacets,
+} from "../../../../lib/hooks/skills";
+import { tagToType, estimateTokens } from "./helpers";
 
 const SKILL_TYPE_OPTIONS = [
   { value: "rubric", label: "Rubric" },
@@ -23,21 +30,15 @@ export function ImportDrawer({
   open,
   onClose,
   onImported,
+  initialTab = "file",
 }: {
   open: boolean;
   onClose: () => void;
   onImported?: () => void;
+  initialTab?: string;
 }) {
   const t = useTranslations("skills");
-  const [tab, setTab] = React.useState("file");
-  const [prefillName, setPrefillName] = React.useState("");
-  const [prefillBody, setPrefillBody] = React.useState("");
-
-  const handleCommunityImport = (name: string, body: string) => {
-    setPrefillName(name);
-    setPrefillBody(body);
-    setTab("file");
-  };
+  const [tab, setTab] = React.useState(initialTab);
 
   if (!open) return null;
 
@@ -47,22 +48,126 @@ export function ImportDrawer({
         <Tabs tabs={DRAWER_TABS} value={tab} onChange={setTab} />
         <div style={{ marginTop: 20 }}>
           {tab === "file" && (
-            <FileTab
-              onClose={onClose}
-              onImported={onImported}
-              initialName={prefillName}
-              initialBody={prefillBody}
-            />
+            <FileTab onClose={onClose} onImported={onImported} />
           )}
           {tab === "url" && <UrlTab onClose={onClose} onImported={onImported} />}
           {tab === "community" && (
-            <CommunityTab onImportSkill={handleCommunityImport} />
+            <CommunityTab onClose={onClose} onImported={onImported} />
           )}
         </div>
       </div>
     </Drawer>
   );
 }
+
+// ---- Shared preview panel (used by FileTab, UrlTab, and CommunityTab) ----
+
+/**
+ * Shows the sanitised preview returned by the server (/skills/import or
+ * /skills/import/fetch) and lets the user edit name / description / type
+ * before saving.  Accepts onBack so each tab can restore its own pre-preview UI.
+ */
+function ImportPreviewPanel({
+  preview,
+  initialName,
+  source = "imported_url",
+  initialDescription = "",
+  initialType = "custom",
+  onBack,
+  onImported,
+  onClose,
+}: {
+  preview: { name: string; body_preview: string; token_count: number };
+  /** Pre-filled name (from user input or derived from URL). Defaults to preview.name. */
+  initialName?: string;
+  /** Which import source to tag this skill with. Defaults to "imported_url". */
+  source?: "imported_url" | "community";
+  /** Pre-filled description from the catalog entry. Defaults to "". */
+  initialDescription?: string;
+  /** Pre-selected type derived from catalog tags. Defaults to "custom". */
+  initialType?: SkillType;
+  onBack: () => void;
+  onImported?: () => void;
+  onClose: () => void;
+}) {
+  const t = useTranslations("skills");
+  const [name, setName] = React.useState(initialName ?? preview.name);
+  const [description, setDescription] = React.useState(initialDescription);
+  const [type, setType] = React.useState<SkillType>(initialType);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const saveMut = useImportSkillSave();
+
+  const handleSave = async () => {
+    setError(null);
+    try {
+      await saveMut.mutateAsync({
+        name: name || preview.name,
+        description: description || preview.name,
+        type,
+        body: preview.body_preview,
+        source,
+      });
+      onImported?.();
+      onClose();
+    } catch {
+      setError(t("drawer.importFailed"));
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <FormField label={t("file.nameLabel")} hint={t("file.nameHint")}>
+        <TextInput value={name} onChange={setName} placeholder={t("file.namePlaceholder")} />
+      </FormField>
+      <FormField label="Description" hint="Describe what rule this skill enforces.">
+        <TextInput
+          value={description}
+          onChange={setDescription}
+          placeholder={name || preview.name}
+        />
+      </FormField>
+      <FormField label="Type">
+        <SelectInput
+          value={type}
+          onChange={(v) => setType(v as SkillType)}
+          options={SKILL_TYPE_OPTIONS}
+        />
+      </FormField>
+      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+        ~{preview.token_count.toLocaleString()} tokens · Saved disabled until vetted.
+      </div>
+      <div
+        style={{
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: "10px 14px",
+          fontSize: 12,
+          fontFamily: "monospace",
+          maxHeight: 200,
+          overflowY: "auto",
+          color: "var(--text-secondary)",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {preview.body_preview.slice(0, 800)}
+        {preview.body_preview.length > 800 ? "\n…" : ""}
+      </div>
+      {error && <p style={{ fontSize: 13, color: "#ef4444" }}>{error}</p>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button kind="ghost" size="sm" onClick={onBack}>
+          Back
+        </Button>
+        <Button kind="primary" size="sm" onClick={handleSave} loading={saveMut.isPending}>
+          {saveMut.isPending ? t("file.importing") : t("file.import")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- File tab ----
 
 function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -118,24 +223,15 @@ async function resolveDroppedSkill(
 function FileTab({
   onClose,
   onImported,
-  initialName = "",
-  initialBody = "",
 }: {
   onClose: () => void;
   onImported?: () => void;
-  initialName?: string;
-  initialBody?: string;
 }) {
   const t = useTranslations("skills");
-  const [name, setName] = React.useState(initialName);
-  const [body, setBody] = React.useState(initialBody);
-  const [type, setType] = React.useState<SkillType>("custom");
+  const [name, setName] = React.useState("");
+  const [body, setBody] = React.useState("");
   const [isDragging, setIsDragging] = React.useState(false);
 
-  // Sync if parent re-fills from community tab.
-  React.useEffect(() => { setName(initialName); }, [initialName]);
-  React.useEffect(() => { setBody(initialBody); }, [initialBody]);
-  const [description, setDescription] = React.useState("");
   const [preview, setPreview] = React.useState<{ name: string; body_preview: string; token_count: number } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -151,7 +247,6 @@ function FileTab({
   };
 
   const previewMut = useImportSkillPreview();
-  const saveMut = useImportSkillSave();
 
   const handlePreview = async () => {
     setError(null);
@@ -164,70 +259,15 @@ function FileTab({
     }
   };
 
-  const handleSave = async () => {
-    if (!preview) return;
-    setError(null);
-    try {
-      await saveMut.mutateAsync({
-        name: name || preview.name,
-        description: description || preview.name,
-        type,
-        body: preview.body_preview,
-        source: "imported_url",
-      });
-      onImported?.();
-      onClose();
-    } catch {
-      setError(t("drawer.importFailed"));
-    }
-  };
-
   if (preview) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <FormField label={t("file.nameLabel")} hint={t("file.nameHint")}>
-          <TextInput value={name} onChange={setName} placeholder={t("file.namePlaceholder")} />
-        </FormField>
-        <FormField label="Description" hint="Describe what rule this skill enforces.">
-          <TextInput value={description} onChange={setDescription} placeholder={name || preview.name} />
-        </FormField>
-        <FormField label="Type">
-          <SelectInput
-            value={type}
-            onChange={(v) => setType(v as SkillType)}
-            options={SKILL_TYPE_OPTIONS}
-          />
-        </FormField>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          ~{preview.token_count.toLocaleString()} tokens · Saved disabled until vetted.
-        </div>
-        <div
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "10px 14px",
-            fontSize: 12,
-            fontFamily: "monospace",
-            maxHeight: 200,
-            overflowY: "auto",
-            color: "var(--text-secondary)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {preview.body_preview.slice(0, 800)}
-          {preview.body_preview.length > 800 ? "\n…" : ""}
-        </div>
-        {error && <p style={{ fontSize: 13, color: "#ef4444" }}>{error}</p>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button kind="ghost" size="sm" onClick={() => setPreview(null)}>
-            Back
-          </Button>
-          <Button kind="primary" size="sm" onClick={handleSave} loading={saveMut.isPending}>
-            {saveMut.isPending ? t("file.importing") : t("file.import")}
-          </Button>
-        </div>
-      </div>
+      <ImportPreviewPanel
+        preview={preview}
+        initialName={name}
+        onBack={() => setPreview(null)}
+        onImported={onImported}
+        onClose={onClose}
+      />
     );
   }
 
@@ -278,58 +318,110 @@ function FileTab({
   );
 }
 
+// ---- URL tab ----
+
 function UrlTab({ onClose, onImported }: { onClose: () => void; onImported?: () => void }) {
   const t = useTranslations("skills");
   const [url, setUrl] = React.useState("");
-  const saveMut = useImportSkillSave();
+  const [urlPreview, setUrlPreview] = React.useState<{
+    name: string;
+    body_preview: string;
+    token_count: number;
+  } | null>(null);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
 
-  const handleImport = async () => {
+  const fetchMut = useImportSkillFetch();
+
+  const handleFetch = async () => {
+    setFetchError(null);
     try {
-      await saveMut.mutateAsync({
-        name: url.split("/").pop() ?? "Imported skill",
-        description: "Imported from URL",
-        type: "custom",
-        body: `# Imported from ${url}\n\n_Fetch + preview not yet wired — paste the content in the File tab._`,
-        source: "imported_url",
-      });
-      onImported?.();
-      onClose();
+      const result = await fetchMut.mutateAsync({ url });
+      setUrlPreview(result);
     } catch {
-      // noop
+      setFetchError(t("url.fetchError"));
     }
   };
+
+  if (urlPreview) {
+    return (
+      <ImportPreviewPanel
+        preview={urlPreview}
+        onBack={() => setUrlPreview(null)}
+        onImported={onImported}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <FormField label={t("url.label")} hint={t("url.hint")}>
         <TextInput value={url} onChange={setUrl} placeholder={t("url.placeholder")} />
       </FormField>
-      <Button kind="primary" size="sm" onClick={handleImport} disabled={!url.trim()} loading={saveMut.isPending}>
-        {saveMut.isPending ? t("url.fetching") : t("url.import")}
+      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+        {t("url.allowlistHint")}
+      </p>
+      {fetchError && <p style={{ fontSize: 13, color: "#ef4444" }}>{fetchError}</p>}
+      <Button
+        kind="primary"
+        size="sm"
+        onClick={handleFetch}
+        disabled={!url.trim()}
+        loading={fetchMut.isPending}
+      >
+        {fetchMut.isPending ? t("url.fetching") : t("url.fetchButton")}
       </Button>
     </div>
   );
 }
 
-const LANG_FILTERS = ["All", "TypeScript", "Python", "Go", "Rust"] as const;
-const TAG_FILTERS = ["All", "security", "performance", "style", "test"] as const;
+// ---- Community tab ----
 
-function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: string) => void }) {
+function CommunityTab({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported?: () => void;
+}) {
   const t = useTranslations("skills");
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [lang, setLang] = React.useState<string>("All");
   const [tag, setTag] = React.useState<string>("All");
+  const [selectedEntry, setSelectedEntry] = React.useState<CommunitySkillEntry | null>(null);
 
   React.useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(id);
   }, [query]);
 
+  const { langs, tags: catalogTags } = useCommunitySkillFacets();
+  const langFilters = ["All", ...langs];
+  const tagFilters = ["All", ...catalogTags];
+
   const { data: results, isLoading } = useSearchCommunitySkills(debouncedQuery || undefined, {
     lang: lang === "All" ? undefined : lang,
     tag: tag === "All" ? undefined : tag,
   });
+
+  if (selectedEntry) {
+    return (
+      <ImportPreviewPanel
+        preview={{
+          name: selectedEntry.name,
+          body_preview: selectedEntry.body,
+          token_count: estimateTokens(selectedEntry.body),
+        }}
+        source="community"
+        initialDescription={selectedEntry.description}
+        initialType={tagToType(selectedEntry.tags)}
+        onBack={() => setSelectedEntry(null)}
+        onImported={onImported}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -350,7 +442,7 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
       />
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {LANG_FILTERS.map((l) => (
+        {langFilters.map((l) => (
           <button
             key={l}
             onClick={() => setLang(l)}
@@ -369,7 +461,7 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
           </button>
         ))}
         <div style={{ width: 1, background: "var(--border)", margin: "0 2px" }} />
-        {TAG_FILTERS.map((tg) => (
+        {tagFilters.map((tg) => (
           <button
             key={tg}
             onClick={() => setTag(tg)}
@@ -430,8 +522,8 @@ function CommunityTab({ onImportSkill }: { onImportSkill: (name: string, body: s
                 </span>
               ))}
             </div>
-            <Button kind="primary" size="sm" onClick={() => onImportSkill(entry.name, entry.body)}>
-              Import
+            <Button kind="primary" size="sm" onClick={() => setSelectedEntry(entry)}>
+              {t("community.import")}
             </Button>
           </div>
         ))}

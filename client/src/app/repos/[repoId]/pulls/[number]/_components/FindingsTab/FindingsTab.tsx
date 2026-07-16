@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
@@ -21,6 +21,8 @@ interface FindingsTabProps {
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Deep-link target from a badge click in the Diff tab. */
+  findingTarget?: { id: string; n: number } | null;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
   onRunDone: () => void;
@@ -37,6 +39,7 @@ export function FindingsTab({
   cancelMutation,
   repoFullName,
   headSha,
+  findingTarget,
   onOpenTrace,
   onDelete,
   onRunDone,
@@ -70,6 +73,17 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
+
+  // Build a map of run_id → FindingRecord[] for the timeline severity badges.
+  const findingsByRun = useMemo(() => {
+    const map = new Map<string, FindingRecord[]>();
+    for (const review of runs) {
+      if (!review.run_id || review.findings.length === 0) continue;
+      const existing = map.get(review.run_id) ?? [];
+      map.set(review.run_id, existing.concat(review.findings));
+    }
+    return map;
+  }, [runs]);
 
   return (
     <section>
@@ -134,6 +148,7 @@ export function FindingsTab({
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
+            findingsByRun={findingsByRun}
           />
         </div>
       )}
@@ -164,6 +179,8 @@ export function FindingsTab({
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
+            targetFindingId={findingTarget?.id ?? null}
+            targetFindingNonce={findingTarget?.n ?? 0}
           />
         ))
       )}

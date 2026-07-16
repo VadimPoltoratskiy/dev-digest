@@ -2,7 +2,8 @@
 
 import React, { useCallback } from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
+import { Icon, Badge, Button, Tabs } from "@devdigest/ui";
+import { GithubAvatar } from "@/components/GithubAvatar";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { ComposeReviewDrawer } from "../ComposeReviewDrawer";
 import { s } from "./styles";
@@ -65,7 +66,7 @@ export function PrDetailHeader({
           </h1>
           <div style={s.meta}>
             <span style={s.authorChip}>
-              <Avatar name={pr.author} size={17} />
+              <GithubAvatar login={pr.author} size={17} />
               {pr.author}
             </span>
             <span style={s.branchChip}>

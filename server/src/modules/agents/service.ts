@@ -5,6 +5,7 @@ import type {
   AgentEvalCase,
   AgentEvalCompare,
   AgentEvalExpectedOutput,
+  AgentSkillCount,
   AgentSkillLink,
   AgentVersion,
   CiFailOn,
@@ -201,6 +202,17 @@ export class AgentsService {
   ): Promise<Agent | undefined> {
     const row = await this.repo.setContextDocs(workspaceId, agentId, paths);
     return row ? toAgentDto(row) : undefined;
+  }
+
+  /**
+   * Bulk count of linked skills per agent for a workspace.
+   * Returns a flat array of { agent_id, count } for all agents with at least
+   * one linked skill; agents with zero skills are omitted (client treats missing
+   * as 0).
+   */
+  async skillCounts(workspaceId: string): Promise<AgentSkillCount[]> {
+    const rows = await this.repo.skillCounts(workspaceId);
+    return rows.map((r) => ({ agent_id: r.agentId, count: r.count }));
   }
 
   /**

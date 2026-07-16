@@ -54,9 +54,12 @@
   "url": {
     "label": "Skill URL",
     "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
-    "placeholder": "https://example.com/skills/security.md",
+    "allowlistHint": "Only GitHub raw files, gists, and blob links are supported (e.g. https://github.com/owner/repo/blob/main/SKILL.md).",
+    "placeholder": "https://raw.githubusercontent.com/owner/repo/main/SKILL.md",
+    "fetchButton": "Fetch & preview",
     "fetching": "Fetching…",
     "import": "Import from URL",
+    "fetchError": "Could not fetch URL. Only GitHub raw files, gists, and blob links are supported.",
     "success": "Imported \"{name}\". Disabled until you vet + enable it."
   },
   "community": {
