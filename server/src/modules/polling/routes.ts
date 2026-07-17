@@ -25,8 +25,21 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    const gh = await container.github();
-    const pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+    // Manual poll surfaces its own errors (the caller sees the failure), but the
+    // outcome is still recorded on the repo row so the PR list's stale-sync
+    // banner stays consistent with the last attempt.
+    let gh;
+    let pulls;
+    try {
+      gh = await container.github();
+      pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+    } catch (err) {
+      await container.db
+        .update(t.repos)
+        .set({ prSyncError: err instanceof Error ? err.message.slice(0, 200) : 'GitHub sync failed' })
+        .where(eq(t.repos.id, repo.id));
+      throw err;
+    }
     let synced = 0;
     for (const pr of pulls) {
       await container.db
@@ -59,7 +72,7 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
     }
     await container.db
       .update(t.repos)
-      .set({ lastPolledAt: new Date() })
+      .set({ lastPolledAt: new Date(), prSyncedAt: new Date(), prSyncError: null })
       .where(eq(t.repos.id, repo.id));
 
     // NOTE: no review is triggered here — manual trigger only.

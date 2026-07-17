@@ -31,11 +31,25 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
+    // Record the sync outcome on the repo row so the UI can flag stale data
+    // instead of silently serving a day-old snapshot (e.g. GitHub outages).
+    const recordSync = async (error: string | null) => {
+      try {
+        await container.db
+          .update(t.repos)
+          .set(error === null ? { prSyncedAt: new Date(), prSyncError: null } : { prSyncError: error })
+          .where(eq(t.repos.id, repo.id));
+      } catch (err) {
+        app.log.warn({ err }, 'PR sync bookkeeping skipped');
+      }
+    };
+
     let gh: GitHubClient | null = null;
     try {
       gh = await container.github();
     } catch (err) {
       app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
+      await recordSync('GITHUB_TOKEN is not configured');
     }
 
     // Local-first: sync from GitHub when a token is configured, but never
@@ -72,8 +86,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               },
             });
         }
+        await recordSync(null);
       } catch (err) {
         app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+        await recordSync(err instanceof Error ? err.message.slice(0, 200) : 'GitHub sync failed');
       }
     }
 

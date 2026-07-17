@@ -132,7 +132,13 @@
     "errorBody": "The engine returned an error.",
     "emptyTitle": "No pull requests",
     "emptyAllBody": "No open PRs found for this repo yet. Refresh to sync from GitHub.",
-    "emptyStatusBody": "No PRs with status “{status}”."
+    "emptyStatusBody": "No PRs with status “{status}”.",
+    "syncBanner": {
+      "failing": "GitHub sync is failing — showing cached data (last synced {ago}).",
+      "failingNever": "GitHub sync is failing — showing cached data (never synced).",
+      "reason": "Reason: {reason}",
+      "dismiss": "Dismiss"
+    }
   },
   "timeline": {
     "goToReview": "Jump to this run’s findings below",

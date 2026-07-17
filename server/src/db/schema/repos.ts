@@ -15,6 +15,10 @@ export const repos = pgTable(
     defaultBranch: text('default_branch').notNull().default('main'),
     clonePath: text('clone_path'),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
+    /** Last time the PR list successfully synced from GitHub (null = never). */
+    prSyncedAt: timestamp('pr_synced_at', { withTimezone: true }),
+    /** Short reason the last PR-list sync failed; null while sync is healthy. */
+    prSyncError: text('pr_sync_error'),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: now(),
   },
