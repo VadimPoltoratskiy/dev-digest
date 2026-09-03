@@ -7,6 +7,8 @@ import type {
   AgentEvalBatchResult,
   AgentEvalCase,
   AgentEvalCompare,
+  AgentPerformance,
+  AgentStats,
   Brief,
   BriefTimeline,
   CiExport,
@@ -368,6 +370,29 @@ export function patchMemory(
 
 export function deleteMemory(id: string): Promise<void> {
   return api.del<void>(`/memory/${id}`);
+}
+
+// ---- Agent Performance API functions ----
+
+export function fetchAgentStats(
+  agentId: string,
+  params: { period?: string; from?: string; to?: string },
+): Promise<AgentStats> {
+  const sp = new URLSearchParams();
+  if (params.period) sp.set('period', params.period);
+  if (params.from)   sp.set('from', params.from);
+  if (params.to)     sp.set('to', params.to);
+  return apiFetch<AgentStats>(`/agents/${agentId}/stats?${sp}`);
+}
+
+export function fetchAgentPerformance(
+  params: { period?: string; from?: string; to?: string },
+): Promise<AgentPerformance> {
+  const sp = new URLSearchParams();
+  if (params.period) sp.set('period', params.period);
+  if (params.from)   sp.set('from', params.from);
+  if (params.to)     sp.set('to', params.to);
+  return apiFetch<AgentPerformance>(`/agent-performance?${sp}`);
 }
 
 export async function exportMemory(repo?: string): Promise<string> {

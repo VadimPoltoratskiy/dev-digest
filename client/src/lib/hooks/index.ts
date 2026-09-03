@@ -16,3 +16,4 @@ export * from "./pr-files";
 export * from "./multi-runs";
 export * from "./ci";
 export * from "./memory";
+export * from "./performance";

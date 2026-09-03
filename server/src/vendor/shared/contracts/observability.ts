@@ -120,6 +120,67 @@ export const AgentStats = z.object({
 export type AgentStats = z.infer<typeof AgentStats>;
 
 // ---------------------------------------------------------------------------
+// Agent Performance dashboard (GET /agent-performance)
+// ---------------------------------------------------------------------------
+
+export const AgentPerformancePeriod = z.object({
+  preset: z.enum(['30d', '7d', '1d', 'custom']).nullable(),
+  from: z.string(),   // ISO date string e.g. "2026-06-17T00:00:00.000Z"
+  to: z.string(),     // ISO date string
+});
+export type AgentPerformancePeriod = z.infer<typeof AgentPerformancePeriod>;
+
+export const AgentPerformanceSummary = z.object({
+  total_runs: z.number().int(),
+  runs_trend: z.array(StatPoint),        // daily run counts over the period
+  total_cost_usd: z.number().nullable(),
+  previous_total_cost_usd: z.number().nullable(),  // null → show no delta (AC-8)
+  avg_accept_rate: z.number().nullable(), // pooled: all accepted ÷ all acted; null if nothing acted (AC-6)
+  most_active: z.object({
+    agent_id: z.string(),
+    agent_name: z.string(),
+    runs: z.number().int(),
+    accept_rate: z.number().nullable(),
+  }).nullable(),
+});
+export type AgentPerformanceSummary = z.infer<typeof AgentPerformanceSummary>;
+
+export const AgentPerformanceRow = z.object({
+  agent_id: z.string().nullable(),       // null for "(deleted agent)" bucket (AC-23)
+  agent_name: z.string(),                // "(deleted agent)" for synthetic bucket
+  runs: z.number().int(),
+  avg_cost_usd: z.number().nullable(),
+  avg_duration_ms: z.number().nullable(),
+  accept_rate: z.number().nullable(),
+  previous_accept_rate: z.number().nullable(),   // null → no trend arrow (AC-8)
+  last_run_at: z.string().nullable(),    // ISO timestamp; UI renders relative time
+  trend: z.array(StatPoint),             // findings per run, oldest→newest (AC-10)
+});
+export type AgentPerformanceRow = z.infer<typeof AgentPerformanceRow>;
+
+export const AgentCostBreakdown = z.object({
+  agent_id: z.string().nullable(),       // null for "(deleted agent)" (AC-23)
+  agent_name: z.string(),
+  cost_usd: z.number(),
+});
+export type AgentCostBreakdown = z.infer<typeof AgentCostBreakdown>;
+
+export const ModelCostBreakdown = z.object({
+  model: z.string(),                     // 'unknown' for null model rows (edge case 11)
+  cost_usd: z.number(),
+});
+export type ModelCostBreakdown = z.infer<typeof ModelCostBreakdown>;
+
+export const AgentPerformance = z.object({
+  period: AgentPerformancePeriod,
+  summary: AgentPerformanceSummary,
+  agents: z.array(AgentPerformanceRow),
+  cost_by_agent: z.array(AgentCostBreakdown),
+  cost_by_model: z.array(ModelCostBreakdown),
+});
+export type AgentPerformance = z.infer<typeof AgentPerformance>;
+
+// ---------------------------------------------------------------------------
 // Cross-session memory curator
 // ---------------------------------------------------------------------------
 

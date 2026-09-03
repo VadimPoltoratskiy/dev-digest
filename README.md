@@ -1,9 +1,6 @@
 # DevDigest — starter
 
-Local-first AI pull-request review. This is the **course starter template**: a
-minimal-but-working tool that does exactly one thing end to end — **import a PR
-and run an agent review on it**. Every later course lesson adds one feature back
-(see [_What you build in the course_](#what-you-build-in-the-course)).
+Local-first AI pull-request review. This is the **fully functional AI Harness**: 
 
 Several standalone packages (no monorepo workspace — each has its own
 `package.json` and lockfile; cross-package code is shared through tsconfig path
@@ -63,30 +60,62 @@ Each package has its own README with deeper diagrams:
 [`reviewer-core`](reviewer-core/docs/README.md) (review pipeline) ·
 [`e2e`](e2e/docs/README.md).
 
-## What works on day 1
+## What works
 
+Everything below is implemented and running in the app today.
+
+### Core loop
 - **Local launch** — one command brings up Postgres (Docker) + API + web.
-- **Settings** — store your LLM API key (OpenAI / Anthropic) and GitHub token.
-- **Add repository** — paste a repo URL; the server clones and indexes it.
-- **Import pull requests** — pull open PRs and their diff, commits, body, and linked issue.
-- **View diff** — GitHub-like diff in the browser.
-- **Agents** — two built-in reviewers (General + Security); create/edit your own (model + system prompt).
-- **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
+- **Settings** — store your LLM API keys (OpenAI / Anthropic / OpenRouter) and GitHub token; pick per-feature models.
+- **Add repository** — paste a repo URL; the server clones and `repo-intel` indexes it (symbols + import graph → repo map, the **Indexed** badge).
+- **Import pull requests** — sync open + recently merged/closed PRs with diff, commits, body, and linked issue; local-first, and a banner flags when GitHub sync is failing so a stale list is never mistaken for live data.
+- **View diff** — GitHub-like diff in the browser, with per-finding badges and deep links.
+- **Agents** — built-in General + Security reviewers; create/edit your own (model + system prompt + skills + context), with config version history.
+- **Run a review** — single or multi-agent analysis returning structured findings (severity + score), with the grounding gate (drops hallucinated line refs) and repo-map context.
 
-## What you build in the course
+### Review experience
+- **Findings workflow** — severity filter and per-finding accept / dismiss that feeds every downstream metric.
+- **Run cost** — per-run cost/model badges driven by configurable model pricing.
+- **Smart Diff** — files grouped by risk, finding-line highlights, and finding → diff deep-links.
+- **PR Intent layer** — classifies a PR's intent, scope, and risk areas before review to keep the reviewer on-topic.
+- **Blast Radius** — deterministic impact map from the import graph, with an optional one-call AI explanation.
 
-These are intentionally **not** in the starter — each lesson adds one back:
+### PR understanding & history
+- **Why+Risk Brief** — an LLM "read this first" card per PR, with an oversized-PR caveat and a timeline across the PR's commits.
+- **git-why blame drawer** — per-line history (who/which PR/why), including historical refs beyond the current checkout.
+- **Prior PRs per file** — each reviewed file links to the PRs that touched it.
+- **Project Context Folder** — curated project docs injected into reviews.
+- **Onboarding generator** — generates a newcomer tour of the codebase.
 
-| Lesson | You build |
-|--------|-----------|
-| L01 | Run cost badge · severity filter on findings |
-| L02 | Skills in the product · Conventions extractor |
-| L03 | Intent layer · Smart Diff |
-| L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
-| L05 | Project Context Folder · Onboarding generator · PR Brief card |
-| L06 | Eval pipeline · Secret/Phantom gates · Plan Verifier · Export to CI |
-| L07 | Multi-agent review · Run Trace / Live Log · Persistent memory · per-agent stats |
-| L08 | Plugin export/import · Agent performance dashboard · weekly digest |
+### Skills Tab
+- **Skills** — reusable prompt fragments with editor, version history/restore, and usage stats; agents compose an ordered skill list (drag to reorder → controls prompt assembly).
+- **Conventions extractor** — mines the repo for team conventions into editable records.
+- **Import** — bring skills in by URL, file drag-and-drop, or from a community catalog (source-tagged).
+
+### Multi-agent & collaboration
+- **Multi-agent review** — parallel fan-out across agents from a Configure Run page, with per-agent cost/duration estimates.
+- **Cross-agent grouping & conflicts** — findings on the same file:line are grouped; disagreements surface as explicit conflicts.
+- **Compose Review** — curate merged findings and post them as a real GitHub PR review.
+
+### Observability & performance
+- **Run Trace / Live Log** — every run persists a full trace (config, prompt assembly, context pulled, token/cost stats), streamed live over SSE.
+- **Per-agent Stats tab** — runs, findings, accept/dismiss rates, cost, latency, severity breakdown, and a recent-runs trend for one agent.
+- **Agent Performance dashboard** — a global "which agents earn their keep" screen: summary cards (runs, cost + period delta, pooled accept rate, most-active agent), an accept-rate-sorted table with expandable trends and deep links into each agent's Stats tab, and cost breakdowns by agent and by model. Period presets (30d / 7d / 1d) + custom UTC range; read-only over saved runs.
+
+### Memory
+- **Structured memory records** — decisions, conventions, preferences, facts, and learnings with scope and confidence, managed in a `/memory` UI.
+- **Review injection** — curated memory is injected into local reviews with strict provenance handling for untrusted sources.
+- **Learn from findings** — one click turns a review finding into a memory record.
+
+### CI, MCP & CLI
+- **Export to CI** — a wizard generates a GitHub Actions workflow bundle (with the headless `agent-runner`) for an agent, commits it, tracks installations, and supports clean removal.
+- **CI Runs** — runs executed in GitHub Actions are ingested back and shown alongside local runs.
+- **MCP server** (`mcp-server/`) — exposes DevDigest data (repos, PRs, findings) as MCP tools for AI assistants.
+- **CLI** — `devdigest review` runs a review from the terminal.
+
+### Eval pipeline
+- **Three content tiers + static gate** (`eval:quality` / `eval:skills` / `eval:agents` / `eval:workflow`) test skills, subagents, and workflow behavior like code.
+- **Eval Dashboard** — case editor, metric trend charts, LLM-assisted case generation, and "create eval from finding" to turn review mistakes into regression cases; `reviewer-core` also has a mutation-testing suite.
 
 ## Prerequisites
 

@@ -1,12 +1,36 @@
 {
   "title": "Agent Performance",
-  "subtitle": "Accept-rate is the headline quality signal · cost shown as a breakdown",
+  "subtitle": "Which agents earn their keep — accept rate is the quality signal",
   "loadError": "Could not load agent performance.",
+  "period30d": "Last 30 days",
+  "period7d": "Last 7 days",
+  "period1d": "Last 24 hours",
+  "periodCustom": "Custom",
+  "from": "From",
+  "to": "To",
+  "apply": "Apply",
   "summary": {
     "totalRuns": "Total runs",
     "avgAcceptRate": "Avg accept-rate",
     "totalCost": "Total cost",
-    "mostActive": "Most active"
+    "mostActive": "Most active",
+    "noRate": "—",
+    "vsLastPeriod": "{pct}% vs last period"
+  },
+  "table": {
+    "agent": "Agent",
+    "runs": "Runs",
+    "avgCost": "Avg cost",
+    "avgDuration": "Avg duration",
+    "acceptRate": "Accept rate",
+    "lastRun": "Last run",
+    "view": "View",
+    "deletedAgent": "(deleted agent)",
+    "expandTrend": "Recent runs",
+    "accept": "Accept",
+    "findings": "Findings",
+    "cost": "Cost",
+    "trend": "Trend"
   },
   "costByAgent": "Cost by agent",
   "costByModel": "Cost by model",
@@ -16,17 +40,9 @@
     "runs": "runs",
     "cost": "cost"
   },
-  "table": {
-    "agent": "Agent",
-    "accept": "Accept",
-    "runs": "Runs",
-    "findings": "Findings",
-    "cost": "Cost",
-    "trend": "Trend"
-  },
   "empty": {
     "title": "No agent runs yet",
-    "body": "Run a review (manually) to populate per-agent performance."
+    "body": "Run a review to populate per-agent performance data."
   },
   "perAgent": "Per-agent"
 }

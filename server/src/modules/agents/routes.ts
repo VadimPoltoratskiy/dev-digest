@@ -10,6 +10,8 @@ import { NotFoundError } from '../../platform/errors.js';
 const EvalCaseParams = z.object({ id: z.string().uuid(), caseId: z.string().uuid() });
 const CompareQuery = z.object({ a: z.string(), b: z.string() });
 import { AgentsService } from './service.js';
+import { AgentPerformanceService } from '../agent-performance/service.js';
+import { PeriodParams } from '../_shared/schemas.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
 const ProviderParams = z.object({ id: Provider });
@@ -79,6 +81,7 @@ const SetContextDocsBody = z.object({
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new AgentsService(app.container);
+  const perfService = new AgentPerformanceService(app.container);
 
   app.get('/agents', async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -91,6 +94,17 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     return service.skillCounts(workspaceId);
   });
+
+  // IMPORTANT: /agents/:id/stats must be registered BEFORE /agents/:id
+  // to ensure the sub-resource path is unambiguously matched.
+  app.get(
+    '/agents/:id/stats',
+    { schema: { params: IdParams, querystring: PeriodParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return perfService.getAgentStats(workspaceId, req.params.id, req.query);
+    },
+  );
 
   app.get('/agents/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
